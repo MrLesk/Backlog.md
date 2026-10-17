@@ -18,6 +18,8 @@ type CompactTaskJson = {
 	id: string;
 	title: string;
 	status: string;
+	/** True for a task in the archive, which is read-only; false for a task on the board. */
+	archived: boolean;
 	type: string | null;
 	priority: string | null;
 	project: string | null;
@@ -135,6 +137,7 @@ function toCompactTaskJson(task: Task): CompactTaskJson {
 		id: task.id,
 		title: task.title,
 		status: task.status,
+		archived: task.source === "archived",
 		type: nullable(task.type),
 		priority: nullable(task.priority),
 		project: nullable(task.project),

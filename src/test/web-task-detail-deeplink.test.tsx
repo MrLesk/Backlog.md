@@ -984,7 +984,7 @@ describe("task detail routes", () => {
 			dependencies: ["BACK-201"],
 			createdDate: "2026-07-10",
 		};
-		const corpus = { tasks: [foundation, follower], completedTasks: [], statuses: defaultConfig.statuses };
+		const corpus = { tasks: [foundation, follower], archivedTasks: [], statuses: defaultConfig.statuses };
 		// The /api/task fixtures are details carrying their graphs; the search results stay plain
 		// list records, exactly as the real endpoints answer.
 		const detailFoundation = Object.assign({}, foundation, {
@@ -1447,7 +1447,7 @@ describe("task detail routes", () => {
 		);
 		expect(archiveButton).toBeTruthy();
 		await clickWithHistory(archiveButton as HTMLButtonElement, [
-			expectFetch("archive response", "/api/tasks/BACK-101", { settleOn: "response" }),
+			expectFetch("archive response", "/api/tasks/BACK-101/archive", { settleOn: "response" }),
 			expectFetch("archive refresh", "/api/search"),
 		]);
 		assertState(

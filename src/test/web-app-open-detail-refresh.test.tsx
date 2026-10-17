@@ -196,7 +196,7 @@ describe("open task detail across refreshes", () => {
 				detailReads += 1;
 				return toTaskDetail(dependent, {
 					tasks: [dependent],
-					completedTasks: completedDependency ? [completedDependency] : [],
+					archivedTasks: completedDependency ? [completedDependency] : [],
 					statuses,
 				});
 			},
@@ -228,10 +228,10 @@ describe("open task detail across refreshes", () => {
 
 	it("ignores a detail read that a newer one has already overtaken", async () => {
 		const dependent = makeTask("TASK-2", "To Do", ["TASK-9"]);
-		const blockedDetail = toTaskDetail(dependent, { tasks: [dependent], completedTasks: [], statuses });
+		const blockedDetail = toTaskDetail(dependent, { tasks: [dependent], archivedTasks: [], statuses });
 		const readyDetail = toTaskDetail(dependent, {
 			tasks: [dependent],
-			completedTasks: [makeTask("TASK-9", "Done")],
+			archivedTasks: [makeTask("TASK-9", "Done")],
 			statuses,
 		});
 
@@ -304,7 +304,7 @@ describe("open task detail across refreshes", () => {
 			drafts: () => [draft],
 			fetchTask: async (id) => {
 				requestedIds.push(id);
-				return toTaskDetail(draft, { tasks: [blocker, draft], completedTasks: [], statuses });
+				return toTaskDetail(draft, { tasks: [blocker, draft], archivedTasks: [], statuses });
 			},
 		});
 
@@ -336,10 +336,10 @@ describe("open task detail across refreshes", () => {
 
 	it("drops a detail read left in flight when the modal is closed and reopened", async () => {
 		const dependent = makeTask("TASK-2", "To Do", ["TASK-9"]);
-		const blockedDetail = toTaskDetail(dependent, { tasks: [dependent], completedTasks: [], statuses });
+		const blockedDetail = toTaskDetail(dependent, { tasks: [dependent], archivedTasks: [], statuses });
 		const readyDetail = toTaskDetail(dependent, {
 			tasks: [dependent],
-			completedTasks: [makeTask("TASK-9", "Done")],
+			archivedTasks: [makeTask("TASK-9", "Done")],
 			statuses,
 		});
 
@@ -419,7 +419,7 @@ describe("open task detail across refreshes", () => {
 	it("keeps the routed task on screen when an older task's refresh read answers late", async () => {
 		const alpha = { ...makeTask("TASK-1", "To Do", ["TASK-9"]), title: "Alpha task" };
 		const beta = { ...makeTask("TASK-2", "To Do"), title: "Beta task" };
-		const detailFor = (task: Task) => toTaskDetail(task, { tasks: [alpha, beta], completedTasks: [], statuses });
+		const detailFor = (task: Task) => toTaskDetail(task, { tasks: [alpha, beta], archivedTasks: [], statuses });
 
 		// Only the read that opens the modal answers immediately; every later read is held open so
 		// the test decides the order they come back in.
@@ -506,7 +506,7 @@ describe("open task detail across refreshes", () => {
 			fetchTask: async () =>
 				toTaskDetail(draft, {
 					tasks: blockerCompleted ? [draft] : [blocker, draft],
-					completedTasks: blockerCompleted ? [makeTask("TASK-1", "Done")] : [],
+					archivedTasks: blockerCompleted ? [makeTask("TASK-1", "Done")] : [],
 					statuses,
 				}),
 		});

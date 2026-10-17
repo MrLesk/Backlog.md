@@ -107,9 +107,11 @@ nix profile install github:MrLesk/Backlog.md#backlog-md
 ```
 
 The Nix flake supports `x86_64-linux`, `aarch64-linux`, and
-`aarch64-darwin`. The x86_64 Linux package uses Bun's baseline runtime so it
-also works on pre-AVX2 processors with AVX support. Intel macOS users can use
-the npm, Bun, or Homebrew installation instead.
+`aarch64-darwin`. The x86_64 Linux package uses
+[Bun's unified x64 runtime](https://bun.com/docs/installation#cpu-requirements),
+with an SSE4.2 minimum and automatic CPU-specific paths. Pre-AVX2 compatibility
+is checked under Ivy Bridge emulation. Intel macOS users can use the npm, Bun,
+or Homebrew installation instead.
 
 The init wizard will ask how you want to connect AI tools:
 - **CLI instructions** (recommended): creates a short instruction file that tells agents to run `backlog instructions overview`.
@@ -153,7 +155,7 @@ After running `backlog init`, agents should start by running `backlog instructio
 > [!NOTE]
 > **Review checkpoint #3:** review the code, run tests, check linting, and verify the results match your expectations.
 
-Mark verified work Done (or the configured final status). During periodic cleanup, use `backlog task complete` to move it off the board while preserving its record and dependency links. Use `backlog task archive` for canceled, duplicate, or invalid work; it removes incoming dependencies and task references.
+Mark verified work Done (or the configured final status). During periodic cleanup, `backlog task archive` moves it off the board; the same command takes canceled, duplicate, or invalid work off the board at any time. An archived task keeps its ID, record, and dependency links, stays readable with `backlog task view`, and is read-only. `backlog task restore` brings an archived task back to the board with the same ID. To remove a task for good, archive it and then run `backlog task delete`, which releases its ID once no other branch or worktree still holds the task.
 
 If the output is not good enough: clear the plan/notes/final summary, refine the task description and acceptance criteria, and run the task again in a fresh session.
 

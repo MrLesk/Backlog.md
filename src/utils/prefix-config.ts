@@ -291,9 +291,30 @@ export function idsEqual(id1: string, id2: string, prefix: string): boolean {
 }
 
 /**
- * Generates the next ID in sequence given a list of existing IDs.
+ * The ID a record file claims through its name, or null when the name carries no ID for the prefix.
  *
- * @param existingIds - Array of existing IDs
+ * A file reserves the number in its name even when its frontmatter holds another ID or cannot be
+ * read. Every allocator therefore passes these IDs to {@link generateNextId} together with the
+ * frontmatter IDs, so a number that shows up in either place is never handed out again.
+ *
+ * @param filename - The file name without its directory (e.g., "doc-2 - Notes.md")
+ * @param prefix - The prefix of the record kind (e.g., "task", "doc", "decision")
+ *
+ * @example
+ * extractIdFromFilename("doc-2 - Notes.md", "doc") // => "DOC-2"
+ * extractIdFromFilename("task-5.1 - Subtask.md", "task") // => "TASK-5.1"
+ * extractIdFromFilename("readme.md", "doc") // => null
+ */
+export function extractIdFromFilename(filename: string, prefix: string): string | null {
+	const match = filename.match(buildFilenameIdRegex(prefix));
+	return match?.[1] ? normalizeId(match[1], prefix) : null;
+}
+
+/**
+ * Generates the next ID in sequence given a list of existing IDs.
+ * The prefix is matched in any letter case, so "DOC-1" and "doc-1" take the same number.
+ *
+ * @param existingIds - Every ID already in use: frontmatter IDs and the IDs file names claim
  * @param prefix - The prefix to use
  * @param zeroPadding - Optional zero padding width (e.g., 3 for "001")
  * @returns Next ID in sequence (e.g., "task-43")

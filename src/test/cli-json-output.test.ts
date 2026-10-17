@@ -97,6 +97,7 @@ describe("CLI JSON output", () => {
 					id: "TASK-1",
 					title: "JSON task",
 					status: "In Progress",
+					archived: false,
 					type: "enhancement",
 					priority: "high",
 					project: null,
@@ -225,6 +226,7 @@ describe("CLI JSON output", () => {
 			expect(output.schemaVersion).toBe(1);
 			expect(output.kind).toBe("task-view");
 			expect(output.task.path).toMatch(/^backlog\/tasks\/task-1 - JSON-task\.md$/);
+			expect(output.task.archived).toBe(false);
 			expect(output.task.description).toBe("Machine-readable output");
 			expect(output.task.dependencies).toEqual(["TASK-2"]);
 			// The summary verdict and the detail explanation behind it, from the same derivation.
@@ -254,6 +256,18 @@ describe("CLI JSON output", () => {
 			expect(output.task.filePath).toBeUndefined();
 			expect(output.task.branch).toBeUndefined();
 		}
+	});
+
+	it("marks a task in the archive as archived in task view", async () => {
+		expect(await new Core(TEST_DIR).archiveTask("task-1", false)).toBe(true);
+
+		const result = await runCli(["task", "view", "1", "--json"]);
+
+		expect(result.exitCode).toBe(0);
+		const output = JSON.parse(result.stdout.toString());
+		expect(output.schemaVersion).toBe(1);
+		expect(output.task.archived).toBe(true);
+		expect(output.task.path).toMatch(/^backlog\/archive\/tasks\/task-1 - JSON-task\.md$/);
 	});
 
 	it("serializes an absent description as null and preserves Markdown verbatim", async () => {
@@ -379,11 +393,11 @@ describe("CLI JSON output", () => {
 	});
 
 	it("reads no task corpus for a search that matched no task", async () => {
-		// A completed record that cannot be parsed is never cached, so it is re-read and re-logged
-		// under DEBUG on every load of the completed corpus. Counting those lines counts the corpus
+		// An archived record that cannot be parsed is never cached, so it is re-read and re-logged
+		// under DEBUG on every load of the archived corpus. Counting those lines counts the corpus
 		// reads one command makes.
 		await writeFile(
-			join(TEST_DIR, "backlog", "completed", "task-99 - Broken.md"),
+			join(TEST_DIR, "backlog", "archive", "tasks", "task-99 - Broken.md"),
 			"---\nid: TASK-99\ntitle: [unclosed\nstatus: Done\n---\n\nbroken\n",
 		);
 		const corpusReads = async (args: string[]) => {
@@ -397,7 +411,7 @@ describe("CLI JSON output", () => {
 				reads: result.stderr
 					.toString()
 					.split("\n")
-					.filter((line) => line.startsWith("Failed to parse completed task file")).length,
+					.filter((line) => line.startsWith("Failed to parse archived task file")).length,
 			};
 		};
 

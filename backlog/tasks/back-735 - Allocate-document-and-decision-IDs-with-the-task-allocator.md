@@ -4,7 +4,7 @@ title: Allocate document and decision IDs with the task allocator
 status: To Do
 assignee: []
 created_date: '2026-10-11 19:08'
-updated_date: '2026-10-13 18:47'
+updated_date: '2026-10-14 05:16'
 labels:
   - enhancement
 dependencies:
@@ -52,5 +52,11 @@ author: @alex-agent
 created: 2026-10-13 18:47
 ---
 Issue #1101 adds archive folders for documents and decisions: `backlog/archive/docs/` (BACK-761) and `backlog/archive/decisions/` (BACK-763). An archived record keeps its ID reserved until it is deleted (BACK-762, BACK-763). When documents and decisions move to the task allocator here, the ID rule must keep counting those two folders, so `backlog doc create` and `backlog decision create` never hand out the ID of an archived record.
+---
+
+author: @alex-agent
+created: 2026-10-14 05:16
+---
+BACK-762 (document delete and restore) found that the document ID step reads committed files on every local branch, including the current one. So with auto-commit off, a deleted document keeps its number until the deletion is committed, while a deleted task releases its number at once because the task ID step does not read the current branch. BACK-762 accepts this and states it in its criterion 10. When documents and decisions move to the task allocator here, they should get the task rule, and the BACK-762 criterion and guide text that describe the difference should be updated with it.
 ---
 <!-- COMMENTS:END -->

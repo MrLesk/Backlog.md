@@ -63,6 +63,8 @@ async function initializeMermaid(mermaid: MermaidAPI): Promise<void> {
 			startOnLoad: false,
 			securityLevel: "strict",
 			theme: "default",
+			layout: "dagre",
+			look: "classic",
 		});
 	})();
 
@@ -84,7 +86,11 @@ export async function renderMermaidIn(element: HTMLElement): Promise<void> {
 		for (const codeEl of codeBlocks) {
 			const parent = codeEl.parentElement as HTMLElement;
 			if (!parent) continue;
-			const diagramText = codeEl.textContent || "";
+			// Mermaid renders HTML it finds in diagram text, so tag starts are handed over as `&lt;`:
+			// labels show text such as `<id>` as written, and HTML from Markdown files never becomes
+			// elements. The cost is that Mermaid syntax with a letter right after `<`, such as
+			// `<<interface>>`, does not reach Mermaid intact.
+			const diagramText = (codeEl.textContent || "").replace(/<(?=[A-Za-z])/g, "&lt;");
 
 			// Create container for mermaid
 			const wrapper = document.createElement("div");

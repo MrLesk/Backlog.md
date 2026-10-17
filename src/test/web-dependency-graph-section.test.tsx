@@ -21,10 +21,10 @@ function makeTask(id: string, title: string, dependencies: string[] = [], status
 	return { id, title, status, assignee: [], createdDate: "2026-01-01", labels: [], dependencies };
 }
 
-function payloadFor(rootId: string, tasks: Task[], completedTasks: Task[] = []): DependencyGraph {
-	const root = [...tasks, ...completedTasks].find((candidate) => candidate.id === rootId);
+function payloadFor(rootId: string, tasks: Task[], archivedTasks: Task[] = []): DependencyGraph {
+	const root = [...tasks, ...archivedTasks].find((candidate) => candidate.id === rootId);
 	if (!root) throw new Error(`missing root ${rootId}`);
-	return buildDependencyGraph(root, { tasks, completedTasks, statuses: STATUSES });
+	return buildDependencyGraph(root, { tasks, archivedTasks, statuses: STATUSES });
 }
 
 function render(payload: DependencyGraph, at = "/tasks"): string {
@@ -177,7 +177,7 @@ describe("Web task details modal dependency graph", () => {
 
 	it("renders the graph straight from the task it was given, with no request of its own", () => {
 		const selected = corpus[1] as Task;
-		const detail = toTaskDetail(selected, { tasks: corpus, completedTasks: [], statuses: STATUSES });
+		const detail = toTaskDetail(selected, { tasks: corpus, archivedTasks: [], statuses: STATUSES });
 
 		const { html, requests } = renderModal(detail);
 

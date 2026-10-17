@@ -63,6 +63,47 @@ describe("task ID allocation across git worktrees", () => {
 		expect(await mainCore.fs.loadTask("task-2")).not.toBeNull();
 	});
 
+	it("allocates after a task archived in a sibling worktree", async () => {
+		testDir = createUniqueTestDir("worktree-task-id");
+		const mainRepo = await createRepository(testDir, "Worktree Task ID Test");
+		const sibling = await addWorktree(mainRepo, testDir, "feature-task");
+
+		const siblingCore = new Core(sibling);
+		await siblingCore.createTaskFromInput({ title: "Sibling task" }, false);
+		expect(await siblingCore.archiveTask("task-1", false)).toBe(true);
+		expect(await siblingCore.fs.listTasks()).toEqual([]);
+
+		const mainTask = await new Core(mainRepo).createTaskFromInput({ title: "Main task" }, false);
+
+		expect(mainTask.task.id).toBe("TASK-2");
+	});
+
+	it("allocates after tasks archived on another branch, in either archived task directory", async () => {
+		testDir = createUniqueTestDir("worktree-task-id");
+		const mainRepo = await createRepository(testDir, "Worktree Task ID Test");
+		await $`git checkout -b feature-archive`.cwd(mainRepo).quiet();
+
+		const featureCore = new Core(mainRepo);
+		await featureCore.createTaskFromInput({ title: "Archived on the branch" }, false);
+		expect(await featureCore.archiveTask("task-1", false)).toBe(true);
+		// A branch written before finished work moved into the archive folder keeps it here.
+		const leftoverDirectory = join(featureCore.fs.backlogDir, "completed");
+		await mkdir(leftoverDirectory, { recursive: true });
+		await Bun.write(
+			join(leftoverDirectory, "task-2 - Finished-on-the-branch.md"),
+			"---\nid: TASK-2\ntitle: Finished on the branch\nstatus: Done\nassignee: []\ncreated_date: '2025-01-01'\nlabels: []\ndependencies: []\n---\n",
+		);
+		await $`git add -A`.cwd(mainRepo).quiet();
+		await $`git commit -m "Archive on the branch"`.cwd(mainRepo).quiet();
+		await $`git checkout main`.cwd(mainRepo).quiet();
+
+		const mainCore = new Core(mainRepo);
+		expect(await mainCore.fs.listArchivedTasks()).toEqual([]);
+		const mainTask = await mainCore.createTaskFromInput({ title: "Main task" }, false);
+
+		expect(mainTask.task.id).toBe("TASK-3");
+	});
+
 	it("allocates promoted draft task IDs after uncommitted sibling worktree tasks", async () => {
 		testDir = createUniqueTestDir("worktree-promote-id");
 		const mainRepo = await createRepository(testDir, "Worktree Promote ID Test");

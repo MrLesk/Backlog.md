@@ -162,6 +162,8 @@ export function keepTuiInputAlive(
 	return release;
 }
 
+const ASCII_ARROWS = { "↑": "^", "→": ">", "↓": "v", "←": "<" };
+
 export function createScreen(options: Partial<ScreenOptions> = {}): ScreenInterface {
 	const program: ProgramInterface = createProgram({ tput: false });
 
@@ -173,6 +175,11 @@ export function createScreen(options: Partial<ScreenOptions> = {}): ScreenInterf
 	}
 
 	const screen = blessedScreen({ smartCSR: true, program, fullUnicode: true, ...options });
+
+	// On a terminal without Unicode blessed draws each glyph through its own ASCII table and
+	// prints "?" for a glyph the table lacks. Arrows get an ASCII arrow there, so the priority
+	// markers on task rows and the arrow hints in the footer stay readable.
+	Object.assign((screen as unknown as { tput: { utoa: Record<string, string> } }).tput.utoa, ASCII_ARROWS);
 
 	if (managesWindowTitle) {
 		// blessed routes its exit, SIGINT/SIGTERM/SIGQUIT, and uncaughtException teardown

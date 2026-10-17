@@ -11,7 +11,7 @@ import type { Core } from "./backlog.ts";
  */
 export interface TaskCorpus {
 	tasks: Task[];
-	completedTasks: Task[];
+	archivedTasks: Task[];
 	statuses: readonly string[] | undefined;
 	/**
 	 * Identities the store knows more than one file claims. Reads fail closed on these whatever the
@@ -23,7 +23,7 @@ export interface TaskCorpus {
 /**
  * Load the corpus a read may see.
  *
- * Without cross-branch records this is the working copy plus the completed corpus, which is what
+ * Without cross-branch records this is the working copy including its archived tasks, which is what
  * every local task lookup already resolves against. With them, the working copy is still read as
  * written and the cross-branch store only contributes identities the working copy does not have:
  * the store resolves each identity to a single record, so merging the other way round would hide a
@@ -33,32 +33,32 @@ export async function loadTaskCorpus(
 	core: Core,
 	options: { includeCrossBranch: boolean } = { includeCrossBranch: false },
 ): Promise<TaskCorpus> {
-	const [workingCopyTasks, completedTasks, config] = await Promise.all([
+	const [workingCopyTasks, archivedTasks, config] = await Promise.all([
 		core.queryTasks({ includeCrossBranch: false }),
-		core.filesystem.listCompletedTasks(),
+		core.filesystem.listArchivedTasks(),
 		core.filesystem.loadConfig(),
 	]);
 	const statuses = config?.statuses;
 
 	if (!options.includeCrossBranch) {
-		return { tasks: workingCopyTasks, completedTasks, statuses };
+		return { tasks: workingCopyTasks, archivedTasks, statuses };
 	}
 
 	const storeTasks = await core.queryTasks({ includeCrossBranch: true });
 	const workingCopyIds = new Set(workingCopyTasks.map((task) => canonicalTaskId(task.id)));
 
-	// The cross-branch store's task list excludes completed records, so an identity that only exists
-	// as a completed record on some branch would otherwise read as missing here. Its identity index
-	// still knows those records; add the ones the local completed corpus does not already cover.
+	// The cross-branch store's task list excludes archived records, so an identity that only exists
+	// as an archived record on some branch would otherwise read as missing here. Its identity index
+	// still knows those records; add the ones the local archived corpus does not already cover.
 	const identityIndex = (await core.getContentStore()).getTaskCorpusSnapshot().identityIndex;
-	const localCompletedIds = new Set(completedTasks.map((task) => canonicalTaskId(task.id)));
-	const crossBranchCompleted = (identityIndex?.getTasks(true) ?? []).filter(
-		(task) => task.source === "completed" && !localCompletedIds.has(canonicalTaskId(task.id)),
+	const localArchivedIds = new Set(archivedTasks.map((task) => canonicalTaskId(task.id)));
+	const crossBranchArchived = (identityIndex?.getTasks(true) ?? []).filter(
+		(task) => task.source === "archived" && !localArchivedIds.has(canonicalTaskId(task.id)),
 	);
 
 	return {
 		tasks: [...workingCopyTasks, ...storeTasks.filter((task) => !workingCopyIds.has(canonicalTaskId(task.id)))],
-		completedTasks: [...completedTasks, ...crossBranchCompleted],
+		archivedTasks: [...archivedTasks, ...crossBranchArchived],
 		statuses,
 		// Both merges above resolve an ID the working copy also holds to the local record, which is
 		// the right answer for an identity only one file claims and a guess for one several do. The
@@ -125,7 +125,7 @@ export async function loadTaskDetail(
 /**
  * Load the corpus and attach readiness to a list, for a surface that renders or filters it.
  *
- * Readiness needs the completed corpus to tell a finished dependency from an unfinished one, which
+ * Readiness needs the archived corpus to resolve a dependency that has left the board, which
  * a plain list read does not load. Call this only where the verdict is rendered or filtered on, so
  * output that never mentions readiness keeps reading exactly what it reads today.
  */

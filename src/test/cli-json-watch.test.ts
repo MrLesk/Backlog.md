@@ -181,13 +181,13 @@ describe("CLI JSON watch", () => {
 	it("refreshes readiness from completed dependencies and configuration", async () => {
 		await create("TASK-1", { dependencies: ["TASK-2"] });
 		await create("TASK-2", { status: "Done" });
-		await core.completeTask("TASK-2");
+		await core.archiveTask("TASK-2");
 		const args = ["--parent", "TASK-9"];
 		// Readiness must see completed dependencies even when only one local task remains.
 		const watch = startWatch();
 		await expectCurrent(watch);
 		expect(JSON.parse(watch.snapshots.at(-1) ?? "").tasks[0].isReady).toBe(true);
-		const completed = (await core.filesystem.listCompletedTasks())[0];
+		const completed = (await core.filesystem.listArchivedTasks())[0];
 		if (!completed?.filePath) throw new Error("Missing completed task path");
 		await rm(completed.filePath);
 		await expectCurrent(watch);

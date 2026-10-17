@@ -1,5 +1,5 @@
 import { describe, expect, it, spyOn } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, rmdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GitOperations, isGitRepository } from "../git/operations.ts";
@@ -60,6 +60,97 @@ describe("Git Operations", () => {
 		it("should create GitOperations instance", () => {
 			const git = new GitOperations(process.cwd());
 			expect(git).toBeDefined();
+		});
+	});
+
+	describe("missing parent paths", () => {
+		it.skipIf(process.platform === "win32")(
+			"refuses an unresolvable selected path before committing owned staged files",
+			async () => {
+				const directory = await realpath(await mkdtemp(join(tmpdir(), "backlog-git-unresolvable-path-")));
+				const outside = await realpath(await mkdtemp(join(tmpdir(), "backlog-git-outside-path-")));
+				const runGit = (...args: string[]): string => {
+					const result = Bun.spawnSync(["git", ...args], { cwd: directory, stdout: "pipe", stderr: "pipe" });
+					if (result.exitCode !== 0) throw new Error(result.stderr.toString());
+					return result.stdout.toString().trim();
+				};
+				try {
+					runGit("init", "-b", "main");
+					runGit("config", "user.name", "Test User");
+					runGit("config", "user.email", "test@example.com");
+					await writeFile(join(directory, "owned.md"), "original\n");
+					await symlink(outside, join(directory, "shared"), "dir");
+					runGit("add", "-A");
+					runGit("commit", "-m", "Track files");
+					const head = runGit("rev-parse", "HEAD");
+					await writeFile(join(directory, "owned.md"), "staged work\n");
+					runGit("add", "owned.md");
+					const stagedBefore = runGit("diff", "--cached");
+					const git = new GitOperations(directory, TEST_CONFIG);
+
+					await expect(
+						git.commitFiles("Selected files", [join(directory, "owned.md"), join(directory, "shared/missing.md")]),
+					).rejects.toThrow();
+
+					expect(runGit("rev-parse", "HEAD")).toBe(head);
+					expect(runGit("diff", "--cached")).toBe(stagedBefore);
+				} finally {
+					await rm(directory, { recursive: true, force: true });
+					await rm(outside, { recursive: true, force: true });
+				}
+			},
+		);
+
+		it.each(
+			(
+				[
+					[false, 1],
+					[false, 3],
+					[true, 1],
+					[true, 3],
+				] as const
+			).filter(([linked]) => !linked || process.platform !== "win32"),
+		)("reads and commits a tracked removal (linked folder: %s, removed parents: %s)", async (linked, count) => {
+			const directory = await mkdtemp(join(tmpdir(), "backlog-git-missing-parent-"));
+			const runGit = (...args: string[]): string => {
+				const result = Bun.spawnSync(["git", ...args], { cwd: directory, stdout: "pipe", stderr: "pipe" });
+				if (result.exitCode !== 0) throw new Error(result.stderr.toString());
+				return result.stdout.toString().trim();
+			};
+			try {
+				runGit("init", "-b", "main");
+				runGit("config", "user.name", "Test User");
+				runGit("config", "user.email", "test@example.com");
+				await mkdir(join(directory, "records/a/b/c"), { recursive: true });
+				await writeFile(join(directory, "records/a/b/c/removed.md"), "tracked content\n");
+				await writeFile(join(directory, "keep.txt"), "original\n");
+				if (linked) await symlink("records", join(directory, "shared"), "dir");
+				runGit("add", "-A");
+				runGit("commit", "-m", "Track files");
+				const path = join(directory, linked ? "shared/a/b/c/removed.md" : "records/a/b/c/removed.md");
+				const git = new GitOperations(directory, TEST_CONFIG);
+				const trackedEntries = await git.getIndexEntries(path);
+				expect(trackedEntries).toHaveLength(1);
+				await rm(path);
+				for (const folder of ["records/a/b/c", "records/a/b", "records/a"].slice(0, count)) {
+					await rmdir(join(directory, folder));
+				}
+				await writeFile(join(directory, "staged.txt"), "staged work\n");
+				runGit("add", "staged.txt");
+				await writeFile(join(directory, "keep.txt"), "unstaged work\n");
+				const stagedBefore = runGit("diff", "--cached", "--", "staged.txt");
+				const unstagedBefore = runGit("diff", "--", "keep.txt");
+
+				expect(await git.getIndexEntries(path)).toEqual(trackedEntries);
+				await git.addFile(path);
+				await git.commitFiles("Commit removal", [path]);
+
+				expect(runGit("show", "--name-status", "--format=", "HEAD")).toBe("D\trecords/a/b/c/removed.md");
+				expect(runGit("diff", "--cached", "--", "staged.txt")).toBe(stagedBefore);
+				expect(runGit("diff", "--", "keep.txt")).toBe(unstagedBefore);
+			} finally {
+				await rm(directory, { recursive: true, force: true });
+			}
 		});
 	});
 
