@@ -455,6 +455,8 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 			},
 			acceptanceCriteriaSet: {
 				type: "array",
+				description:
+					"Replace all acceptance criteria. Matching trimmed text keeps its check state, even after reordering; duplicate texts match old entries in order, once each. New or reworded entries start unchecked, and omitted entries are removed.",
 				items: {
 					type: "string",
 					maxLength: 500,

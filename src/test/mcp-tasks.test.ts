@@ -1252,6 +1252,22 @@ describe("MCP task tools (MVP)", () => {
 		const criteriaText = getText(criteriaUpdate.content);
 		expect(criteriaText).toContain("- [x] #1 Plan documented");
 		expect(criteriaText).toContain("- [ ] #2 Agents can follow instructions end-to-end");
+
+		const replacement = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					acceptanceCriteriaSet: ["Agents can follow instructions end-to-end", " Plan documented ", "New requirement"],
+				},
+			},
+		});
+		expect(replacement.isError).toBeUndefined();
+		expect((await mcpServer.getTask("task-1"))?.acceptanceCriteriaItems).toEqual([
+			{ index: 1, text: "Agents can follow instructions end-to-end", checked: false },
+			{ index: 2, text: "Plan documented", checked: true },
+			{ index: 3, text: "New requirement", checked: false },
+		]);
 	});
 
 	it("rejects self-referential and cyclic dependencies through task_edit", async () => {

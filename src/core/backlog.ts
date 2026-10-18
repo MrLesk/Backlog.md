@@ -2849,17 +2849,22 @@ export class Core {
 		};
 
 		if (input.acceptanceCriteria !== undefined) {
+			const unmatchedCriteria = [...acceptanceCriteria];
 			const sanitized = input.acceptanceCriteria
 				.map((criterion) => ({
 					text: String(criterion.text ?? "").trim(),
-					checked: Boolean(criterion.checked),
+					checked: criterion.checked,
 				}))
 				.filter((criterion) => criterion.text.length > 0)
-				.map((criterion, index) => ({
-					index: index + 1,
-					text: criterion.text,
-					checked: criterion.checked,
-				}));
+				.map((criterion, index) => {
+					const matchIndex = unmatchedCriteria.findIndex((previous) => previous.text.trim() === criterion.text);
+					const previous = matchIndex < 0 ? undefined : unmatchedCriteria.splice(matchIndex, 1)[0];
+					return {
+						index: index + 1,
+						text: criterion.text,
+						checked: typeof criterion.checked === "boolean" ? criterion.checked : (previous?.checked ?? false),
+					};
+				});
 			acceptanceCriteria = sanitized;
 			mutated = true;
 		}
