@@ -59,6 +59,12 @@ Do not check acceptance criteria, write the final summary, or move the task to t
 
 If you discover work that is outside the task's acceptance criteria, stop and ask the user whether to add scope to the current task or create follow-up work. Do not silently expand the task.
 
+### Replacing Acceptance Criteria
+
+`--acceptance-criteria` replaces the full list; repeat it for each item. Matching trimmed text keeps its check state,
+even after reordering. Duplicate text matches old entries in order, once per entry. New or reworded entries start
+unchecked, and omitted entries are removed. Use `--check-ac` or `--uncheck-ac` in a separate edit to change check states.
+
 ### Working With Subtasks
 
 If the user assigns a parent task and all subtasks, complete subtasks one at a time. Each subtask should have its own plan, notes, checked acceptance criteria, and final summary.
