@@ -3729,7 +3729,7 @@ function configureEditCommand(cmd: Command) {
 		)
 		.option(
 			"--acceptance-criteria <criteria>",
-			"replace all acceptance criteria (can be used multiple times; commas are preserved)",
+			"replace all acceptance criteria (can be used multiple times; commas are preserved); matching trimmed text keeps checks",
 			createMultiValueAccumulator(),
 		)
 		.option("--clear-ac", "remove all acceptance criteria (cannot combine with acceptance criteria mutation options)")
@@ -4274,7 +4274,11 @@ const draftEditCommand = addHelpSchema(draftCmd.command("edit [taskId]"), {
 		{ name: "milestone", type: "String", description: "Assign to milestone by ID or title" },
 		{ name: "clear-milestone", type: "Boolean", description: "Clear the milestone assignment" },
 		{ name: "ac", type: "Comma-separated strings", description: "Add acceptance criteria; repeatable" },
-		{ name: "acceptance-criteria", type: "Comma-separated strings", description: "Replace all acceptance criteria" },
+		{
+			name: "acceptance-criteria",
+			type: "Markdown list item text",
+			description: "Replace all acceptance criteria; repeatable; matching trimmed text keeps checks",
+		},
 		{ name: "clear-ac", type: "Boolean", description: "Remove all acceptance criteria" },
 		{ name: "remove-ac", type: "Integer", description: "Remove acceptance criterion by 1-based index; repeatable" },
 		{ name: "check-ac", type: "Integer", description: "Check acceptance criterion by 1-based index; repeatable" },
