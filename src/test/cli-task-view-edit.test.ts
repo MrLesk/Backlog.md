@@ -221,6 +221,25 @@ describe("CLI Integration", () => {
 			await initializeTestProject(core, "Edit Test Project", true);
 		});
 
+		const createPriorityTask = async (id: string) => {
+			const core = new Core(TEST_DIR);
+			await core.createTask(
+				{
+					id,
+					title: "Priority Test",
+					status: "To Do",
+					priority: "high",
+					assignee: [],
+					createdDate: "2025-06-08",
+					labels: [],
+					dependencies: [],
+					rawContent: "Testing task priority edits",
+				},
+				false,
+			);
+			return core;
+		};
+
 		it("should update task title, description, and status", async () => {
 			const core = new Core(TEST_DIR);
 
@@ -260,6 +279,45 @@ describe("CLI Integration", () => {
 			expect(updatedTask?.status).toBe("In Progress");
 			const today = new Date().toISOString().slice(0, 16).replace("T", " ");
 			expect(updatedTask?.updatedDate).toBe(today);
+		});
+
+		it("should clear task priority when task edit passes an explicit empty value", async () => {
+			const core = await createPriorityTask("task-priority-clear");
+
+			await $`bun ${CLI_PATH} task edit task-priority-clear --priority ${""} --plain`.cwd(TEST_DIR).quiet();
+
+			expect((await core.filesystem.loadTask("task-priority-clear"))?.priority).toBeUndefined();
+		});
+
+		it("should preserve task priority when task edit omits the priority flag", async () => {
+			const core = await createPriorityTask("task-priority-preserved");
+
+			await $`bun ${CLI_PATH} task edit task-priority-preserved -t "Priority Preserved Renamed" --plain`
+				.cwd(TEST_DIR)
+				.quiet();
+
+			expect((await core.filesystem.loadTask("task-priority-preserved"))?.priority).toBe("high");
+		});
+
+		it("should reject invalid non-empty task priorities", async () => {
+			const core = await createPriorityTask("task-priority-invalid");
+
+			const result = await $`bun ${CLI_PATH} task edit task-priority-invalid --priority urgent`
+				.cwd(TEST_DIR)
+				.nothrow()
+				.quiet();
+			expect(result.exitCode).toBe(1);
+			expect(result.stderr.toString()).toContain("Invalid priority: urgent");
+			expect((await core.filesystem.loadTask("task-priority-invalid"))?.priority).toBe("high");
+		});
+
+		it("should document empty priority clearing in task edit help", async () => {
+			const result = await $`bun ${CLI_PATH} task edit --help`.cwd(TEST_DIR).quiet();
+			const output = result.stdout.toString().replace(/\s+/g, " ");
+
+			expect(output).toContain("--priority <priority>");
+			expect(output).toContain("pass an empty value to clear");
+			expect(output).toContain("priority: one of configured priorities: High, Medium, Low - Set task priority");
 		});
 
 		it("should replace labels from repeated CLI label flags", async () => {
