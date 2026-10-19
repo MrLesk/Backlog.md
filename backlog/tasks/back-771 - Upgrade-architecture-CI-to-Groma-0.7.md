@@ -1,11 +1,11 @@
 ---
 id: BACK-771
 title: Upgrade architecture CI to Groma 0.7
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-10-19 12:08'
-updated_date: '2026-10-19 12:15'
+updated_date: '2026-10-19 12:18'
 labels: []
 dependencies: []
 references:
@@ -37,7 +37,7 @@ The architecture workflow uses the moving Groma Action v1 with a 0.6.6 CLI pin a
 <!-- DOD:BEGIN -->
 - [x] #1 bun run check:types passes when TypeScript touched
 - [x] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -54,4 +54,12 @@ The architecture workflow uses the moving Groma Action v1 with a 0.6.6 CLI pin a
 
 <!-- SECTION:NOTES:BEGIN -->
 Based on main89041dad confirmed by the BACK-766 agent. The published Groma0.7 CLI converted the old file with no Backlog CLI on PATH, matching prior CI tool availability; the committed workSources list is empty. Exact parsed comparison confirms both existing scanner sources, include/exclude arrays and global exclusions are unchanged. Both workflow pins are0.7.0; no gate, fork/manual policy or authored architecture file changed. Full-repository proof in a disposable checkout and empty HOME passes public plugin restore/update, scan and export: React0.2.2 and TypeScript0.2.3 run successfully. All1442 tracked non-architecture files are byte-identical after scanning. All43 existing Markdown records retain their authored title, description, status, hierarchy/group and overview. Isolated public0.7 comparison of d63c722d→89041dad succeeds (2 modified components, no relationship changes) and keeps current config unchanged. Receipts: /tmp/backlog-groma-07-proof-results.json and /tmp/backlog-groma-07-authored-results.json. TypeScript and Biome source checks are not applicable to this config/workflow-only diff; Groma-owned JSON is excluded by this repository’s Biome config. git diff --check passes. Repository CI remains required before merge; its existing main-based architecture failure cannot read this branch’s workflow/config until main is upgraded. Implementer specification, quality and simplicity reviews find no further change: configuration stays operational, the CLI owns conversion, and workflow owns the selected CLI version.
+
+Scoped integration tests satisfy the task test requirement: the actual public Groma0.7/Action restore-update-scan-export and two-commit comparison assertions pass, plus the43-record authored-content and1442-file source-preservation assertions. This is a configuration/workflow-only change with no Backlog application source or unit-test change. Full repository CI on the final PR head remains a required merge gate; the known architecture failure is from the unchanged trusted main workflow until this fix merges. The Action fix is now released as v1.2.1, with v1 at ea7042367a573e3b07ae00437767df04bcf284f2. Its final PR, main and both release-tag checks pass all three operating systems; real public npm smoke passes.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Upgraded both architecture workflow CLI pins to Groma0.7.0 and committed its existing CLI conversion from scanners.json to config.json. Preserved the full scanner configuration and kept workSources empty, matching prior CI. Public CLI/Action integration passes full-repository scan/export and comparison of d63c722d→89041dad; all1442 tracked non-architecture files and authored meaning in43 Markdown records are preserved. No application source, workflow gate or fork-review policy changed. Full repository CI gates merge, followed by verification of main architecture publication. Coordinated with the BACK-766 agent; the primary checkout remains untouched.
+<!-- SECTION:FINAL_SUMMARY:END -->
