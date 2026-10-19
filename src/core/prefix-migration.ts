@@ -74,7 +74,7 @@ export async function migrateDraftPrefixes(fs: FileSystem): Promise<void> {
 			};
 
 			// Save with new draft- filename
-			const savedPath = await fs.saveDraft(migratedTask);
+			const savedPath = await fs.saveDraft(migratedTask, content);
 
 			// Delete old task- file. If that fails, remove the new draft: the next run converts this
 			// file again and must not find an earlier copy of it.

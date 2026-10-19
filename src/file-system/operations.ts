@@ -948,14 +948,17 @@ export class FileSystem {
 		return (await this.resolveTaskWriteTarget(task, isDraft)).filePath;
 	}
 
-	async saveTask(task: Task): Promise<string> {
+	// Transitions supply source content separately because their destination must be created as new.
+	async saveTask(task: Task, sourceContent?: string): Promise<string> {
 		const { id: taskId, filePath: filepath, loadedFromPath } = await this.resolveTaskWriteTarget(task);
 		const prefix = extractAnyPrefix(taskId) ?? "task";
 		let existingTask: Task | null = null;
+		let originalContent = sourceContent;
 
 		if (loadedFromPath) {
 			try {
-				existingTask = parseTask(await Bun.file(filepath).text());
+				originalContent ??= await Bun.file(loadedFromPath).text();
+				existingTask = parseTask(originalContent);
 			} catch (error) {
 				if (error instanceof TaskDependenciesParseError) throw error;
 				existingTask = null;
@@ -977,7 +980,7 @@ export class FileSystem {
 			id: persistedTaskId,
 			parentTaskId: persistedParentTaskId,
 		};
-		const content = serializeTask(normalizedTask);
+		const content = serializeTask(normalizedTask, originalContent);
 
 		await this.writeRecordFile(filepath, content, loadedFromPath);
 		return filepath;
@@ -1317,7 +1320,7 @@ export class FileSystem {
 					filePath: undefined,
 				};
 
-				await this.saveTask(promotedTask);
+				await this.saveTask(promotedTask, await Bun.file(sourcePath).text());
 
 				// Delete old draft file
 				await unlink(sourcePath);
@@ -1355,7 +1358,7 @@ export class FileSystem {
 			filePath: undefined,
 		};
 
-		const savedPath = await this.saveDraft(demotedDraft);
+		const savedPath = await this.saveDraft(demotedDraft, await Bun.file(task.filePath).text());
 
 		// Delete old task file. If that fails, remove the newly written draft so a retry cannot
 		// encounter two copies of the task.
@@ -1378,10 +1381,12 @@ export class FileSystem {
 	}
 
 	// Draft operations
-	async saveDraft(task: Task): Promise<string> {
+	async saveDraft(task: Task, sourceContent?: string): Promise<string> {
 		const { id: draftId, filePath: filepath, loadedFromPath } = await this.resolveTaskWriteTarget(task, true);
+		const originalFile = loadedFromPath ? Bun.file(loadedFromPath) : undefined;
+		const originalContent = sourceContent ?? ((await originalFile?.exists()) ? await originalFile?.text() : undefined);
 		// Normalize the draft ID to uppercase before serialization
-		const content = serializeTask({ ...task, id: draftId });
+		const content = serializeTask({ ...task, id: draftId }, originalContent);
 
 		await this.writeRecordFile(filepath, content, loadedFromPath);
 		return filepath;
