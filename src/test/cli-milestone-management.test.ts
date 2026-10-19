@@ -50,10 +50,9 @@ describe("CLI milestone management", () => {
 
 	it("adds milestone files with descriptions and rejects duplicate aliases", async () => {
 		const core = new Core(TEST_DIR);
+		const description = "Custom release scope\n\n### Release checks\n\nKeep inline##text and the literal ## marker.";
 
-		const add = await $`bun ${cliPath} milestone add "Release CLI" --description "Custom release scope"`
-			.cwd(TEST_DIR)
-			.quiet();
+		const add = await $`bun ${cliPath} milestone add "Release CLI" --description ${description}`.cwd(TEST_DIR).quiet();
 
 		expect(add.exitCode).toBe(0);
 		expect(add.stdout.toString()).toContain('Created milestone "Release CLI" (m-0).');
@@ -61,7 +60,7 @@ describe("CLI milestone management", () => {
 		const milestones = await core.filesystem.listMilestones();
 		expect(milestones).toHaveLength(1);
 		expect(milestones[0]?.title).toBe("Release CLI");
-		expect(milestones[0]?.description).toBe("Custom release scope");
+		expect(milestones[0]?.description).toBe(description);
 
 		const duplicate = await $`bun ${cliPath} milestone add " release cli "`.cwd(TEST_DIR).quiet().nothrow();
 		const duplicateOutput = duplicate.stdout.toString() + duplicate.stderr.toString();

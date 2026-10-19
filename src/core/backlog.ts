@@ -16,7 +16,7 @@ import {
 } from "../file-system/operations.ts";
 import { type GitBranchTip, type GitIndexEntry, GitOperations } from "../git/operations.ts";
 import { FrontmatterReferenceError, parseFrontmatter } from "../markdown/frontmatter.ts";
-import { parseTask } from "../markdown/parser.ts";
+import { extractSection, parseTask } from "../markdown/parser.ts";
 import { assertSectionInputHasNoMarkerLines, assertValidChecklistMarks } from "../markdown/structured-sections.ts";
 import {
 	type AcceptanceCriterion,
@@ -4378,21 +4378,15 @@ export class Core {
 			Pick<Decision, "title" | "status" | "date">
 		>;
 
-		const extractSection = (content: string, sectionName: string): string | undefined => {
-			const regex = new RegExp(`## ${sectionName}\\s*([\\s\\S]*?)(?=## |$)`, "i");
-			const match = content.match(regex);
-			return match ? match[1]?.trim() : undefined;
-		};
-
 		const updatedDecision = {
 			...existingDecision,
 			title: frontmatter.title || existingDecision.title,
 			status: frontmatter.status || existingDecision.status,
 			date: frontmatter.date || existingDecision.date,
-			context: extractSection(content, "Context") || existingDecision.context,
-			decision: extractSection(content, "Decision") || existingDecision.decision,
-			consequences: extractSection(content, "Consequences") || existingDecision.consequences,
-			alternatives: extractSection(content, "Alternatives") || existingDecision.alternatives,
+			context: extractSection(content, "Context") ?? existingDecision.context,
+			decision: extractSection(content, "Decision") ?? existingDecision.decision,
+			consequences: extractSection(content, "Consequences") ?? existingDecision.consequences,
+			alternatives: extractSection(content, "Alternatives") ?? existingDecision.alternatives,
 		};
 
 		await this.createDecision(updatedDecision, autoCommit);
