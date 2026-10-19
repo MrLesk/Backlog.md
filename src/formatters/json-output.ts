@@ -13,7 +13,8 @@ import type { ListPage } from "../utils/list-window.ts";
 import type { TaskReadiness } from "../utils/readiness.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
-type TaskSummaryJson = {
+/** The compact fields of a task-shaped list entry. Draft list entries use them as is; task entries add `isReady`. */
+type CompactTaskJson = {
 	id: string;
 	title: string;
 	status: string;
@@ -35,6 +36,9 @@ type TaskSummaryJson = {
 	createdAt: string | null;
 	updatedAt: string | null;
 	dueDate: string | null;
+};
+
+type TaskSummaryJson = CompactTaskJson & {
 	/**
 	 * Derived from the whole visible corpus at read time, never stored: work can start now because
 	 * the task is unfinished and every dependency it names resolved to a completed task.
@@ -127,7 +131,7 @@ function normalizePublicDate(value: string | undefined): string | null {
 	return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
-function toTaskSummaryJson(task: TaskListItem): TaskSummaryJson {
+function toCompactTaskJson(task: Task): CompactTaskJson {
 	const acceptanceCriteria = task.acceptanceCriteriaItems ?? [];
 	return {
 		id: task.id,
@@ -150,8 +154,11 @@ function toTaskSummaryJson(task: TaskListItem): TaskSummaryJson {
 		createdAt: normalizePublicDate(task.createdDate),
 		updatedAt: normalizePublicDate(task.updatedDate),
 		dueDate: normalizePublicDate(task.dueDate),
-		isReady: task.isReady,
 	};
+}
+
+function toTaskSummaryJson(task: TaskListItem): TaskSummaryJson {
+	return { ...toCompactTaskJson(task), isReady: task.isReady };
 }
 
 function toProjectRelativePath(projectRoot: string, filePath: string | undefined): string | null {
@@ -226,6 +233,15 @@ function cutListJson(page: ListPage<unknown> | undefined): { total?: number; nex
 
 export function taskListJson(tasks: TaskListItem[], page?: ListPage<unknown>) {
 	return { schemaVersion: 1, kind: "task-list" as const, tasks: tasks.map(toTaskSummaryJson), ...cutListJson(page) };
+}
+
+export function draftListJson(drafts: Task[], page?: ListPage<unknown>) {
+	return {
+		schemaVersion: 1,
+		kind: "draft-list" as const,
+		drafts: drafts.map(toCompactTaskJson),
+		...cutListJson(page),
+	};
 }
 
 export function taskViewJson(task: TaskDetail, projectRoot: string) {

@@ -90,7 +90,7 @@ For documentation links on tasks or drafts, `task edit` and `draft edit` use `--
 `--add-doc` or `--remove-doc` to change individual entries; both accept repeated flags or comma-separated values.
 Use `--clear-docs` to remove all entries. Do not combine replacement or clear flags with add/remove flags.
 
-For programmatic reads, `task list`, `task view`, `task <id>`, and `search` accept `--json`. JSON mode is noninteractive, versioned, and cannot be combined with `--plain`.
+For programmatic reads, `task list`, `task view`, `task <id>`, `draft list`, `decision list`, and `search` accept `--json`. JSON mode is noninteractive, versioned, and cannot be combined with `--plain`.
 
 Do not edit Backlog markdown files directly. The CLI preserves metadata, IDs, filenames, relationships, and structured sections.
 
