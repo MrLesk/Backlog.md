@@ -4,6 +4,7 @@ title: Add custom field lists to the project config
 status: To Do
 assignee: []
 created_date: '2026-10-11 19:34'
+updated_date: '2026-10-18 19:44'
 labels:
   - enhancement
 dependencies: []
@@ -47,3 +48,9 @@ Not part of this task: keeping the keys in record files, showing them, and the `
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-10-18: Canceled: Alex's 2026-10-18 decision replaced configured field lists with automatic preservation of all unknown keys. No configuration registration is needed. Documents/decisions are implemented in BACK-748; tasks/drafts remain future BACK-747. This task is superseded and archived unimplemented, not Done.
+<!-- SECTION:NOTES:END -->
