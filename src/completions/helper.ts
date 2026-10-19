@@ -7,6 +7,8 @@ import {
 	getTopLevelCommands,
 } from "./command-structure.ts";
 import {
+	getArchivedDocumentIds,
+	getArchivedTaskIds,
 	getAssignees,
 	getDocumentIds,
 	getLabels,
@@ -93,17 +95,22 @@ function filterCompletions(completions: string[], partial: string): string[] {
 }
 
 /**
- * Get completions based on argument name pattern
+ * Get completions based on argument name pattern and the command the argument belongs to
  */
-async function getArgumentCompletions(argumentName: string): Promise<string[]> {
+async function getArgumentCompletions(argumentName: string, context: CompletionContext): Promise<string[]> {
 	const lowerName = argumentName.toLowerCase();
+	// Restore and delete of tasks and documents accept only archived records, so they complete those.
+	// Every other command completes the tasks on the board and the documents in the docs folder.
+	const archivedOnly =
+		(context.command === "task" || context.command === "doc") &&
+		(context.subcommand === "restore" || context.subcommand === "delete");
 
 	// Match common patterns
 	if (lowerName.includes("taskid") || lowerName === "id") {
-		return await getTaskIds();
+		return archivedOnly ? await getArchivedTaskIds() : await getTaskIds();
 	}
 	if (lowerName.includes("docid") || lowerName.includes("documentid")) {
-		return await getDocumentIds();
+		return archivedOnly ? await getArchivedDocumentIds() : await getDocumentIds();
 	}
 	if (lowerName.includes("title") || lowerName.includes("name")) {
 		return []; // Free-form text, no completions
@@ -180,7 +187,7 @@ export async function getCompletions(program: Command, line: string, point: numb
 	if (expectedArgs.length > context.argPosition) {
 		const expectedArg = expectedArgs[context.argPosition];
 		if (expectedArg) {
-			const argCompletions = await getArgumentCompletions(expectedArg.name);
+			const argCompletions = await getArgumentCompletions(expectedArg.name, context);
 
 			// Also include flags
 			const flags = getOptionFlags(cmdInfo, context.command, context.subcommand);

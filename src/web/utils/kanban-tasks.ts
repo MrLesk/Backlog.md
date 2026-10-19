@@ -1,6 +1,6 @@
 import type { Task } from "../../types";
 
-/** The shared browser corpus omits archived identities; completed identities remain detail-addressable only. */
+/** Archived tasks are off the board; they stay reachable through their task detail only. */
 export function filterKanbanTasks(tasks: Task[]): Task[] {
-	return tasks.filter((task) => task.source !== "completed");
+	return tasks.filter((task) => task.source !== "archived");
 }

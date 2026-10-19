@@ -4,9 +4,12 @@ title: Modernize the MCP server for the stateless 2026-07-28 protocol
 status: To Do
 assignee: []
 created_date: '2026-08-07 21:26'
+updated_date: '2026-10-07 12:46'
 labels:
   - mcp
 dependencies: []
+references:
+  - src/mcp/server.ts
 priority: medium
 type: enhancement
 ordinal: 234000

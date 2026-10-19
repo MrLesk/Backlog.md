@@ -1,7 +1,7 @@
 import type { AcceptanceCriterion, Decision, Document, Milestone, ParsedMarkdown, Task } from "../types/index.ts";
 import { normalizeDueDate } from "../utils/due-date.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
-import { parseFrontmatter } from "./frontmatter.ts";
+import { parseFrontmatter, preprocessFrontmatter } from "./frontmatter.ts";
 import {
 	AcceptanceCriteriaManager,
 	CommentsManager,
@@ -10,116 +10,18 @@ import {
 	STRUCTURED_SECTION_KEYS,
 } from "./structured-sections.ts";
 
-function normalizeFlowList(prefix: string, rawValue: string): string | null {
-	// Handle inline lists like assignee: [@user, "someone"]
-	const match = rawValue.match(/^\[(.*)\]\s*(#.*)?$/);
-	if (!match) return null;
-
-	const listBody = match[1] ?? "";
-	const comment = match[2];
-	const items = listBody
-		.split(",")
-		.map((entry) => entry.trim())
-		.filter((entry) => entry.length > 0);
-
-	const normalizedItems = items.map((entry) => {
-		if (entry.startsWith("'") || entry.startsWith('"')) {
-			return entry;
-		}
-		if (entry.startsWith("@")) {
-			const escaped = entry.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-			return `"${escaped}"`;
-		}
-		return entry;
-	});
-
-	const trailingComment = comment ? ` ${comment}` : "";
-	return `${prefix}[${normalizedItems.join(", ")}]${trailingComment}`;
-}
-
-function preprocessFrontmatter(frontmatter: string): string {
-	return frontmatter
-		.split(/\r?\n/) // Handle both Windows (\r\n) and Unix (\n) line endings
-		.map((line) => {
-			// The key spelling matters: an unquoted timestamp left for YAML to resolve comes back as a
-			// Date with its written offset already discarded, so a due date read under a quoted key
-			// would land on a different day than the same value read under a bare one.
-			const dueDateMatch = line.match(/^(\s*(?:due_date|"due_date"|'due_date')\s*:\s*)(.*)$/);
-			if (dueDateMatch) {
-				const prefix = dueDateMatch[1] ?? "";
-				const raw = dueDateMatch[2] ?? "";
-				const scalarMatch = raw.match(/^(.*?)(\s+#.*)?$/);
-				const value = (scalarMatch?.[1] ?? raw).trim();
-				const comment = scalarMatch?.[2] ?? "";
-				const isYamlNull = /^(?:null|~)$/i.test(value);
-				if (value && !isYamlNull && !value.startsWith("'") && !value.startsWith('"')) {
-					return `${prefix}"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"${comment}`;
-				}
-			}
-
-			// Handle both assignee and reporter fields that start with @
-			const match = line.match(/^(\s*(?:assignee|reporter):\s*)(.*)$/);
-			if (!match) return line;
-
-			const prefix = match[1] ?? "";
-			const raw = match[2] ?? "";
-			const value = raw.trim();
-
-			const normalizedFlowList = normalizeFlowList(prefix, value);
-			if (normalizedFlowList !== null) {
-				return normalizedFlowList;
-			}
-
-			if (
-				value &&
-				!value.startsWith("[") &&
-				!value.startsWith("'") &&
-				!value.startsWith('"') &&
-				!value.startsWith("-")
-			) {
-				return `${prefix}"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-			}
-			return line;
-		})
-		.join("\n"); // Always join with \n for consistent YAML parsing
-}
-
 function normalizeDate(value: unknown): string {
 	if (!value) return "";
 	if (value instanceof Date) {
-		// Check if this Date object came from a date-only string (time is midnight UTC)
-		const hours = value.getUTCHours();
-		const minutes = value.getUTCMinutes();
-		const seconds = value.getUTCSeconds();
-
-		if (hours === 0 && minutes === 0 && seconds === 0) {
-			// This was likely a date-only value, preserve it as date-only
-			return value.toISOString().slice(0, 10);
-		}
-		// This has actual time information, preserve it
-		return value.toISOString().slice(0, 16).replace("T", " ");
+		return value.toISOString();
 	}
 	const str = String(value)
 		.trim()
 		.replace(/^['"]|['"]$/g, "");
 	if (!str) return "";
 
-	// Check for datetime format first (YYYY-MM-DD HH:mm)
-	let match: RegExpMatchArray | null = str.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
-	if (match) {
-		// Already in correct format, return as-is
-		return str;
-	}
-
-	// Check for ISO datetime format (YYYY-MM-DDTHH:mm)
-	match = str.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
-	if (match) {
-		// Convert T separator to space
-		return str.replace("T", " ");
-	}
-
 	// Check for date-only format (YYYY-MM-DD) - backward compatibility
-	match = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+	let match = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
 	if (match) {
 		return `${match[1]}-${match[2]}-${match[3]}`;
 	}
@@ -143,7 +45,7 @@ function normalizeDate(value: unknown): string {
 	return str;
 }
 
-export function parseMarkdown(content: string): ParsedMarkdown {
+export function parseMarkdown(content: string, dateFields: readonly string[] = []): ParsedMarkdown {
 	// Updated regex to handle both Windows (\r\n) and Unix (\n) line endings
 	const fmRegex = /^---\r?\n([\s\S]*?)\r?\n---/;
 	const match = content.match(fmRegex);
@@ -155,15 +57,37 @@ export function parseMarkdown(content: string): ParsedMarkdown {
 		toParse = content.replace(fmRegex, () => `---\n${processed}\n---`);
 	}
 
-	const parsed = parseFrontmatter(toParse);
+	const parsed = parseFrontmatter(toParse, dateFields);
 	return {
 		frontmatter: parsed.data,
 		content: parsed.content.trim(),
 	};
 }
 
+export class TaskDependenciesParseError extends Error {
+	constructor(taskId: string, entryIndex?: number) {
+		const location = entryIndex === undefined ? "the field" : `entry ${entryIndex + 1}`;
+		super(
+			`Invalid dependencies in task ${taskId || "(missing id)"}: ${location} contains a mapping or nested list. Use a list of task IDs in the task Markdown.`,
+		);
+		this.name = "TaskDependenciesParseError";
+	}
+}
+
+function isStructuredDependency(value: unknown): boolean {
+	return Array.isArray(value) || Object.prototype.toString.call(value) === "[object Object]";
+}
+
 export function parseTask(content: string): Task {
-	const { frontmatter, content: rawContent } = parseMarkdown(content);
+	const { frontmatter, content: rawContent } = parseMarkdown(content, ["created_date", "updated_date"]);
+	const id = String(frontmatter.id || "");
+	const dependencies = frontmatter.dependencies;
+	if (Array.isArray(dependencies)) {
+		const invalidIndex = dependencies.findIndex(isStructuredDependency);
+		if (invalidIndex !== -1) throw new TaskDependenciesParseError(id, invalidIndex);
+	} else if (isStructuredDependency(dependencies)) {
+		throw new TaskDependenciesParseError(id);
+	}
 
 	const priority = normalizePriorityValue(frontmatter.priority ? String(frontmatter.priority) : undefined);
 
@@ -179,7 +103,7 @@ export function parseTask(content: string): Task {
 	const finalSummarySection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.finalSummary) || undefined;
 
 	return {
-		id: String(frontmatter.id || ""),
+		id,
 		title: String(frontmatter.title || ""),
 		status: String(frontmatter.status || ""),
 		assignee: Array.isArray(frontmatter.assignee)
@@ -193,7 +117,7 @@ export function parseTask(content: string): Task {
 		dueDate: normalizeDueDate(frontmatter.due_date, "due_date"),
 		labels: Array.isArray(frontmatter.labels) ? frontmatter.labels.map(String) : [],
 		milestone: frontmatter.milestone ? String(frontmatter.milestone) : undefined,
-		dependencies: Array.isArray(frontmatter.dependencies) ? frontmatter.dependencies.map(String) : [],
+		dependencies: Array.isArray(dependencies) ? dependencies.map(String) : [],
 		references: Array.isArray(frontmatter.references) ? frontmatter.references.map(String) : [],
 		documentation: Array.isArray(frontmatter.documentation) ? frontmatter.documentation.map(String) : [],
 		modifiedFiles: Array.isArray(frontmatter.modified_files) ? frontmatter.modified_files.map(String) : [],
@@ -216,7 +140,7 @@ export function parseTask(content: string): Task {
 }
 
 export function parseDecision(content: string): Decision {
-	const { frontmatter, content: rawContent } = parseMarkdown(content);
+	const { frontmatter, content: rawContent } = parseMarkdown(content, ["date"]);
 
 	return {
 		id: String(frontmatter.id || ""),
@@ -232,7 +156,7 @@ export function parseDecision(content: string): Decision {
 }
 
 export function parseDocument(content: string): Document {
-	const { frontmatter, content: rawContent } = parseMarkdown(content);
+	const { frontmatter, content: rawContent } = parseMarkdown(content, ["created_date", "updated_date"]);
 
 	return {
 		id: String(frontmatter.id || ""),

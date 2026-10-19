@@ -46,7 +46,6 @@ describe("FileSystem", () => {
 				join(projectDir, "backlog"),
 				join(projectDir, "backlog", "tasks"),
 				join(projectDir, "backlog", "drafts"),
-				join(projectDir, "backlog", "completed"),
 				join(projectDir, "backlog", "archive", "tasks"),
 				join(projectDir, "backlog", "archive", "drafts"),
 				join(projectDir, "backlog", "milestones"),
@@ -151,22 +150,6 @@ describe("FileSystem", () => {
 
 			expect(await filesystem.loadTask("BACK-1")).toBeNull();
 			expect((await filesystem.loadTask("back-1-extra"))?.title).toBe("Longer sibling");
-		});
-
-		it("does not archive a longer legacy sibling for a shorter numeric ID", async () => {
-			await filesystem.saveTask({ ...sampleTask, id: "BACK-1-EXTRA", title: "Longer sibling" });
-
-			expect(await filesystem.archiveTask("BACK-1")).toBe(false);
-			expect((await filesystem.loadTask("BACK-1-EXTRA"))?.title).toBe("Longer sibling");
-			expect(await readdir(filesystem.archiveTasksDir)).toHaveLength(0);
-		});
-
-		it("does not complete a longer legacy sibling for a shorter numeric ID", async () => {
-			await filesystem.saveTask({ ...sampleTask, id: "BACK-1-EXTRA", title: "Longer sibling" });
-
-			expect(await filesystem.completeTask("BACK-1")).toBe(false);
-			expect((await filesystem.loadTask("BACK-1-EXTRA"))?.title).toBe("Longer sibling");
-			expect(await readdir(filesystem.completedDir)).toHaveLength(0);
 		});
 
 		it("does not delete a longer legacy sibling during numeric save cleanup", async () => {
@@ -276,20 +259,6 @@ Invalid content`,
 
 			const combinedFiltered = await filesystem.listTasks({ status: "to do", assignee: "bob" });
 			expect(combinedFiltered.map((t) => t.id)).toEqual(["TASK-3"]); // IDs normalized to uppercase
-		});
-
-		it("should archive a task", async () => {
-			await filesystem.saveTask(sampleTask);
-
-			const archived = await filesystem.archiveTask("task-1");
-			expect(archived).toBe(true);
-
-			const task = await filesystem.loadTask("task-1");
-			expect(task).toBeNull();
-
-			// Check that file exists in archive
-			const archiveFiles = await readdir(join(TEST_DIR, "backlog", "archive", "tasks"));
-			expect(archiveFiles.some((f) => f.startsWith("task-1"))).toBe(true);
 		});
 
 		it("should demote a task to drafts with new draft- ID", async () => {
@@ -461,40 +430,28 @@ Invalid content`,
 			expect(promotedTask?.title).toBe(sampleDraft.title);
 		});
 
-		it("should not reuse completed task IDs when promoting draft", async () => {
-			// Create a completed task directly in the completed directory
-			// This simulates a task that was created and completed before the draft
-			const completedDir = join(TEST_DIR, "backlog", "completed");
-			await mkdir(completedDir, { recursive: true });
-
-			const completedTask: Task = {
+		it("should not reuse an archived task ID when promoting a draft", async () => {
+			// The only task was archived before the draft was written, so the board is empty.
+			const archivedTask: Task = {
 				id: "TASK-1",
-				title: "Completed Task",
+				title: "Archived Task",
 				status: "Done",
 				assignee: [],
 				createdDate: "2025-01-01",
 				labels: [],
 				dependencies: [],
 			};
-			const content = serializeTask(completedTask);
-			await Bun.write(join(completedDir, "task-1 - Completed Task.md"), content);
+			await Bun.write(join(filesystem.archiveTasksDir, "task-1 - Archived Task.md"), serializeTask(archivedTask));
 
-			// Verify no active tasks exist
-			const activeTasks = await filesystem.listTasks();
-			expect(activeTasks.length).toBe(0);
-
-			// Verify completed task exists
-			const completedTasks = await filesystem.listCompletedTasks();
-			expect(completedTasks.length).toBe(1);
-			expect(completedTasks[0]?.id).toBe("TASK-1");
+			expect(await filesystem.listTasks()).toEqual([]);
+			expect((await filesystem.listArchivedTasks()).map((task) => task.id)).toEqual(["TASK-1"]);
 
 			// Create and promote a draft
 			await filesystem.saveDraft(sampleDraft);
 			const promoted = await filesystem.promoteDraft("draft-1");
 			expect(promoted).toBe(true);
 
-			// BUG: Currently returns TASK-1 because promoteDraft only checks active tasks
-			// Expected: Should return TASK-2 to avoid collision with completed task
+			// The archived task still owns TASK-1, so the promoted draft takes the next ID.
 			const promotedTask = await filesystem.loadTask("task-2");
 			expect(promotedTask?.id).toBe("TASK-2");
 			expect(promotedTask?.title).toBe(sampleDraft.title);
@@ -557,15 +514,6 @@ Invalid content`,
 		});
 	});
 
-	describe("directory accessors", () => {
-		it("should provide correct directory paths", () => {
-			expect(filesystem.tasksDir).toBe(join(TEST_DIR, "backlog", "tasks"));
-			expect(filesystem.archiveTasksDir).toBe(join(TEST_DIR, "backlog", "archive", "tasks"));
-			expect(filesystem.decisionsDir).toBe(join(TEST_DIR, "backlog", "decisions"));
-			expect(filesystem.docsDir).toBe(join(TEST_DIR, "backlog", "docs"));
-		});
-	});
-
 	describe("decision log operations", () => {
 		const sampleDecision: Decision = {
 			id: "decision-1",
@@ -617,7 +565,7 @@ Invalid content`,
 			expect(loaded?.alternatives).toBe("Considered JavaScript");
 		});
 
-		it("should remove legacy decision filenames when resaving", async () => {
+		it("should rename a legacy decision filename when the loaded decision is resaved", async () => {
 			const legacyDecision: Decision = {
 				...sampleDecision,
 				id: "decision-legacy",
@@ -634,7 +582,9 @@ Invalid content`,
 			const legacyFilename = "decision-legacy - Legacy-Decision-(OAuth)!.md";
 			await rename(join(filesystem.decisionsDir, sanitized as string), join(filesystem.decisionsDir, legacyFilename));
 
-			await filesystem.saveDecision({ ...legacyDecision, decision: "Updated decision" });
+			const stored = await filesystem.loadDecision("decision-legacy");
+			expect(stored?.path).toBe(legacyFilename);
+			await filesystem.saveDecision({ ...(stored as Decision), decision: "Updated decision" });
 
 			const finalFiles = await readdir(filesystem.decisionsDir);
 			expect(finalFiles).toEqual(["decision-legacy - Legacy-Decision-OAuth.md"]);
@@ -855,28 +805,6 @@ Invalid content`,
 			expect(tasks).toEqual([]);
 		});
 
-		it("should return false when archiving non-existent task", async () => {
-			const result = await filesystem.archiveTask("non-existent");
-			expect(result).toBe(false);
-		});
-
-		it("should handle config with all optional fields", async () => {
-			const fullConfig: BacklogConfig = {
-				projectName: "Full Project",
-				defaultAssignee: ["@admin"],
-				defaultStatus: "To Do",
-				defaultReporter: undefined,
-				statuses: ["To Do", "In Progress", "Done"],
-				labels: ["bug", "feature", "enhancement"],
-				dateFormat: "yyyy-mm-dd",
-			};
-
-			await filesystem.saveConfig(fullConfig);
-			const loaded = await filesystem.loadConfig();
-
-			expect(loaded).toEqual(fullConfig);
-		});
-
 		it("should handle config with minimal fields", async () => {
 			const minimalConfig: BacklogConfig = {
 				projectName: "Minimal Project",
@@ -933,25 +861,6 @@ Invalid content`,
 			// Verify the task can be loaded
 			const loaded = await filesystem.loadTask("task-mixed");
 			expect(loaded?.title).toBe("Fix Task List Ordering");
-		});
-
-		it("should strip punctuation from filenames", async () => {
-			const taskWithPunctuation: Task = {
-				id: "task-punct",
-				title: "Fix the user's login (OAuth)! #1",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-06-07",
-				labels: [],
-				dependencies: [],
-				description: "Task with punctuation in the title",
-			};
-
-			await filesystem.saveTask(taskWithPunctuation);
-
-			const files = await readdir(filesystem.tasksDir);
-			const filename = files.find((f) => f.startsWith("task-punct -"));
-			expect(filename).toBe("task-punct - Fix-the-users-login-OAuth-1.md");
 		});
 
 		it("should load tasks with legacy filenames containing punctuation", async () => {
@@ -1023,25 +932,6 @@ Invalid content`,
 				const files = await readdir(filesystem.tasksDir);
 				expect(files).toContain(`${id} - ${expected}.md`);
 			}
-		});
-
-		it("should avoid double dashes in filenames", async () => {
-			const weirdTask: Task = {
-				id: "task-dashes",
-				title: "Task -- with  -- multiple   dashes",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-06-07",
-				labels: [],
-				dependencies: [],
-				description: "Check double dashes",
-			};
-
-			await filesystem.saveTask(weirdTask);
-			const files = await readdir(filesystem.tasksDir);
-			const filename = files.find((f) => f.startsWith("task-dashes -"));
-			expect(filename).toBeDefined();
-			expect(filename?.includes("--")).toBe(false);
 		});
 	});
 

@@ -10,7 +10,7 @@ import {
 import { createSimpleValidatedTool } from "../../validation/tool-wrapper.ts";
 import type { TaskCreateArgs, TaskEditRequest, TaskListArgs, TaskSearchArgs } from "./handlers.ts";
 import { TaskHandlers } from "./handlers.ts";
-import { taskArchiveSchema, taskCompleteSchema, taskViewSchema } from "./schemas.ts";
+import { taskArchiveSchema, taskDeleteSchema, taskRestoreSchema, taskViewSchema } from "./schemas.ts";
 
 export function registerTaskTools(server: McpServer, config: BacklogConfig): void {
 	const handlers = new TaskHandlers(server);
@@ -80,7 +80,8 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 	const archiveTaskTool: McpToolHandler = createSimpleValidatedTool(
 		{
 			name: "task_archive",
-			description: "Archive a Backlog.md task",
+			description:
+				"Move a task in any status off the board into the archive; keeps its ID, record, dependencies, and references",
 			inputSchema: taskArchiveSchema,
 			annotations: { title: "Archive Task", destructiveHint: true },
 		},
@@ -88,15 +89,28 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 		async (input) => handlers.archiveTask(input as { id: string }),
 	);
 
-	const completeTaskTool: McpToolHandler = createSimpleValidatedTool(
+	const deleteTaskTool: McpToolHandler = createSimpleValidatedTool(
 		{
-			name: "task_complete",
-			description: "Complete a Backlog.md task (move it to the completed folder)",
-			inputSchema: taskCompleteSchema,
-			annotations: { title: "Complete Task", destructiveHint: true },
+			name: "task_delete",
+			description:
+				"Permanently delete an archived task and release its ID once no other branch or worktree still holds the task; removes the dependencies and references other tasks and drafts hold to it. The task must be archived first (task_archive) and must have no subtasks, as tasks or as drafts",
+			inputSchema: taskDeleteSchema,
+			annotations: { title: "Delete Task", destructiveHint: true },
 		},
-		taskCompleteSchema,
-		async (input) => handlers.completeTask(input as { id: string }),
+		taskDeleteSchema,
+		async (input) => handlers.deleteTask(input as { id: string }),
+	);
+
+	const restoreTaskTool: McpToolHandler = createSimpleValidatedTool(
+		{
+			name: "task_restore",
+			description:
+				"Move an archived task back to the board with the same ID and the status it had; archived tasks are read-only until restored",
+			inputSchema: taskRestoreSchema,
+			annotations: { title: "Restore Task", destructiveHint: false },
+		},
+		taskRestoreSchema,
+		async (input) => handlers.restoreTask(input as { id: string }),
 	);
 
 	server.addTool(createTaskTool);
@@ -105,13 +119,13 @@ export function registerTaskTools(server: McpServer, config: BacklogConfig): voi
 	server.addTool(editTaskTool);
 	server.addTool(viewTaskTool);
 	server.addTool(archiveTaskTool);
-	server.addTool(completeTaskTool);
+	server.addTool(deleteTaskTool);
+	server.addTool(restoreTaskTool);
 }
 
 export type { TaskCreateArgs, TaskEditArgs, TaskListArgs, TaskSearchArgs } from "./handlers.ts";
 export {
 	taskArchiveSchema,
-	taskCompleteSchema,
 	taskListSchema,
 	taskSearchSchema,
 	taskViewSchema,

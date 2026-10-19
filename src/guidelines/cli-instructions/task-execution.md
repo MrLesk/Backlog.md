@@ -46,11 +46,24 @@ Work in short loops:
 
 Use `backlog task edit {{TASK_ID:123}} --help` before changing unfamiliar fields.
 
+Replacing or clearing a legacy description, plan, notes, or final summary without section markers is refused if another
+level-two heading makes its boundary ambiguous. The file stays unchanged. Stop and ask the user to add the BEGIN and
+END markers named in the error around the intended section body without removing any content. Do not edit task or
+draft files directly. The user should place the END marker before a separate section, or after headings that belong
+to the body. Retry the CLI edit after the user repairs the boundary. Appends remain supported and keep ambiguous
+sections unmarked, so later replacements remain protected.
+
 Do not check acceptance criteria, write the final summary, or move the task to the terminal status from this guide alone. When implementation appears complete, read the finalization guide and verify each acceptance criterion with objective evidence before checking it.
 
 ### Scope Changes
 
 If you discover work that is outside the task's acceptance criteria, stop and ask the user whether to add scope to the current task or create follow-up work. Do not silently expand the task.
+
+### Replacing Acceptance Criteria
+
+`--acceptance-criteria` replaces the full list; repeat it for each item. Matching trimmed text keeps its check state,
+even after reordering. Duplicate text matches old entries in order, once per entry. New or reworded entries start
+unchecked, and omitted entries are removed. Use `--check-ac` or `--uncheck-ac` in a separate edit to change check states.
 
 ### Working With Subtasks
 
@@ -68,8 +81,16 @@ Use CLI commands for Backlog changes:
 - Update: `backlog task edit {{TASK_ID:123}} ...`
 - Create docs: `backlog doc create "Title"`
 - Update docs: `backlog doc update doc-1 --content "Markdown"`
+- Archive docs: `backlog doc archive doc-1` moves the file to `backlog/archive/docs/`. The ID stays reserved. The document stays viewable with `backlog doc view` and is read-only. Tasks and drafts whose documentation names the file are printed, not changed.
+- Restore docs: `backlog doc restore doc-1` moves an archived document back to `backlog/docs/` with the same ID.
+- Delete docs: archive first, then `backlog doc delete doc-1`. Delete asks no question, removes the file and releases the ID. Tasks and drafts whose documentation names the file are printed, not changed.
+- Decisions follow the same steps: `backlog decision archive decision-1` moves the file to `backlog/archive/decisions/`, keeps the ID reserved and makes the decision read-only; `backlog decision restore decision-1` brings it back; `backlog decision delete decision-1` removes an archived decision without a question and releases the ID. Tasks and drafts whose documentation names the file are printed, not changed.
 
-For programmatic reads, `task list`, `task view`, `task <id>`, and `search` accept `--json`. JSON mode is noninteractive, versioned, and cannot be combined with `--plain`.
+For documentation links on tasks or drafts, `task edit` and `draft edit` use `--doc` to replace the full list. Use
+`--add-doc` or `--remove-doc` to change individual entries; both accept repeated flags or comma-separated values.
+Use `--clear-docs` to remove all entries. Do not combine replacement or clear flags with add/remove flags.
+
+For programmatic reads, `task list`, `task view`, `task <id>`, `draft list`, `decision list`, and `search` accept `--json`. JSON mode is noninteractive, versioned, and cannot be combined with `--plain`.
 
 Do not edit Backlog markdown files directly. The CLI preserves metadata, IDs, filenames, relationships, and structured sections.
 

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isLocalEditableTask, type AcceptanceCriterion, type Milestone, type Task, type TaskComment } from "../../types";
+import { isReadOnlyTask, isWorkingCopyTask, type AcceptanceCriterion, type Milestone, type Task, type TaskComment } from "../../types";
 import { type TaskDetail, taskDependencyGraph, taskReadiness } from "../../core/task-detail";
 import Modal from "./Modal";
 import { apiClient, NetworkError, readDemotionFailureCause, readMovedFailureState } from "../lib/api";
@@ -199,7 +199,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
 }) => {
   const { theme } = useTheme();
   const isCreateMode = !task;
-  const isFromOtherBranch = Boolean(task?.branch);
+  // A task from another branch or in the archive is shown but cannot be changed here.
+  const isReadOnly = task ? isReadOnlyTask(task) : false;
   // Promoting a draft replaces it with a new task ID, which the Drafts page does through its own
   // Promote action, so the popup shows the draft status without turning the field into a second one.
   const isOpenDraft = (task?.status ?? "").trim().toLowerCase() === "draft";
@@ -425,7 +426,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   // than one local file claims. The index drops those collisions already, so a task survives only
   // when it is the one its own canonical ID resolves to.
   const localAvailableTasks = useMemo(() => {
-    const local = availableTasks.filter(isLocalEditableTask);
+    const local = availableTasks.filter(isWorkingCopyTask);
     const index = buildTaskIdIndex(local);
     return local.filter((candidate) => resolveTaskReference(index, candidate.id) === candidate);
   }, [availableTasks]);
@@ -504,20 +505,15 @@ export const TaskDetailsModal: React.FC<Props> = ({
       if (mode !== "preview" || isEditableKeyboardTarget(e.target)) {
         return;
       }
-      if (e.key.toLowerCase() === "e" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (!isReadOnly && e.key.toLowerCase() === "e" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         e.stopPropagation();
         setMode("edit");
       }
-      if (isDoneStatus && (e.key.toLowerCase() === "c") && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        void handleComplete();
-      }
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () => window.removeEventListener("keydown", onKey, { capture: true } as any);
-  }, [mode, title, description, plan, notes, finalSummary, criteria, definitionOfDone, status]);
+  }, [mode, title, description, plan, notes, finalSummary, criteria, definitionOfDone, status, availableStatuses, isReadOnly]);
 
   // Reset local state when task changes or modal opens
   useEffect(() => {
@@ -875,7 +871,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const handleToggleCriterion = async (index: number, checked: boolean) => {
     if (demoting) return;
     if (!task) return; // Can't toggle in create mode
-    if (isFromOtherBranch) return; // Can't toggle for cross-branch tasks
+    if (isReadOnly) return; // Can't toggle on a read-only task
     // Optimistic update
     const next = (criteria || []).map((c) => (c.index === index ? { ...c, checked } : c));
     setCriteria(next);
@@ -892,7 +888,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const handleToggleDefinitionOfDone = async (index: number, checked: boolean) => {
     if (demoting) return;
     if (!task) return; // Can't toggle in create mode
-    if (isFromOtherBranch) return; // Can't toggle for cross-branch tasks
+    if (isReadOnly) return; // Can't toggle on a read-only task
     const next = (definitionOfDone || []).map((c) => (c.index === index ? { ...c, checked } : c));
     setDefinitionOfDone(next);
     try {
@@ -909,8 +905,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
   const handleInlineMetaUpdate = async (updates: InlineMetaUpdatePayload) => {
     if (demoting) return;
-    // Don't allow updates for cross-branch tasks
-    if (isFromOtherBranch) return;
+    // Don't allow updates on a read-only task
+    if (isReadOnly) return;
 
     setError(null);
 
@@ -940,7 +936,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
   const handleTaskTypeChange = async (nextType: string) => {
     if (demoting) return;
-    if (isFromOtherBranch) return;
+    if (isReadOnly) return;
     if (!task) {
       setTaskType(nextType);
       setTypeUpdateError(null);
@@ -981,7 +977,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
   const handleAddComment = async () => {
     if (demoting) return;
-    if (!task || isFromOtherBranch) return;
+    if (!task || isReadOnly) return;
     const body = commentBody.trim();
     if (!body) return;
     const author = commentAuthor.trim();
@@ -1014,19 +1010,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
   };
 
   // labels handled via ChipInput; no textarea parsing
-
-	const handleComplete = async () => {
-		if (demoting) return;
-		if (!task) return;
-		if (!window.confirm("Complete this task? It will be moved to the completed folder.")) return;
-		try {
-			await apiClient.completeTask(task.id);
-			if (onSaved) await onSaved();
-			onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-		}
-	};
 
 	const handleDemote = async () => {
 		if (!task || !canDemote || activeDemotionRequest.current !== null) return;
@@ -1102,18 +1085,20 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const handleArchive = async () => {
     if (demoting) return;
     if (!task || !onArchive) return;
-    if (!window.confirm(`Are you sure you want to archive "${task.title}"? This will move the task to the archive folder.`)) return;
-    await onArchive();
+    if (!window.confirm(`Archive "${task.title}"? It moves off the board. Its ID, record, dependencies, and references are kept.`)) return;
+    setError(null);
+    try {
+      await onArchive();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const checkedCount = (criteria || []).filter((c) => c.checked).length;
   const totalCount = (criteria || []).length;
   const definitionCheckedCount = (definitionOfDone || []).filter((c) => c.checked).length;
   const definitionTotalCount = (definitionOfDone || []).length;
-	const isDoneStatus = (status || "").toLowerCase().includes("done");
-	const canDemote = Boolean(
-		task && !isDraftMode && !isOpenDraft && isLocalEditableTask(task) && task.source !== "completed" && !isFromOtherBranch,
-	);
+	const canDemote = Boolean(task && !isDraftMode && !isOpenDraft && !isReadOnly);
   const comments = displayComments;
 
   const displayId = task?.id ?? "";
@@ -1136,17 +1121,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
       disableEscapeClose={mode === "edit" || mode === "create" || demoting}
       actions={
 		<div className="flex flex-nowrap items-center justify-end gap-2">
-		          {isDoneStatus && mode === "preview" && !isCreateMode && !isFromOtherBranch && (
-		            <button
-		              onClick={handleComplete}
-		              disabled={demoting}
-		              className="inline-flex items-center px-3 py-2 sm:px-4 rounded-lg text-sm font-medium text-white bg-emerald-600 dark:bg-emerald-700 hover:bg-emerald-700 dark:hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:focus:ring-emerald-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
-		              title="Move to completed folder (removes from board)"
-		            >
-		              <span className="sm:hidden">Complete</span>
-		              <span className="hidden sm:inline">Mark as completed</span>
-		            </button>
-		          )}
 		          {canDemote && mode === "preview" && (
 		            <button
 		              onClick={() => void handleDemote()}
@@ -1162,7 +1136,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
 		              )}
 		            </button>
 		          )}
-		          {mode === "preview" && !isCreateMode && !isFromOtherBranch ? (
+		          {mode === "preview" && !isCreateMode && !isReadOnly ? (
 		            <button
 		              onClick={() => setMode("edit")}
 		              disabled={demoting}
@@ -1209,14 +1183,19 @@ export const TaskDetailsModal: React.FC<Props> = ({
       )}
 
 		<fieldset disabled={demoting} className="contents" aria-busy={demoting}>
-      {/* Cross-branch task indicator */}
-      {isFromOtherBranch && (
+      {/* One banner for every read-only task; only the reason differs. */}
+      {isReadOnly && (
         <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg text-amber-800 dark:text-amber-200">
           <svg className="w-5 h-5 flex-shrink-0 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
           </svg>
           <div className="flex-1">
-            <span className="font-medium">Read-only:</span> This task exists in the <span className="font-semibold">{task?.branch}</span> branch. Switch to that branch to edit it.
+            <span className="font-medium">Read-only:</span>{" "}
+            {task?.branch ? (
+              <>This task exists in the <span className="font-semibold">{task.branch}</span> branch. Switch to that branch to edit it.</>
+            ) : (
+              "This task is archived."
+            )}
           </div>
         </div>
       )}
@@ -1374,7 +1353,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                           </code>
                         )}
                       </span>
-                      {!isFromOtherBranch && (
+                      {!isReadOnly && (
                         <button
                           onClick={() => {
                             const newRefs = references.filter((_, i) => i !== idx);
@@ -1394,7 +1373,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
               ) : (
                 <p className="text-sm text-gray-500 dark:text-gray-400">No references</p>
               )}
-              {mode === "preview" && !isFromOtherBranch && (
+              {mode === "preview" && !isReadOnly && (
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -1439,7 +1418,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                           {file}
                         </code>
                       </span>
-                      {!isFromOtherBranch && (
+                      {!isReadOnly && (
                         <button
                           onClick={() => {
                             const newFiles = modifiedFiles.filter((_, i) => i !== idx);
@@ -1459,7 +1438,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
               ) : (
                 <p className="text-sm text-gray-500 dark:text-gray-400">No modified files</p>
               )}
-              {mode === "preview" && !isFromOtherBranch && (
+              {mode === "preview" && !isReadOnly && (
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -1524,7 +1503,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
             <SectionHeader
               title={`Acceptance Criteria ${totalCount ? `(${checkedCount}/${totalCount})` : ""}`}
-              right={mode === "preview" ? (
+              right={mode === "preview" && !isReadOnly ? (
                 <span>Toggle to update</span>
               ) : null}
             />
@@ -1535,6 +1514,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                     <input
                       type="checkbox"
                       checked={c.checked}
+                      disabled={isReadOnly}
                       onChange={(e) => void handleToggleCriterion(c.index, e.target.checked)}
                       className="mt-0.5 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
@@ -1557,7 +1537,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
             <SectionHeader
               title={`Definition of Done ${definitionTotalCount ? `(${definitionCheckedCount}/${definitionTotalCount})` : ""}`}
-              right={mode === "preview" ? (
+              right={mode === "preview" && !isReadOnly ? (
                 <span>Toggle to update</span>
               ) : null}
             />
@@ -1568,6 +1548,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                     <input
                       type="checkbox"
                       checked={item.checked}
+                      disabled={isReadOnly}
                       onChange={(e) => void handleToggleDefinitionOfDone(item.index, e.target.checked)}
                       className="mt-0.5 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
@@ -1666,7 +1647,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
               ) : (
                 <div className="text-sm text-gray-500 dark:text-gray-400">No comments</div>
               )}
-              {mode === "edit" && !isFromOtherBranch && (
+              {mode === "edit" && !isReadOnly && (
                 <div className="mt-4 space-y-2">
                   <input
                     type="text"
@@ -1768,8 +1749,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
                     e.currentTarget.blur();
                   }
                 }}
-                disabled={isFromOtherBranch}
-                className={`w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+                disabled={isReadOnly}
+                className={`w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
               />
             </div>
           )}
@@ -1777,7 +1758,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
           {/* Status */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
             <SectionHeader title="Status" />
-            <StatusSelect current={status} onChange={(val) => handleInlineMetaUpdate({ status: val })} disabled={isFromOtherBranch || isOpenDraft} />
+            <StatusSelect current={status} onChange={(val) => handleInlineMetaUpdate({ status: val })} disabled={isReadOnly || isOpenDraft} />
           </div>
 
           {/* Type */}
@@ -1787,10 +1768,10 @@ export const TaskDetailsModal: React.FC<Props> = ({
               aria-label="Task type"
               aria-invalid={typeUpdateError ? true : undefined}
               aria-describedby={typeUpdateError ? "task-type-update-error" : undefined}
-              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch || isTypeUpdating ? 'opacity-60 cursor-not-allowed' : ''}`}
+              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isReadOnly || isTypeUpdating ? 'opacity-60 cursor-not-allowed' : ''}`}
               value={typeSelectionValue}
               onChange={(event) => void handleTaskTypeChange(event.target.value)}
-              disabled={isFromOtherBranch || isTypeUpdating}
+              disabled={isReadOnly || isTypeUpdating}
             >
               <option value="">No type</option>
               {!canonicalTypeSelection && taskType.trim() ? (
@@ -1818,7 +1799,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
               value={assignee}
               onChange={(value) => handleInlineMetaUpdate({ assignee: value })}
               placeholder="Type name and press Enter"
-              disabled={isFromOtherBranch}
+              disabled={isReadOnly}
             />
           </div>
 
@@ -1831,7 +1812,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
               value={labels}
               onChange={(value) => handleInlineMetaUpdate({ labels: value })}
               placeholder="Type label and press Enter or comma"
-              disabled={isFromOtherBranch}
+              disabled={isReadOnly}
             />
           </div>
 
@@ -1839,10 +1820,10 @@ export const TaskDetailsModal: React.FC<Props> = ({
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
             <SectionHeader title="Priority" />
             <select
-              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
               value={priority}
               onChange={(e) => handleInlineMetaUpdate({ priority: e.target.value as any })}
-              disabled={isFromOtherBranch}
+              disabled={isReadOnly}
             >
               <option value="">No Priority</option>
               {priorityOptions.map((option) => (
@@ -1858,11 +1839,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
               <SectionHeader title="Project" />
               <select
-                className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+                className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
                 aria-label="Task project"
                 value={projectSelectionValue}
                 onChange={(e) => handleInlineMetaUpdate({ project: e.target.value })}
-                disabled={isFromOtherBranch}
+                disabled={isReadOnly}
               >
                 <option value="">No Project</option>
                 {!canonicalProjectSelection && project.trim() ? (
@@ -1881,14 +1862,14 @@ export const TaskDetailsModal: React.FC<Props> = ({
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
             <SectionHeader title="Milestone" />
             <select
-              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isFromOtherBranch ? 'opacity-60 cursor-not-allowed' : ''}`}
+              className={`w-full h-10 px-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
               value={milestoneSelectionValue}
 				onChange={(e) => {
 					const value = e.target.value;
 					setMilestone(value);
 					handleInlineMetaUpdate({ milestone: value.trim().length > 0 ? value : null });
 				}}
-              disabled={isFromOtherBranch}
+              disabled={isReadOnly}
             >
               <option value="">No milestone</option>
               {!hasMilestoneSelection && milestoneSelectionValue ? (
@@ -1912,7 +1893,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
               suggestableTasks={localAvailableTasks}
               currentTaskId={task?.id}
               label=""
-              disabled={isFromOtherBranch}
+              disabled={isReadOnly}
             />
             {shownReadiness && (
               <div
@@ -1929,10 +1910,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
           </div>
 
           {/* Archive button at bottom of sidebar */}
-		          {task && onArchive && !isFromOtherBranch && (
+		          {task && onArchive && !isReadOnly && (
 		            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
 		              <button
 		                onClick={handleArchive}
+		                title="Move this task off the board into the archive"
 		                disabled={demoting}
 		                className="w-full inline-flex items-center justify-center px-4 py-2 bg-red-500 dark:bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-600 dark:hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 focus:ring-red-400 dark:focus:ring-red-500 transition-colors duration-200"
 		              >
@@ -1955,7 +1937,7 @@ const StatusSelect: React.FC<{ current: string; onChange: (v: string) => void; d
   useEffect(() => {
     apiClient.fetchStatuses().then(setStatuses).catch(() => setStatuses(["To Do", "In Progress", "Done"]));
   }, []);
-  // A draft is on status Draft, and a completed record can hold a historical status, neither of
+  // A draft is on status Draft, and an archived record can hold a historical status, neither of
   // which is configured. Showing the value the record actually has beats showing the first option.
   const options = !current || statuses.includes(current) ? statuses : [current, ...statuses];
   return (

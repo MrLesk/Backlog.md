@@ -5,12 +5,14 @@
 
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
-import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { $ } from "bun";
 import type { Core } from "../core/backlog.ts";
 import { initializeProject as initializeProjectShared } from "../core/init.ts";
+import type { FileSystem } from "../file-system/operations.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 
@@ -23,6 +25,15 @@ export function createUniqueTestDir(prefix: string): string {
 	const timestamp = Date.now().toString(36); // Base36 timestamp
 	const pid = process.pid.toString(36); // Process ID for additional uniqueness
 	return join(process.cwd(), "tmp", `${prefix}-${timestamp}-${pid}-${uuid}`);
+}
+
+/**
+ * Creates a test project directory outside the repository, for tests that run destructive CLI
+ * commands. The CLI finds its project by walking up from the working directory, so a command that
+ * outlives a directory under the repository's own tmp/ would act on the repository's backlog.
+ */
+export async function createTestDirOutsideRepository(prefix: string): Promise<string> {
+	return await mkdtemp(join(tmpdir(), `${prefix}-`));
 }
 
 export async function commitSamePathBranchTaskVariant(
@@ -168,6 +179,62 @@ export async function retry<T>(fn: () => Promise<T>, maxAttempts = 3, delay = 10
 	throw lastError || new Error("Retry failed");
 }
 
+/** Move a task file into the archive folder directly, for a test that has a FileSystem but no Core. */
+export async function archiveTaskFile(filesystem: FileSystem, taskId: string): Promise<boolean> {
+	const task = await filesystem.loadTask(taskId);
+	if (!task?.filePath) return false;
+	await mkdir(filesystem.archiveTasksDir, { recursive: true });
+	await rename(task.filePath, join(filesystem.archiveTasksDir, basename(task.filePath)));
+	return true;
+}
+
+/** Bun can run a command in a pseudo-terminal everywhere except Windows. */
+export const HAS_PSEUDO_TERMINAL = process.platform !== "win32";
+
+/**
+ * Run the CLI in a pseudo-terminal, so the command sees a terminal on both its input and its output.
+ *
+ * Nobody types into this terminal, and nothing else ends a question asked in one. A command that
+ * asks a question therefore needs `answer`: the keys to type once the question has been drawn.
+ * Without it the run would last until the timeout, which is only there for a command that hangs.
+ */
+export async function runCliInPseudoTerminal(
+	cliPath: string,
+	args: string[],
+	cwd: string,
+	answer?: { question: string; keys: string },
+): Promise<{ exitCode: number; output: string; timedOut: boolean }> {
+	const decoder = new TextDecoder();
+	const terminalClosed = Promise.withResolvers<void>();
+	let output = "";
+	let answered = false;
+	const child = Bun.spawn([process.execPath, cliPath, ...args], {
+		cwd,
+		terminal: {
+			cols: 120,
+			rows: 40,
+			data(terminal, chunk) {
+				output += decoder.decode(chunk, { stream: true });
+				if (answer && !answered && output.includes(answer.question)) {
+					answered = true;
+					terminal.write(answer.keys);
+				}
+			},
+			// The terminal closes once the command has exited and everything it drew has been read.
+			exit: () => terminalClosed.resolve(),
+		},
+	});
+	let timedOut = false;
+	const timeout = setTimeout(() => {
+		timedOut = true;
+		child.kill();
+	}, getPlatformTimeout());
+	const [exitCode] = await Promise.all([child.exited, terminalClosed.promise]);
+	clearTimeout(timeout);
+	child.terminal?.close();
+	return { exitCode, output, timedOut };
+}
+
 /**
  * Windows-safe directory cleanup with retry logic
  * Windows can have file locking issues that prevent immediate deletion
@@ -187,6 +254,32 @@ export async function safeCleanup(dir: string): Promise<void> {
  */
 export function isWindows(): boolean {
 	return process.platform === "win32";
+}
+
+/**
+ * Lays out an npm install of the launcher in dir. writeBinary, when given, creates the platform package binary at the
+ * path it receives. Returns the launcher script path.
+ */
+export async function createLauncherInstall(
+	dir: string,
+	writeBinary?: (path: string) => Promise<void>,
+): Promise<string> {
+	const { getCandidatePackageNames } = require("../../scripts/resolveBinary.cjs");
+	const scriptsDir = join(import.meta.dir, "..", "..", "scripts");
+	// A package.json and node_modules dir keep Bun's auto-install from resolving real packages
+	await mkdir(join(dir, "node_modules"), { recursive: true });
+	await writeFile(join(dir, "package.json"), "{}");
+	for (const file of ["cli.cjs", "resolveBinary.cjs"]) {
+		await copyFile(join(scriptsDir, file), join(dir, file));
+	}
+	if (writeBinary) {
+		const packageDir = join(dir, "node_modules", getCandidatePackageNames()[0]);
+		await mkdir(packageDir, { recursive: true });
+		const binaryPath = join(packageDir, isWindows() ? "backlog.exe" : "backlog");
+		await writeBinary(binaryPath);
+		await chmod(binaryPath, 0o755);
+	}
+	return join(dir, "cli.cjs");
 }
 
 /**

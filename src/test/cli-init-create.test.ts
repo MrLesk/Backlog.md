@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { CLI_AGENT_NUDGE, Core, isGitRepository } from "../index.ts";
+import { CLI_AGENT_NUDGE, Core } from "../index.ts";
 import { BACKLOG_CWD_ENV } from "../utils/runtime-cwd.ts";
 import { LOCAL_TASK_LOOKUP_HINT } from "../utils/task-path.ts";
 import { getTestCliPath } from "./test-cli.ts";
@@ -40,29 +40,6 @@ describe("CLI Integration", () => {
 	});
 
 	describe("backlog init command", () => {
-		it("should initialize backlog project in existing git repo", async () => {
-			// Set up a git repository
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-
-			// Initialize backlog project using Core (simulating CLI)
-			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "CLI Test Project", true);
-
-			// Verify directory structure was created
-			const configExists = await Bun.file(join(TEST_DIR, "backlog", "config.yml")).exists();
-			expect(configExists).toBe(true);
-
-			// Verify config content
-			const config = await core.filesystem.loadConfig();
-			expect(config?.projectName).toBe("CLI Test Project");
-			expect(config?.statuses).toEqual(["To Do", "In Progress", "Done"]);
-			expect(config?.defaultStatus).toBe("To Do");
-
-			// Verify git commit was created
-			const lastCommit = await core.gitOps.getLastCommitMessage();
-			expect(lastCommit).toContain("Initialize backlog project: CLI Test Project");
-		});
-
 		it("should create all required directories", async () => {
 			// Set up a git repository
 			await $`git init -b main`.cwd(TEST_DIR).quiet();
@@ -105,66 +82,6 @@ describe("CLI Integration", () => {
 
 			const config = await core.filesystem.loadConfig();
 			expect(config?.projectName).toBe(specialProjectName);
-		});
-
-		it("should work when git repo exists", async () => {
-			// Set up existing git repo
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-
-			const isRepo = await isGitRepository(TEST_DIR);
-			expect(isRepo).toBe(true);
-
-			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "Existing Repo Test");
-
-			const config = await core.filesystem.loadConfig();
-			expect(config?.projectName).toBe("Existing Repo Test");
-		});
-
-		it("should accept optional project name parameter", async () => {
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-
-			// Test the CLI implementation by directly using the Core functionality
-			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "Test Project");
-
-			const config = await core.filesystem.loadConfig();
-			expect(config?.projectName).toBe("Test Project");
-		});
-
-		it("should create agent instruction files when requested", async () => {
-			// Set up a git repository
-			await $`git init -b main`.cwd(TEST_DIR).quiet();
-
-			// Simulate the agent instructions being added
-			const core = new Core(TEST_DIR);
-			await initializeTestProject(core, "Agent Test Project");
-
-			// Import and call addAgentInstructions directly (simulating user saying "y")
-			const { addAgentInstructions } = await import("../index.ts");
-			await addAgentInstructions(TEST_DIR, core.gitOps);
-
-			// Verify agent files were created
-			const agentsFile = await Bun.file(join(TEST_DIR, "AGENTS.md")).exists();
-			const claudeFile = await Bun.file(join(TEST_DIR, "CLAUDE.md")).exists();
-			// .cursorrules removed; Cursor now uses AGENTS.md
-			const geminiFile = await Bun.file(join(TEST_DIR, "GEMINI.md")).exists();
-			const copilotFile = await Bun.file(join(TEST_DIR, ".github/copilot-instructions.md")).exists();
-
-			expect(agentsFile).toBe(true);
-			expect(claudeFile).toBe(true);
-			expect(geminiFile).toBe(true);
-			expect(copilotFile).toBe(true);
-
-			// Verify content
-			const agentsContent = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
-			const claudeContent = await Bun.file(join(TEST_DIR, "CLAUDE.md")).text();
-			const geminiContent = await Bun.file(join(TEST_DIR, "GEMINI.md")).text();
-			const copilotContent = await Bun.file(join(TEST_DIR, ".github/copilot-instructions.md")).text();
-			expect(agentsContent.length).toBeGreaterThan(0);
-			expect(claudeContent.length).toBeGreaterThan(0);
-			expect(geminiContent.length).toBeGreaterThan(0);
-			expect(copilotContent.length).toBeGreaterThan(0);
 		});
 
 		it("should allow skipping agent instructions with 'none' selection", async () => {

@@ -1,7 +1,9 @@
 import { isAbsolute, relative } from "node:path";
+import { ARCHIVED_TASK_DIRECTORIES } from "../constants/index.ts";
 import type { Task } from "../types/index.ts";
 import { canonicalTaskId, taskIdsEqual } from "../utils/task-path.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
+import { parseStoredUtcDate } from "../utils/utc-timestamp.ts";
 import type { TaskDirectoryType } from "./cross-branch-tasks.ts";
 
 export interface TaskIdentityRecord {
@@ -35,6 +37,12 @@ export type TaskIdentityResolution =
 	| { status: "ambiguous"; candidates: string[] }
 	| { status: "not-found" };
 
+/**
+ * A mutation can also land on a task that exists only in the archive, which is read-only. That
+ * outcome carries the ID alone, so no caller can take it for a task it may write.
+ */
+export type TaskMutationResolution = TaskIdentityResolution | { status: "archived"; taskId: string };
+
 function toPosixPath(path: string): string {
 	return path.replaceAll("\\", "/").replace(/^\.\//, "");
 }
@@ -47,7 +55,7 @@ function joinPosix(...parts: string[]): string {
 }
 
 export function normalizeTaskLifecyclePath(path: string, backlogDirectory: string): string {
-	for (const lifecycleDirectory of ["archive/tasks", "completed"]) {
+	for (const lifecycleDirectory of ARCHIVED_TASK_DIRECTORIES) {
 		const lifecyclePrefix = `${backlogDirectory}/${lifecycleDirectory}/`;
 		if (path.startsWith(lifecyclePrefix)) {
 			return `${backlogDirectory}/tasks/${path.slice(lifecyclePrefix.length)}`;
@@ -92,8 +100,6 @@ function recordKey(record: TaskIdentityRecord): string {
 function stateRank(type: TaskDirectoryType): number {
 	switch (type) {
 		case "task":
-			return 3;
-		case "completed":
 			return 2;
 		case "archived":
 			return 1;
@@ -107,9 +113,9 @@ function selectLifecycleRecord(records: TaskIdentityRecord[]): TaskIdentityRecor
 	if (workingTasks.length > 0) {
 		return [...workingTasks].sort((left, right) => recordKey(left).localeCompare(recordKey(right)))[0];
 	}
-	const workingCompleted = records.filter((record) => record.workingCopy && record.type === "completed");
-	if (workingCompleted.length > 0) {
-		return [...workingCompleted].sort((left, right) => recordKey(left).localeCompare(recordKey(right)))[0];
+	const workingArchived = records.filter((record) => record.workingCopy && record.type === "archived");
+	if (workingArchived.length > 0) {
+		return [...workingArchived].sort((left, right) => recordKey(left).localeCompare(recordKey(right)))[0];
 	}
 
 	return [...records].sort((left, right) => {
@@ -142,8 +148,9 @@ function selectTaskRecord(
 	})[0];
 }
 
+/** Records that hold their task ID: tasks on the board and archived tasks. A draft holds none. */
 function liveRecords(identity: TaskIdentity): TaskIdentityRecord[] {
-	return identity.records.filter((record) => record.type === "task" || record.type === "completed");
+	return identity.records.filter((record) => record.type === "task" || record.type === "archived");
 }
 
 export class TaskIdentityIndex {
@@ -168,7 +175,7 @@ export class TaskIdentityIndex {
 		}
 	}
 
-	withWorkingCopyCorpus(activeTasks: Task[], completedTasks: Task[]): TaskIdentityIndex {
+	withWorkingCopyCorpus(activeTasks: Task[], archivedTasks: Task[]): TaskIdentityIndex {
 		const records = this.records.filter((record) => !record.workingCopy);
 		for (const task of activeTasks) {
 			records.push({
@@ -176,19 +183,23 @@ export class TaskIdentityIndex {
 				type: "task",
 				branch: "local",
 				path: task.filePath ?? task.id,
-				lastModified: task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0)),
+				lastModified:
+					task.lastModified ??
+					(task.updatedDate ? (parseStoredUtcDate(task.updatedDate) ?? new Date(Number.NaN)) : new Date(0)),
 				task: { ...task, source: "local" },
 				workingCopy: true,
 			});
 		}
-		for (const task of completedTasks) {
+		for (const task of archivedTasks) {
 			records.push({
 				id: task.id,
-				type: "completed",
+				type: "archived",
 				branch: "local",
 				path: task.filePath ?? task.id,
-				lastModified: task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0)),
-				task: { ...task, source: "completed" },
+				lastModified:
+					task.lastModified ??
+					(task.updatedDate ? (parseStoredUtcDate(task.updatedDate) ?? new Date(Number.NaN)) : new Date(0)),
+				task: { ...task, source: "archived" },
 				workingCopy: true,
 			});
 		}
@@ -234,7 +245,7 @@ export class TaskIdentityIndex {
 		return [...candidates].sort((left, right) => left.localeCompare(right));
 	}
 
-	getTasks(includeCompleted = false): Task[] {
+	getTasks(includeArchived = false): Task[] {
 		const tasks: Task[] = [];
 		// Task ids are hierarchical numbers, so the shared comparator decides their order here.
 		// Comparing them as strings puts task-1.10 before task-1.2 for every consumer that
@@ -244,15 +255,15 @@ export class TaskIdentityIndex {
 			const identities = [...group.identities.values()].sort((left, right) => left.path.localeCompare(right.path));
 			for (const identity of identities) {
 				const lifecycle = selectLifecycleRecord(identity.records);
-				if (!lifecycle || (lifecycle.type !== "task" && lifecycle.type !== "completed")) continue;
-				if (lifecycle.type === "completed" && !includeCompleted) continue;
+				if (!lifecycle || (lifecycle.type !== "task" && lifecycle.type !== "archived")) continue;
+				if (lifecycle.type === "archived" && !includeArchived) continue;
 				const selected = selectTaskRecord(
 					identity.records.filter((record) => record.type === lifecycle.type),
 					this.statuses,
 					this.resolutionStrategy,
 				);
 				if (!selected?.task) continue;
-				tasks.push(lifecycle.type === "completed" ? { ...selected.task, source: "completed" } : selected.task);
+				tasks.push(lifecycle.type === "archived" ? { ...selected.task, source: "archived" } : selected.task);
 			}
 		}
 		return tasks;
@@ -269,23 +280,25 @@ export class TaskIdentityIndex {
 		return tasks[0] ? { status: "found", task: tasks[0] } : { status: "not-found" };
 	}
 
-	resolveForMutation(taskId: string): TaskIdentityResolution {
+	/**
+	 * Resolve the working-copy task a mutation targets. Only a task on the board can be changed; an
+	 * ID whose only working-copy record is archived resolves as `archived` so callers can say so.
+	 */
+	resolveForMutation(taskId: string): TaskMutationResolution {
 		const groups = this.getGroups(taskId);
 		if (groups.length === 0) return { status: "not-found" };
 		if (groups.length > 1) return { status: "ambiguous", candidates: this.candidatesAcrossGroups(groups) };
 		const group = groups[0] as TaskIdentityGroup;
 		const candidates = this.ambiguousCandidates(group);
 		if (candidates.length > 0) return { status: "ambiguous", candidates };
-		const workingTasks = [...group.identities.values()]
+		const workingRecords = [...group.identities.values()]
 			.flatMap((identity) => identity.records)
-			.filter((record) => record.workingCopy && record.type === "task" && record.task)
+			.filter((record) => record.workingCopy && record.task)
 			.sort((left, right) => recordKey(left).localeCompare(recordKey(right)));
-		const selected = workingTasks[0]?.task;
-		return selected ? { status: "found", task: { ...selected, source: "local" } } : { status: "not-found" };
-	}
-
-	resolve(taskId: string): TaskIdentityResolution {
-		return this.resolveForMutation(taskId);
+		const active = workingRecords.find((record) => record.type === "task")?.task;
+		if (active) return { status: "found", task: { ...active, source: "local" } };
+		const archived = workingRecords.find((record) => record.type === "archived")?.task;
+		return archived ? { status: "archived", taskId: archived.id } : { status: "not-found" };
 	}
 
 	getFingerprint(): string {

@@ -1,8 +1,9 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { chmod, cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createLauncherInstall } from "./test-utils.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { getCandidatePackageNames } = require("../../scripts/resolveBinary.cjs");
@@ -10,26 +11,13 @@ const { getCandidatePackageNames } = require("../../scripts/resolveBinary.cjs");
 const { getSignalExitCode, isArchitectureSignal, isBinaryInstallError } = require("../../scripts/cli.cjs");
 
 const isWindows = process.platform === "win32";
-const scriptsDir = join(import.meta.dir, "..", "..", "scripts");
 const tempDirs: string[] = [];
 
 /** Copy the launcher scripts into a temp dir with an optional fixture platform binary. */
 async function createLauncherDir(binaryContent?: string): Promise<string> {
 	const dir = await mkdtemp(join(tmpdir(), "backlog-launcher-"));
 	tempDirs.push(dir);
-	await cp(join(scriptsDir, "cli.cjs"), join(dir, "cli.cjs"));
-	await cp(join(scriptsDir, "resolveBinary.cjs"), join(dir, "resolveBinary.cjs"));
-	// A package.json and node_modules dir keep Bun's auto-install from resolving real packages
-	await writeFile(join(dir, "package.json"), "{}");
-	await mkdir(join(dir, "node_modules"), { recursive: true });
-	if (binaryContent !== undefined) {
-		const [packageName] = getCandidatePackageNames();
-		const packageDir = join(dir, "node_modules", packageName);
-		await mkdir(packageDir, { recursive: true });
-		const binaryPath = join(packageDir, isWindows ? "backlog.exe" : "backlog");
-		await writeFile(binaryPath, binaryContent);
-		await chmod(binaryPath, 0o755);
-	}
+	await createLauncherInstall(dir, binaryContent === undefined ? undefined : (path) => writeFile(path, binaryContent));
 	return dir;
 }
 

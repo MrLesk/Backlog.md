@@ -1,6 +1,9 @@
+import { type ContentRecordChangeResult, describeContentRecordChange } from "../../../core/backlog.ts";
 import type { Document, DocumentSearchResult } from "../../../types/index.ts";
+import { documentNotFoundMessage } from "../../../utils/document-id.ts";
+import { isAmbiguousIdError } from "../../../utils/entity-id.ts";
 import { formatUtcDateForDisplay } from "../../../utils/utc-date-display.ts";
-import { BacklogToolError } from "../../errors/mcp-errors.ts";
+import { BacklogToolError, runCoreOperation } from "../../errors/mcp-errors.ts";
 import type { McpServer } from "../../server.ts";
 import type { CallToolResult } from "../../types.ts";
 import { formatDocumentCallResult } from "../../utils/document-response.ts";
@@ -66,7 +69,7 @@ export class DocumentHandlers {
 	private async loadDocumentOrThrow(id: string): Promise<Document> {
 		const document = await this.core.getDocument(id);
 		if (!document) {
-			throw new BacklogToolError(`Document not found: ${id}`, "DOCUMENT_NOT_FOUND");
+			throw new BacklogToolError(documentNotFoundMessage(id), "DOCUMENT_NOT_FOUND");
 		}
 		return document;
 	}
@@ -114,47 +117,93 @@ export class DocumentHandlers {
 		return await formatDocumentCallResult(document);
 	}
 
-	async createDocument(args: DocumentCreateArgs): Promise<CallToolResult> {
+	/**
+	 * Run a core operation that changes a document: create, update, archive, restore and delete all
+	 * go through here. `runCoreOperation` reports a refusal, and a commit that failed after the
+	 * change, in core's words. An ambiguous ID keeps its own error. Any other failure is reported as
+	 * `<failure>: <reason>`.
+	 */
+	private async changeDocument<T>(failure: string, operation: () => Promise<T>): Promise<T> {
 		try {
-			const document = await this.core.createDocumentFromInput({
+			return await runCoreOperation(operation);
+		} catch (error) {
+			if (error instanceof BacklogToolError || isAmbiguousIdError(error)) throw error;
+			throw new BacklogToolError(
+				error instanceof Error ? `${failure}: ${error.message}` : `${failure}.`,
+				"OPERATION_FAILED",
+			);
+		}
+	}
+
+	async createDocument(args: DocumentCreateArgs): Promise<CallToolResult> {
+		const document = await this.changeDocument("Failed to create document", () =>
+			this.core.createDocumentFromInput({
 				title: args.title,
 				content: args.content,
 				type: args.type,
 				path: args.path,
 				tags: args.tags,
-			});
-			return await formatDocumentCallResult(document, {
-				summaryLines: ["Document created successfully."],
-			});
-		} catch (error) {
-			if (error instanceof Error) {
-				throw new BacklogToolError(`Failed to create document: ${error.message}`, "OPERATION_FAILED");
-			}
-			throw new BacklogToolError("Failed to create document.", "OPERATION_FAILED");
-		}
+			}),
+		);
+		return await formatDocumentCallResult(document, {
+			summaryLines: ["Document created successfully."],
+		});
 	}
 
 	async updateDocument(args: DocumentUpdateArgs): Promise<CallToolResult> {
 		await this.loadDocumentOrThrow(args.id);
 
-		try {
-			const document = await this.core.updateDocumentFromInput({
+		const document = await this.changeDocument("Failed to update document", () =>
+			this.core.updateDocumentFromInput({
 				id: args.id,
 				content: args.content,
 				title: args.title,
 				type: args.type,
 				path: args.path,
 				tags: args.tags,
-			});
-			return await formatDocumentCallResult(document, {
-				summaryLines: ["Document updated successfully."],
-			});
-		} catch (error) {
-			if (error instanceof Error) {
-				throw new BacklogToolError(`Failed to update document: ${error.message}`, "OPERATION_FAILED");
-			}
-			throw new BacklogToolError("Failed to update document.", "OPERATION_FAILED");
+			}),
+		);
+		return await formatDocumentCallResult(document, {
+			summaryLines: ["Document updated successfully."],
+		});
+	}
+
+	async archiveDocument(args: DocumentViewArgs): Promise<CallToolResult> {
+		const result = await this.changeDocument("Failed to archive document", () =>
+			this.core.archiveContentRecord("document", args.id),
+		);
+		return this.reportDocumentChange("archive", args.id, result);
+	}
+
+	async restoreDocument(args: DocumentViewArgs): Promise<CallToolResult> {
+		const result = await this.changeDocument("Failed to restore document", () =>
+			this.core.restoreContentRecord("document", args.id),
+		);
+		return this.reportDocumentChange("restore", args.id, result);
+	}
+
+	async deleteDocument(args: DocumentViewArgs): Promise<CallToolResult> {
+		const result = await this.changeDocument("Failed to delete document", () =>
+			this.core.deleteContentRecord("document", args.id),
+		);
+		return this.reportDocumentChange("delete", args.id, result);
+	}
+
+	/**
+	 * What `document_archive`, `document_restore` and `document_delete` return: the lines core
+	 * describes for the change, each closed with a period as the task tools do. `result` is null when
+	 * no document claims the ID. MCP offers these operations for documents only.
+	 */
+	private reportDocumentChange(
+		operation: "archive" | "restore" | "delete",
+		id: string,
+		result: ContentRecordChangeResult | null,
+	): CallToolResult {
+		if (!result) {
+			throw new BacklogToolError(documentNotFoundMessage(id), "DOCUMENT_NOT_FOUND");
 		}
+		const lines = describeContentRecordChange("document", operation, result).map((line) => `${line}.`);
+		return { content: [{ type: "text", text: lines.join("\n") }] };
 	}
 
 	async searchDocuments(args: DocumentSearchArgs): Promise<CallToolResult> {

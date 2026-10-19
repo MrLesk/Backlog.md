@@ -20,6 +20,14 @@ const makeTask = (overrides: Partial<Task>): Task => ({
 });
 
 describe("buildLanes", () => {
+	it("orders mixed timestamp formats by UTC within a status", () => {
+		const tasks = [
+			makeTask({ id: "task-1", createdDate: "2026-10-19T10:00:00Z" }),
+			makeTask({ id: "task-2", createdDate: "2026-10-19 11:00" }),
+		];
+		expect(sortTasksForStatus(tasks, "To Do").map((task) => task.id)).toEqual(["task-1", "task-2"]);
+		expect(sortTasksForStatus(tasks, "Done").map((task) => task.id)).toEqual(["task-2", "task-1"]);
+	});
 	it("creates milestone lanes including No milestone and task-discovered milestones", () => {
 		const tasks = [
 			makeTask({ id: "task-1", milestone: "M1" }),

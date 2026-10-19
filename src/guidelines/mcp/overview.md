@@ -1,56 +1,26 @@
 ## Backlog.md Overview (MCP)
 
-This project uses Backlog.md to track features, bugs, and structured work as tasks.
+Backlog.md tracks committed work: what will be built, fixed, or changed.
 
 ### When to Use Backlog
 
-**Create a task if the work requires planning or decision-making:**
+Create a task when work requires planning, decisions, or handoff notes. Skip task creation for questions, exploration, and obvious mechanical edits.
 
-Ask yourself: "Do I need to think about HOW to do this?"
-- **YES** → Search for existing task first, create if needed
-- **NO** → Just do it (the change is trivial/mechanical)
+Search first with `task_search` or `task_list`, then read matching work with `task_view`. Use the existing task, or follow the creation guide if none fits. Tasks must include enough context for someone without the current conversation to start work.
 
-**Examples of work that needs tasks:**
-- "Fix the authentication bug" → need to investigate, understand root cause, choose fix
-- "Add error handling to the API" → need to decide what errors, how to handle them
-- "Refactor UserService" → need to plan new structure, migration path
+### Required Guides
 
-**Examples of work that doesn't need tasks:**
-- "Fix typo in README" → obvious mechanical change
-- "Update version number to 2.0" → straightforward edit
-- "Add missing semicolon" → clear what to do
+Read the matching resource before taking these actions; this overview does not replace it:
 
-**Always skip tasks for:**
-- Questions and informational requests
-- Reading/exploring/explaining code, issues, or concepts
+- `backlog://workflow/task-creation` — before creating or splitting tasks
+- `backlog://workflow/task-execution` — before planning, changing status or assignee, adding notes, or implementing
+- `backlog://workflow/task-finalization` — before checking acceptance criteria, writing final summaries, or marking work finished
 
-### Typical Workflow
+### Task Lifecycle
 
-When the user requests non-trivial work:
-1. **Search first:** Use `task_search` or `task_list` (with status filters) - work might already be tracked
-2. **If found:** Work on the existing task. Check task-execution workflow to know how to proceed
-3. **If not found:** Create task(s) based on scope (single task or present breakdown for approval). Check task-creation workflow for details
-4. **Execute:** Follow task-execution guidelines
-
-Searching first avoids duplicate tasks and helps you understand existing context.
-
-### Detailed Guidance (Required)
-
-**Read the matching resource below before creating, executing, or finalizing tasks — do not act from this overview alone.** The overview only tells you when to act; these resources define the required procedure, and skipping them produces inconsistent tasks and metadata.
-
-- **Creating tasks** → `backlog://workflow/task-creation` - Scope assessment, acceptance criteria, parent/subtasks structure
-- **Planning & executing work** → `backlog://workflow/task-execution` - Planning workflow, implementation discipline, scope changes
-- **Finalizing tasks** → `backlog://workflow/task-finalization` - Definition of Done, finalization checklist, next steps
-
-### Core Principle
-
-Backlog tracks **commitments** (what will be built). Use your judgment to distinguish between "help me understand X" (no tracking) vs "add feature Y" (track in Backlog).
-
-**Execution Model:** Tasks are executed by independent AI agents in separate sessions. Each agent only sees its assigned task, not prior conversation history, so tasks must include enough context for a developer with no prior knowledge to start immediately.
+Mark finished work Done (or the configured final status) and leave it on the board until periodic cleanup. `task_archive` moves a task in any status off the board: finished work during cleanup, and canceled, duplicate, or invalid work at any time.
 
 ### MCP Tools Quick Reference
-
-**Note:** "Done" tasks stay in the Done column until periodic cleanup moves them to the completed folder. Don't use `task_complete` immediately after finishing—it's for batch cleanup, not per-task workflow.
 
 - `task_list` — list tasks with optional filtering by status, configured task type, configured project, assignee (or `unassigned: true`), milestone, labels, search, `ready: true` for unblocked tasks, or limit
 - `task_search` — search tasks by title and description, or filter by configured task type, configured project, and project-root-relative `modifiedFiles` path substrings
@@ -61,13 +31,17 @@ Backlog tracks **commitments** (what will be built). Use your judgment to distin
 - `document_view` — view document metadata and markdown content
 - `document_create` — create a document with title, content, optional type/tags, and optional docs-directory-relative path
 - `document_update` — update document content, optional title/type/tags, and optional docs-directory-relative path
+- `document_archive` moves a document's file unchanged to the same relative path under `backlog/archive/docs/`. The ID stays reserved. An archived document leaves `document_list` and `document_search`, stays viewable with `document_view`, and is read-only: `document_update` on it fails until it is restored. No task is changed; the result names the tasks and drafts whose documentation list names the moved file.
+- `document_restore` moves an archived document's file back, unchanged, to the same relative path under `backlog/docs/`. The document keeps its ID and can be updated again. A file already at that path is never replaced.
+- `document_delete` permanently removes an archived document's file and releases its ID once no other file and no committed file on any branch uses the number. Removing a document takes two steps: `document_archive`, then `document_delete`. Delete works only on an archived document and asks no question. No task is changed; the result names the tasks and drafts whose documentation list names the removed file, by its archive path or by the path it had before it was archived.
 - `document_search` — search documents using the shared fuzzy index
 - `task_create` — create new tasks with description and acceptance criteria; DoD fields are for **exceptional** task-level overrides only (`definitionOfDoneAdd`, `disableDefinitionOfDoneDefaults`)
 - `task_edit` — update task metadata, status, plan, notes, comments (`commentsAppend` with optional `commentAuthor`), final summary, acceptance criteria, task-level Definition of Done (`definitionOfDoneAdd/Remove/Check/Uncheck`) for **exceptional** per-task updates, and dependencies
 - DoD is not acceptance criteria: acceptance criteria define scope/behavior, while DoD tracks completion hygiene
 - Comments are for discussion and review notes; Implementation Notes are for execution progress; Final Summary is the PR-style completion summary. Comment bodies may contain Markdown, but standalone `---` lines are reserved as comment delimiters.
-- `task_complete` — move a Done task to the completed folder (periodic cleanup, not immediate)
-- `task_archive` — archive a task that should not be completed (duplicate, canceled, invalid). Note: archived task IDs can be reused by new tasks (soft delete behavior).
+- `task_archive` — move a task in any status off the board into the archive; keeps its ID, record, dependencies, and references. Archived tasks are read-only, stay viewable with `task_view`, and are marked `archived` in `task_search` results. A dependency on an archived task counts as satisfied only when that task is in the final status.
+- `task_restore` — move an archived task back to the board with the same ID and the status it had. Restore a task before changing it: `task_edit` on an archived task fails.
+- `task_delete` — permanently delete an archived task and release its ID once no other branch or worktree still holds the task. Deleting takes two steps: `task_archive`, then `task_delete`. It removes the dependencies and references other tasks and drafts hold to the task and names the tasks and drafts it changed. A task that is not archived, or whose subtasks still exist as tasks or as drafts, is not deleted.
 
 **Document path rules:** document paths are relative to the docs directory. Use `path` values like `guides/setup`; absolute paths and `..` traversal are rejected.
 

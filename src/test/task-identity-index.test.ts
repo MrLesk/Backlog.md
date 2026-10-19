@@ -110,7 +110,7 @@ describe("TaskIdentityIndex", () => {
 		expect(ordered.map((entry) => entry.id)).toEqual(ids);
 	});
 
-	it("hides and frees an identity when every record is archived", () => {
+	it("hides an identity from the board but keeps its ID taken when every record is archived", () => {
 		const identityIndex = index([
 			{
 				id: "BACK-001",
@@ -129,6 +129,25 @@ describe("TaskIdentityIndex", () => {
 		]);
 
 		expect(identityIndex.getTasks()).toEqual([]);
-		expect(identityIndex.getOccupiedIds()).toEqual([]);
+		expect(identityIndex.getOccupiedIds().sort()).toEqual(["BACK-001", "BACK-1"]);
+	});
+
+	it("resolves a working-copy archived record for reads and reports it as archived to mutations", () => {
+		const archivedTask = task("Archived", "BACK-7");
+		const identityIndex = index([
+			{
+				id: "BACK-7",
+				type: "archived",
+				branch: "local",
+				path: "backlog/archive/tasks/back-7 - Archived.md",
+				lastModified: new Date(0),
+				task: archivedTask,
+				workingCopy: true,
+			},
+		]);
+
+		expect(identityIndex.resolveForRead("7")).toMatchObject({ status: "found", task: { source: "archived" } });
+		expect(identityIndex.resolveForMutation("7")).toEqual({ status: "archived", taskId: "BACK-7" });
+		expect(identityIndex.getTasks(true).map((entry) => entry.id)).toEqual(["BACK-7"]);
 	});
 });

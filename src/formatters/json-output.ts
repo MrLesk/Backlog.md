@@ -8,15 +8,18 @@ import type {
 	Task,
 	TaskSearchResult,
 } from "../types/index.ts";
-import { isLocalEditableTask } from "../types/index.ts";
 import type { DependencyGraph } from "../utils/dependency-graph.ts";
+import type { ListPage } from "../utils/list-window.ts";
 import type { TaskReadiness } from "../utils/readiness.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 
-type TaskSummaryJson = {
+/** The compact fields of a task-shaped list entry. Draft list entries use them as is; task entries add `isReady`. */
+type CompactTaskJson = {
 	id: string;
 	title: string;
 	status: string;
+	/** True for a task in the archive, which is read-only; false for a task on the board. */
+	archived: boolean;
 	type: string | null;
 	priority: string | null;
 	project: string | null;
@@ -33,6 +36,9 @@ type TaskSummaryJson = {
 	createdAt: string | null;
 	updatedAt: string | null;
 	dueDate: string | null;
+};
+
+type TaskSummaryJson = CompactTaskJson & {
 	/**
 	 * Derived from the whole visible corpus at read time, never stored: work can start now because
 	 * the task is unfinished and every dependency it names resolved to a completed task.
@@ -115,7 +121,7 @@ function normalizePublicDate(value: string | undefined): string | null {
 	if (!value) return null;
 	if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
 
-	const minutePrecision = value.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(?::(\d{2}))?(?:\.\d+)?Z?$/);
+	const minutePrecision = value.match(/^(\d{4}-\d{2}-\d{2})(?:T|[ \t]+)(\d{2}:\d{2})(?::(\d{2}))?(?:\.\d+)?[ \t]*Z?$/i);
 	if (minutePrecision) {
 		const [, date, time, seconds = "00"] = minutePrecision;
 		return `${date}T${time}:${seconds}Z`;
@@ -125,12 +131,13 @@ function normalizePublicDate(value: string | undefined): string | null {
 	return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
-function toTaskSummaryJson(task: TaskListItem): TaskSummaryJson {
+function toCompactTaskJson(task: Task): CompactTaskJson {
 	const acceptanceCriteria = task.acceptanceCriteriaItems ?? [];
 	return {
 		id: task.id,
 		title: task.title,
 		status: task.status,
+		archived: task.source === "archived",
 		type: nullable(task.type),
 		priority: nullable(task.priority),
 		project: nullable(task.project),
@@ -147,8 +154,11 @@ function toTaskSummaryJson(task: TaskListItem): TaskSummaryJson {
 		createdAt: normalizePublicDate(task.createdDate),
 		updatedAt: normalizePublicDate(task.updatedDate),
 		dueDate: normalizePublicDate(task.dueDate),
-		isReady: task.isReady,
 	};
+}
+
+function toTaskSummaryJson(task: TaskListItem): TaskSummaryJson {
+	return { ...toCompactTaskJson(task), isReady: task.isReady };
 }
 
 function toProjectRelativePath(projectRoot: string, filePath: string | undefined): string | null {
@@ -216,8 +226,22 @@ function toDecisionSummaryJson(decision: Decision): DecisionSummaryJson {
 	};
 }
 
-export function taskListJson(tasks: TaskListItem[]) {
-	return { schemaVersion: 1, kind: "task-list" as const, tasks: tasks.map(toTaskSummaryJson) };
+/** A list cut by `--skip` or `--max-count` reports how many items matched and where the next window starts. */
+function cutListJson(page: ListPage<unknown> | undefined): { total?: number; nextSkip?: number | null } {
+	return page?.cut ? { total: page.total, nextSkip: page.nextSkip } : {};
+}
+
+export function taskListJson(tasks: TaskListItem[], page?: ListPage<unknown>) {
+	return { schemaVersion: 1, kind: "task-list" as const, tasks: tasks.map(toTaskSummaryJson), ...cutListJson(page) };
+}
+
+export function draftListJson(drafts: Task[], page?: ListPage<unknown>) {
+	return {
+		schemaVersion: 1,
+		kind: "draft-list" as const,
+		drafts: drafts.map(toCompactTaskJson),
+		...cutListJson(page),
+	};
 }
 
 export function taskViewJson(task: TaskDetail, projectRoot: string) {
@@ -228,8 +252,13 @@ export function taskViewJson(task: TaskDetail, projectRoot: string) {
 	};
 }
 
-export function decisionListJson(decisions: Decision[]) {
-	return { schemaVersion: 1, kind: "decision-list" as const, decisions: decisions.map(toDecisionSummaryJson) };
+export function decisionListJson(decisions: Decision[], page?: ListPage<unknown>) {
+	return {
+		schemaVersion: 1,
+		kind: "decision-list" as const,
+		decisions: decisions.map(toDecisionSummaryJson),
+		...cutListJson(page),
+	};
 }
 
 /**
@@ -245,13 +274,17 @@ export type SearchResultInput =
 			task: TaskListItem;
 	  });
 
-export function searchJson(results: SearchResultInput[], projectRoot: string, docsDir: string) {
+/** The search envelope for results the CLI already narrowed to printable ones, without tasks from other branches. */
+export function searchJson(
+	results: SearchResultInput[],
+	projectRoot: string,
+	docsDir: string,
+	page?: ListPage<unknown>,
+) {
 	const publicResults: SearchResultJson[] = [];
 	for (const result of results) {
 		if (result.type === "task") {
-			if (isLocalEditableTask(result.task)) {
-				publicResults.push({ type: "task", data: toTaskSummaryJson(result.task) });
-			}
+			publicResults.push({ type: "task", data: toTaskSummaryJson(result.task) });
 			continue;
 		}
 		if (result.type === "document") {
@@ -260,7 +293,7 @@ export function searchJson(results: SearchResultInput[], projectRoot: string, do
 		}
 		publicResults.push({ type: "decision", data: toDecisionSummaryJson(result.decision) });
 	}
-	return { schemaVersion: 1, kind: "search" as const, results: publicResults };
+	return { schemaVersion: 1, kind: "search" as const, results: publicResults, ...cutListJson(page) };
 }
 
 export function formatJson(value: unknown): string {

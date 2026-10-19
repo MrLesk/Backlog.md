@@ -160,7 +160,7 @@ describe("Task comments", () => {
 		expect(body.indexOf("## Comments")).toBeGreaterThan(body.indexOf("## Definition of Done"));
 	});
 
-	it("formats comments with compact delimiter blocks", () => {
+	it("formats delimiter comments as ordinary Markdown paragraphs", () => {
 		const updated = CommentsManager.updateContent("## Description\n\nTask description", [
 			{ index: 1, author: "@reviewer", createdDate: "2026-05-31 10:45", body: "Review note" },
 		]);
@@ -168,9 +168,64 @@ describe("Task comments", () => {
 
 		expect(updated).toContain("## Comments\n\n<!-- COMMENTS:BEGIN -->");
 		expect(updated).not.toContain("## Comments\n\n\n<!-- COMMENTS:BEGIN -->");
-		expect(commentsSection).toContain("author: @reviewer\ncreated: 2026-05-31 10:45\n---\nReview note\n---");
+		expect(commentsSection).toContain("author: @reviewer\ncreated: 2026-05-31 10:45\n\n---\n\nReview note\n\n---");
 		expect(commentsSection).not.toContain("<!-- COMMENT:BEGIN -->");
 		expect(commentsSection).not.toContain("index:");
+		const html = Bun.markdown.html(commentsSection);
+		expect(html.match(/<h[1-6]>/g)).toHaveLength(1);
+		expect(html).toContain("<p>author: @reviewer\ncreated: 2026-05-31 10:45</p>");
+		expect(html).toContain("<p>Review note</p>");
+	});
+
+	it("keeps intentional headings and metadata variants through Markdown rendering and parsing", () => {
+		const body = "Plain introduction.\n\n## Intended heading\n\n### Details\n\nFinal paragraph.";
+		for (const newline of ["\n", "\r\n"]) {
+			for (const metadata of [
+				{ createdDate: "" },
+				{ author: "@reviewer", createdDate: "" },
+				{ createdDate: "2026-05-31 10:45" },
+				{ author: "@reviewer", createdDate: "2026-05-31 10:45" },
+			]) {
+				const comments = [{ index: 1, body, ...metadata }];
+				const updated = CommentsManager.updateContent(newline, comments);
+				const html = Bun.markdown.html(updated);
+				expect(html.match(/<h[1-6]>/g)).toHaveLength(3);
+				expect(html).toContain("<h2>Intended heading</h2>");
+				expect(html).toContain("<h3>Details</h3>");
+				expect(html).toContain("<p>Plain introduction.</p>");
+				expect(html).toContain("<p>Final paragraph.</p>");
+				expect(CommentsManager.parseAllComments(updated)).toEqual(comments);
+			}
+		}
+	});
+
+	it("rewrites older comment formats without losing metadata, body text or order", () => {
+		const comments = [
+			{ index: 1, author: "Alex", createdDate: "2026-06-07 21:21", body: "First comment" },
+			{ index: 2, createdDate: "2026-06-07 21:22", body: "Second comment\n\n## Intended heading\n\nDetails" },
+		];
+		const legacyBodies = [
+			"author: Alex\ncreated: 2026-06-07 21:21\n---\nFirst comment\n---\n\ncreated: 2026-06-07 21:22\n---\nSecond comment\n\n## Intended heading\n\nDetails\n---",
+			"<!-- COMMENT:BEGIN -->\nindex: 1\nauthor: Alex\ncreated: 2026-06-07 21:21\n\nFirst comment\n<!-- COMMENT:END -->\n\n<!-- COMMENT:BEGIN -->\nindex: 2\ncreated: 2026-06-07 21:22\n\nSecond comment\n\n## Intended heading\n\nDetails\n<!-- COMMENT:END -->",
+		];
+		for (const newline of ["\n", "\r\n"]) {
+			for (const legacyBody of legacyBodies) {
+				const original = `## Comments\n\n<!-- COMMENTS:BEGIN -->\n${legacyBody}\n<!-- COMMENTS:END -->`.replaceAll(
+					"\n",
+					newline,
+				);
+				const parsed = CommentsManager.parseAllComments(original);
+				expect(parsed).toEqual(comments);
+				const appended = [...parsed, { index: 3, author: "@next", createdDate: "", body: "Third comment" }];
+				const updated = CommentsManager.updateContent(original, appended);
+				expect(CommentsManager.parseAllComments(updated)).toEqual(appended);
+				const html = Bun.markdown.html(updated);
+				expect(html.match(/<h[1-6]>/g)).toHaveLength(2);
+				expect(html).toContain("<p>First comment</p>");
+				expect(html).toContain("<h2>Intended heading</h2>");
+				expect(html).toContain("<p>Third comment</p>");
+			}
+		}
 	});
 
 	it("parses compact delimiter comments", () => {
@@ -241,7 +296,7 @@ describe("Task comments", () => {
 		]);
 		expect(updated).toContain("Example-only comment");
 		const updatedCommentsSection = updated.slice(updated.lastIndexOf("## Comments"));
-		expect(updatedCommentsSection).toContain("---\nActual comment\n---");
+		expect(updatedCommentsSection).toContain("---\n\nActual comment\n\n---");
 		expect(updatedCommentsSection).not.toContain("<!-- COMMENT:BEGIN -->");
 		expect(CommentsManager.parseAllComments(updated).map((comment) => comment.body)).toEqual([
 			"Actual comment",
@@ -346,6 +401,9 @@ describe("Task comments", () => {
 		const loaded = await core.filesystem.loadTask("task-1");
 		expect(loaded?.comments?.[0]?.author).toBe("@cli");
 		expect(loaded?.comments?.[0]?.body).toBe("CLI comment body");
+		const html = Bun.markdown.html(loaded?.rawContent ?? "");
+		expect(html).toContain("<p>CLI comment body</p>");
+		expect(html).not.toMatch(/<h[1-6]>author: @cli/);
 	});
 
 	it("rejects reserved comment markers in CLI comments", async () => {

@@ -97,6 +97,7 @@ describe("CLI JSON output", () => {
 					id: "TASK-1",
 					title: "JSON task",
 					status: "In Progress",
+					archived: false,
 					type: "enhancement",
 					priority: "high",
 					project: null,
@@ -167,6 +168,53 @@ describe("CLI JSON output", () => {
 		expect(result.stdout.toString()).not.toContain("Publish curated fields");
 	});
 
+	it("returns a versioned draft-list envelope in the plain output order", async () => {
+		const empty = await runCli(["draft", "list", "--json"]);
+		expect(empty.exitCode).toBe(0);
+		expect(JSON.parse(empty.stdout.toString())).toEqual({ schemaVersion: 1, kind: "draft-list", drafts: [] });
+
+		const core = new Core(TEST_DIR);
+		for (const [id, title, priority] of [
+			["DRAFT-1", "Low draft", "low"],
+			["DRAFT-2", "High draft", "high"],
+		] as const) {
+			await core.filesystem.saveDraft({
+				id,
+				title,
+				status: "Draft",
+				priority,
+				assignee: [],
+				labels: [],
+				dependencies: [],
+				createdDate: "2026-08-08",
+				rawContent: "secret body",
+			});
+		}
+
+		const result = await runCli(["draft", "list", "--json"]);
+		expect(result.exitCode).toBe(0);
+		expect(result.stderr.toString()).toBe("");
+		const output = JSON.parse(result.stdout.toString());
+		expect(output.kind).toBe("draft-list");
+		const jsonIds = output.drafts.map((draft: { id: string }) => draft.id);
+		expect(jsonIds).toEqual(["DRAFT-2", "DRAFT-1"]);
+		const plain = await runCli(["draft", "list", "--plain"]);
+		expect(plain.stdout.toString().match(/DRAFT-\d+/g)).toEqual(jsonIds);
+		expect(output.drafts[0]).toMatchObject({ title: "High draft", status: "Draft", priority: "high" });
+		// Readiness is derived against tasks only, so a draft entry never carries it.
+		for (const draft of output.drafts) expect(draft).not.toHaveProperty("isReady");
+		expect(result.stdout.toString()).not.toContain("secret body");
+
+		const byId = await runCli(["draft", "list", "--json", "--sort", "id"]);
+		expect(JSON.parse(byId.stdout.toString()).drafts.map((draft: { id: string }) => draft.id)).toEqual([
+			"DRAFT-1",
+			"DRAFT-2",
+		]);
+		const invalid = await runCli(["draft", "list", "--json", "--sort", "nope"]);
+		expect(invalid.exitCode).toBe(1);
+		expect(invalid.stdout.toString()).toBe("");
+	});
+
 	it("returns curated task details for view and shorthand", async () => {
 		for (const args of [
 			["task", "view", "1", "--json"],
@@ -178,6 +226,7 @@ describe("CLI JSON output", () => {
 			expect(output.schemaVersion).toBe(1);
 			expect(output.kind).toBe("task-view");
 			expect(output.task.path).toMatch(/^backlog\/tasks\/task-1 - JSON-task\.md$/);
+			expect(output.task.archived).toBe(false);
 			expect(output.task.description).toBe("Machine-readable output");
 			expect(output.task.dependencies).toEqual(["TASK-2"]);
 			// The summary verdict and the detail explanation behind it, from the same derivation.
@@ -207,6 +256,18 @@ describe("CLI JSON output", () => {
 			expect(output.task.filePath).toBeUndefined();
 			expect(output.task.branch).toBeUndefined();
 		}
+	});
+
+	it("marks a task in the archive as archived in task view", async () => {
+		expect(await new Core(TEST_DIR).archiveTask("task-1", false)).toBe(true);
+
+		const result = await runCli(["task", "view", "1", "--json"]);
+
+		expect(result.exitCode).toBe(0);
+		const output = JSON.parse(result.stdout.toString());
+		expect(output.schemaVersion).toBe(1);
+		expect(output.task.archived).toBe(true);
+		expect(output.task.path).toMatch(/^backlog\/archive\/tasks\/task-1 - JSON-task\.md$/);
 	});
 
 	it("serializes an absent description as null and preserves Markdown verbatim", async () => {
@@ -332,11 +393,11 @@ describe("CLI JSON output", () => {
 	});
 
 	it("reads no task corpus for a search that matched no task", async () => {
-		// A completed record that cannot be parsed is never cached, so it is re-read and re-logged
-		// under DEBUG on every load of the completed corpus. Counting those lines counts the corpus
+		// An archived record that cannot be parsed is never cached, so it is re-read and re-logged
+		// under DEBUG on every load of the archived corpus. Counting those lines counts the corpus
 		// reads one command makes.
 		await writeFile(
-			join(TEST_DIR, "backlog", "completed", "task-99 - Broken.md"),
+			join(TEST_DIR, "backlog", "archive", "tasks", "task-99 - Broken.md"),
 			"---\nid: TASK-99\ntitle: [unclosed\nstatus: Done\n---\n\nbroken\n",
 		);
 		const corpusReads = async (args: string[]) => {
@@ -350,7 +411,7 @@ describe("CLI JSON output", () => {
 				reads: result.stderr
 					.toString()
 					.split("\n")
-					.filter((line) => line.startsWith("Failed to parse completed task file")).length,
+					.filter((line) => line.startsWith("Failed to parse archived task file")).length,
 			};
 		};
 
@@ -402,6 +463,7 @@ describe("CLI JSON output", () => {
 			["task", "1", "--json", "--plain"],
 			["search", "JSON", "--json", "--plain"],
 			["decision", "list", "--json", "--plain"],
+			["draft", "list", "--json", "--plain"],
 		]) {
 			const result = await runCli(args);
 			expect(result.exitCode).toBe(1);
@@ -465,6 +527,7 @@ describe("CLI JSON output", () => {
 			["task", "--help"],
 			["search", "--help"],
 			["decision", "list", "--help"],
+			["draft", "list", "--help"],
 		]) {
 			const result = await runCli(args);
 			expect(result.exitCode).toBe(0);

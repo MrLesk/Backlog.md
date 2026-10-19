@@ -85,27 +85,29 @@ describe("duplicate task diagnosis", () => {
 		unsubscribe();
 	});
 
-	it("detects three-way, active/completed, and zero-padded collisions while ignoring archive reuse", async () => {
+	it("detects three-way, zero-padded, and active/archived collisions, including an archived ID a new task reused", async () => {
 		await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
 		await writeTask(core.filesystem.tasksDir, "task-01 - Beta.md", makeTask("TASK-01", "Beta"));
-		await writeTask(core.filesystem.completedDir, "task-001 - Gamma.md", makeTask("TASK-001", "Gamma"));
+		await writeTask(core.filesystem.archiveTasksDir, "task-001 - Gamma.md", makeTask("TASK-001", "Gamma"));
 		await writeTask(core.filesystem.archiveTasksDir, "task-2 - Archived.md", makeTask("TASK-2", "Archived"));
 		await writeTask(core.filesystem.tasksDir, "task-2 - Reused.md", makeTask("TASK-2", "Reused"));
 
 		const groups = await findLocalDuplicateTaskIds(core);
-		expect(groups).toHaveLength(1);
-		expect(groups[0]?.id).toBe("TASK-1");
-		expect(groups[0]?.tasks).toHaveLength(3);
+		expect(groups.map((group) => group.id)).toEqual(["TASK-1", "TASK-2"]);
 		expect(groups[0]?.tasks.map((task) => task.filePath)).toEqual([
-			"backlog/completed/task-001 - Gamma.md",
+			"backlog/archive/tasks/task-001 - Gamma.md",
 			"backlog/tasks/task-01 - Beta.md",
 			"backlog/tasks/task-1 - Alpha.md",
 		]);
+		expect(groups[1]?.tasks.map((task) => task.filePath)).toEqual([
+			"backlog/archive/tasks/task-2 - Archived.md",
+			"backlog/tasks/task-2 - Reused.md",
+		]);
 	});
 
-	it("fails closed when an exact ID lookup matches active and completed files", async () => {
+	it("fails closed when an exact ID lookup matches active and archived files", async () => {
 		await writeTask(core.filesystem.tasksDir, "task-1 - Active.md", makeTask("TASK-1", "Active"));
-		await writeTask(core.filesystem.completedDir, "task-01 - Completed.md", makeTask("TASK-01", "Completed"));
+		await writeTask(core.filesystem.archiveTasksDir, "task-01 - Archived.md", makeTask("TASK-01", "Archived"));
 
 		await expect(core.filesystem.loadTask("TASK-1")).rejects.toBeInstanceOf(AmbiguousTaskIdError);
 		try {
@@ -113,7 +115,7 @@ describe("duplicate task diagnosis", () => {
 		} catch (error) {
 			const message = String(error).replaceAll("\\", "/");
 			expect(message).toContain("backlog/tasks/task-1 - Active.md");
-			expect(message).toContain("backlog/completed/task-01 - Completed.md");
+			expect(message).toContain("backlog/archive/tasks/task-01 - Archived.md");
 			expect(message).toContain("backlog doctor");
 		}
 	});
@@ -125,14 +127,16 @@ describe("duplicate task diagnosis", () => {
 		await expect(core.filesystem.loadTask("TASK-1")).rejects.toBeInstanceOf(AmbiguousTaskIdError);
 	});
 
-	it("does not overwrite either file through the low-level save path when lookup is ambiguous", async () => {
+	it("does not overwrite or remove either file through the low-level save path", async () => {
 		const alphaPath = await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
 		const betaPath = await writeTask(core.filesystem.tasksDir, "task-01 - Beta.md", makeTask("TASK-01", "Beta"));
 		const before = await Promise.all([alphaPath, betaPath].map(async (path) => await Bun.file(path).text()));
 
-		await expect(core.filesystem.saveTask(makeTask("TASK-1", "Replacement"))).rejects.toBeInstanceOf(
-			AmbiguousTaskIdError,
-		);
+		// A task that was not loaded from a file is written as a new file; it never takes over a file
+		// that shares its ID.
+		const savedPath = await core.filesystem.saveTask(makeTask("TASK-1", "Replacement"));
+
+		expect(savedPath).toBe(join(core.filesystem.tasksDir, "task-1 - Replacement.md"));
 		expect(await Promise.all([alphaPath, betaPath].map(async (path) => await Bun.file(path).text()))).toEqual(before);
 	});
 
@@ -335,7 +339,7 @@ describe("duplicate task repair", () => {
 			"task-1 - Beta.md",
 			makeTask("TASK-1", "Beta", "Keep this exact body"),
 		);
-		await writeTask(core.filesystem.completedDir, "task-001 - Gamma.md", makeTask("TASK-001", "Gamma"));
+		await writeTask(core.filesystem.archiveTasksDir, "task-001 - Gamma.md", makeTask("TASK-001", "Gamma"));
 		await writeTask(core.filesystem.tasksDir, "task-9 - Reference.md", {
 			...makeTask("TASK-9", "Reference", "Depends on TASK-1"),
 			dependencies: ["TASK-1"],
@@ -347,7 +351,7 @@ describe("duplicate task repair", () => {
 		expect(plan.changes).toHaveLength(2);
 		expect(plan.changes.map((change) => [change.sourcePath, change.newId])).toEqual([
 			["backlog/tasks/task-1 - Beta.md", "TASK-10"],
-			["backlog/completed/task-001 - Gamma.md", "TASK-11"],
+			["backlog/archive/tasks/task-001 - Gamma.md", "TASK-11"],
 		]);
 		expect(plan.references.some((reference) => reference.path.endsWith("task-9 - Reference.md"))).toBe(true);
 
@@ -359,7 +363,7 @@ describe("duplicate task repair", () => {
 		const betaAfter = await Bun.file(join(core.filesystem.tasksDir, "task-10 - Beta.md")).text();
 		expect(betaAfter).toBe(betaBefore.replace(/^id:\s*TASK-1$/m, "id: TASK-10"));
 		expect(await Bun.file(betaPath).exists()).toBe(false);
-		for (const directory of [core.filesystem.tasksDir, core.filesystem.completedDir]) {
+		for (const directory of [core.filesystem.tasksDir, core.filesystem.archiveTasksDir]) {
 			const files = await readdir(directory);
 			expect(files.filter((file) => file.includes(".backlog-doctor-"))).toEqual([]);
 		}
@@ -401,7 +405,7 @@ describe("duplicate task repair", () => {
 		const alphaPath = await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
 		const betaPath = await writeTask(core.filesystem.tasksDir, "task-01 - Beta.md", makeTask("TASK-01", "Beta"));
 		const gammaPath = await writeTask(
-			core.filesystem.completedDir,
+			core.filesystem.archiveTasksDir,
 			"task-001 - Gamma.md",
 			makeTask("TASK-001", "Gamma"),
 		);
@@ -431,7 +435,7 @@ describe("duplicate task repair", () => {
 		for (const change of plan.changes) {
 			expect(await Bun.file(join(testDir, change.targetPath)).exists()).toBe(false);
 		}
-		for (const directory of [core.filesystem.tasksDir, core.filesystem.completedDir]) {
+		for (const directory of [core.filesystem.tasksDir, core.filesystem.archiveTasksDir]) {
 			const files = await readdir(directory);
 			expect(files.filter((file) => file.includes(".backlog-doctor-"))).toEqual([]);
 		}
@@ -460,7 +464,7 @@ describe("duplicate task repair", () => {
 		const alphaPath = await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
 		const betaPath = await writeTask(core.filesystem.tasksDir, "task-01 - Beta.md", makeTask("TASK-01", "Beta"));
 		const gammaPath = await writeTask(
-			core.filesystem.completedDir,
+			core.filesystem.archiveTasksDir,
 			"task-001 - Gamma.md",
 			makeTask("TASK-001", "Gamma"),
 		);
@@ -487,7 +491,7 @@ describe("duplicate task repair", () => {
 		).toEqual(originals);
 		expect(await Bun.file(firstTarget).exists()).toBe(false);
 		expect(await Bun.file(secondTarget).text()).toBe("external winner");
-		for (const directory of [core.filesystem.tasksDir, core.filesystem.completedDir]) {
+		for (const directory of [core.filesystem.tasksDir, core.filesystem.archiveTasksDir]) {
 			const files = await readdir(directory);
 			expect(files.filter((file) => file.includes(".backlog-doctor-"))).toEqual([]);
 		}
@@ -496,7 +500,7 @@ describe("duplicate task repair", () => {
 	it("preserves a recreated source and its recoverable backup when rollback loses ownership", async () => {
 		await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
 		await writeTask(core.filesystem.tasksDir, "task-01 - Beta.md", makeTask("TASK-01", "Beta"));
-		await writeTask(core.filesystem.completedDir, "task-001 - Gamma.md", makeTask("TASK-001", "Gamma"));
+		await writeTask(core.filesystem.archiveTasksDir, "task-001 - Gamma.md", makeTask("TASK-001", "Gamma"));
 		const plan = await core.previewDuplicateTaskIdRepair();
 		const firstChange = plan.changes[0];
 		if (!firstChange) throw new Error("Expected a first repair change");
@@ -534,7 +538,7 @@ describe("duplicate task repair", () => {
 		await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
 		const betaPath = await writeTask(core.filesystem.tasksDir, "task-01 - Beta.md", makeTask("TASK-01", "Beta"));
 		const gammaPath = await writeTask(
-			core.filesystem.completedDir,
+			core.filesystem.archiveTasksDir,
 			"task-001 - Gamma.md",
 			makeTask("TASK-001", "Gamma"),
 		);
@@ -565,7 +569,7 @@ describe("duplicate task repair", () => {
 		expect(await Bun.file(firstTarget).text()).toBe(externalTarget);
 		expect(await Bun.file(betaPath).text()).toBe(betaOriginal);
 		expect(await Bun.file(gammaPath).text()).toBe(gammaOriginal);
-		for (const directory of [core.filesystem.tasksDir, core.filesystem.completedDir]) {
+		for (const directory of [core.filesystem.tasksDir, core.filesystem.archiveTasksDir]) {
 			const files = await readdir(directory);
 			expect(files.filter((file) => file.includes(".backlog-doctor-"))).toEqual([]);
 		}

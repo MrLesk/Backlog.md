@@ -29,7 +29,7 @@ function makeTask(id: string, status: string, dependencies: string[] = []): Task
 }
 
 const detailOf = (task: Task, corpus: Task[]): TaskDetail =>
-	toTaskDetail(task, { tasks: corpus, completedTasks: [], statuses });
+	toTaskDetail(task, { tasks: corpus, archivedTasks: [], statuses });
 
 const setupDom = () => {
 	activeDom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", {

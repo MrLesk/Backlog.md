@@ -5,7 +5,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     bun2nix = {
-      url = "github:nix-community/bun2nix/2.1.1";
+      url = "github:nix-community/bun2nix/2.1.2";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -30,27 +30,34 @@
             inherit system;
             overlays = [ bun2nix.overlays.default ];
           };
-          standardBun = pkgs.bun;
-          avx2BunArchive = standardBun.passthru.sources.x86_64-linux;
+          avx2BunArchive = pkgs.fetchurl {
+            # Pin an AVX2-only control independently of the packaged Bun runtime.
+            url = "https://github.com/oven-sh/bun/releases/download/bun-v1.3.13/bun-linux-x64.zip";
+            hash = "sha256-ecB3H6i5LDOq5B4VoODTB+qZ0OLwAxfHHGxTI3p44lo=";
+          };
           packageJson = builtins.fromJSON (builtins.readFile ./package.json);
           bunDeps = pkgs.bun2nix.fetchBunDeps {
             bunNix = ./bun.nix;
           };
-          bunRuntime =
-            if system == "x86_64-linux" then
-              standardBun.overrideAttrs (bun: {
-                passthru = bun.passthru // {
-                  sources = bun.passthru.sources // {
-                    x86_64-linux = pkgs.fetchurl {
-                      # Keep this on Bun's baseline archive. The normal x64 build requires AVX2.
-                      url = "https://github.com/oven-sh/bun/releases/download/bun-v${bun.version}/bun-linux-x64-baseline.zip";
-                      hash = "sha256-nYokKSpwaAkCBdqsCloiP19pc29Sh+N7+I07QDHtx1A=";
-                    };
-                  };
+          bunRuntime = pkgs.bun.overrideAttrs (bun: {
+            version = "1.4.3";
+            passthru = bun.passthru // {
+              sources = {
+                aarch64-darwin = pkgs.fetchurl {
+                  url = "https://github.com/oven-sh/bun/releases/download/bun-v1.4.3/bun-darwin-aarch64.zip";
+                  hash = "sha256-gK/UwGm0am+o8+xSC+vHUKeEPkqNW5WD0prUNsAKNAM=";
                 };
-              })
-            else
-              standardBun;
+                aarch64-linux = pkgs.fetchurl {
+                  url = "https://github.com/oven-sh/bun/releases/download/bun-v1.4.3/bun-linux-aarch64.zip";
+                  hash = "sha256-76mBPaXtckI7+Ef5FujSxHwNd2rdlyNUAmp14Q2pqiE=";
+                };
+                x86_64-linux = pkgs.fetchurl {
+                  url = "https://github.com/oven-sh/bun/releases/download/bun-v1.4.3/bun-linux-x64.zip";
+                  hash = "sha256-PnMFKNiXdfA/h/BcBnh8TfQJnQo38/JS57gpyyOBbhg=";
+                };
+              };
+            };
+          });
           backlog-md = pkgs.bun2nix.mkDerivation {
             pname = "backlog";
             inherit (packageJson) version;

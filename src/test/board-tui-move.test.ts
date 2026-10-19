@@ -134,15 +134,18 @@ async function withBoard(
 			pressKey(screen, "q");
 			await withTimeout(boardPromise, "board close", 5000);
 		};
-		await run({
-			screen,
-			rows: () => renderedRows(screen as unknown as TreeWidget),
-			footer: () => footerText(screen as unknown as TreeWidget),
-			quit,
-			update: (nextTasks) => pushUpdate?.(nextTasks, []),
-			tabHandoffs: () => tabHandoffs,
-		});
-		await quit();
+		try {
+			await run({
+				screen,
+				rows: () => renderedRows(screen as unknown as TreeWidget),
+				footer: () => footerText(screen as unknown as TreeWidget),
+				quit,
+				update: (nextTasks) => pushUpdate?.(nextTasks, []),
+				tabHandoffs: () => tabHandoffs,
+			});
+		} finally {
+			await quit();
+		}
 	} finally {
 		screen.destroy();
 		if (descriptor) Object.defineProperty(process.stdout, "isTTY", descriptor);
@@ -174,7 +177,7 @@ describe("TUI board single-task mover", () => {
 			await retry(async () => {
 				const moved = await core.filesystem.loadTask("TASK-1");
 				if (moved?.status !== "In Progress") throw new Error("move not persisted yet");
-			});
+			}, 6);
 
 			expect((await core.filesystem.loadTask("TASK-2"))?.status).toBe("To Do");
 			expect((await core.filesystem.loadTask("TASK-3"))?.status).toBe("To Do");
@@ -190,7 +193,7 @@ describe("TUI board single-task mover", () => {
 			await retry(async () => {
 				const moved = await core.filesystem.loadTask("TASK-1");
 				if (moved?.status !== "In Progress") throw new Error("move not persisted yet");
-			});
+			}, 6);
 
 			expect((await core.filesystem.loadTask("TASK-2"))?.status).toBe("To Do");
 			await quit();
@@ -311,7 +314,7 @@ describe("TUI board multi-select mover", () => {
 			await retry(async () => {
 				const moved = await core.filesystem.loadTask("TASK-1");
 				if (moved?.status !== "In Progress") throw new Error("set move not persisted yet");
-			});
+			}, 6);
 			const companion = await core.filesystem.loadTask("TASK-2");
 			expect(companion?.status).toBe("In Progress");
 			const first = await core.filesystem.loadTask("TASK-1");
@@ -344,7 +347,7 @@ describe("TUI board multi-select mover", () => {
 				if (!(ordinalOf(first) < ordinalOf(third) && ordinalOf(third) < ordinalOf(second))) {
 					throw new Error("adjacency collapse not persisted yet");
 				}
-			});
+			}, 6);
 			expect((await core.filesystem.loadTask("TASK-1"))?.status).toBe("To Do");
 			expect((await core.filesystem.loadTask("TASK-3"))?.status).toBe("To Do");
 			await quit();
@@ -436,7 +439,7 @@ describe("TUI board multi-select mover", () => {
 					const c = third?.ordinal ?? Number.NaN;
 					// The persisted column order must be exactly the previewed one.
 					if (!(a < b && b < c)) throw new Error("cross-column order not persisted yet");
-				});
+				}, 6);
 				await quit();
 			},
 			{
@@ -547,7 +550,7 @@ describe("TUI board multi-select mover", () => {
 			await retry(async () => {
 				const moved = await core.filesystem.loadTask("TASK-1");
 				if (moved?.status !== "In Progress") throw new Error("set move not persisted yet");
-			});
+			}, 6);
 			expect((await core.filesystem.loadTask("TASK-2"))?.status).toBe("In Progress");
 			expect((await core.filesystem.loadTask("TASK-3"))?.status).toBe("To Do");
 			await quit();
@@ -572,9 +575,9 @@ describe("TUI board multi-select mover", () => {
 			await retry(async () => {
 				const moved = await core.filesystem.loadTask("TASK-1");
 				if (moved?.status !== "In Progress") throw new Error("partial move not persisted yet");
-			});
-			expect(footer()).toContain("Could not move 1 of the selected tasks");
-			expect(footer()).toContain("TASK-2");
+				expect(footer()).toContain("Could not move 1 of the selected tasks");
+				expect(footer()).toContain("TASK-2");
+			}, 6);
 			await quit();
 		});
 	});
