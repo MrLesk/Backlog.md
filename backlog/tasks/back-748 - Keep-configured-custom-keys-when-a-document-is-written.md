@@ -1,17 +1,65 @@
 ---
 id: BACK-748
-title: Keep configured custom keys when a document is written
-status: To Do
-assignee: []
+title: Preserve unknown frontmatter in documents and decisions
+status: Done
+assignee:
+  - '@codex-1091'
 created_date: '2026-10-11 19:35'
+updated_date: '2026-10-19 08:03'
 labels:
   - enhancement
-dependencies:
-  - BACK-733
-  - BACK-746
-  - BACK-747
+dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/1091'
+  - src/markdown/frontmatter.ts
+  - src/markdown/serializer.ts
+  - src/file-system/operations.ts
+  - src/core/backlog.ts
+  - src/markdown/parser.ts
+  - src/test/content-frontmatter-preservation.test.ts
+  - CLI-INSTRUCTIONS.md
+modified_files:
+  - >-
+    backlog/tasks/back-748 -
+    Keep-configured-custom-keys-when-a-document-is-written.md
+  - >-
+    backlog/tasks/back-747 -
+    Keep-configured-custom-keys-when-a-task-or-draft-is-written.md
+  - backlog/tasks/back-746 - Add-custom-field-lists-to-the-project-config.md
+  - >-
+    backlog/archive/tasks/back-746 -
+    Add-custom-field-lists-to-the-project-config.md
+  - >-
+    backlog/tasks/back-749 -
+    Keep-configured-custom-keys-when-a-decision-is-written.md
+  - >-
+    backlog/archive/tasks/back-749 -
+    Keep-configured-custom-keys-when-a-decision-is-written.md
+  - >-
+    backlog/tasks/back-750 -
+    Return-configured-custom-fields-in-plain-JSON-and-MCP-output.md
+  - >-
+    backlog/archive/tasks/back-750 -
+    Return-configured-custom-fields-in-plain-JSON-and-MCP-output.md
+  - >-
+    backlog/tasks/back-751 -
+    Show-configured-custom-fields-in-the-TUI-and-web-UI.md
+  - >-
+    backlog/archive/tasks/back-751 -
+    Show-configured-custom-fields-in-the-TUI-and-web-UI.md
+  - >-
+    backlog/tasks/back-752 -
+    Report-frontmatter-keys-that-are-neither-known-nor-configured-in-doctor.md
+  - >-
+    backlog/archive/tasks/back-752 -
+    Report-frontmatter-keys-that-are-neither-known-nor-configured-in-doctor.md
+  - src/markdown/frontmatter.ts
+  - src/markdown/parser.ts
+  - src/markdown/serializer.ts
+  - src/file-system/operations.ts
+  - src/test/content-frontmatter-preservation.test.ts
+  - src/core/backlog.ts
+  - CLI-INSTRUCTIONS.md
 type: enhancement
 ordinal: 366000
 ---
@@ -19,34 +67,91 @@ ordinal: 366000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Updating a document drops every top-level frontmatter key Backlog does not know. Reproduced on main at 507d94d5 with the steps from issue #1091: a document file is given `depends_on: [example]` and `task: TASK-1`, `backlog doc update doc-1 --content "x"` exits 0, and both lines are gone. `doc update` rewrites the file on every call, so any update loses them, whatever it was meant to change. The reporter keeps this metadata in frontmatter for a checker that reads it.
+Updates of documents and decisions rebuild frontmatter from Backlog-owned fields and drop metadata used by other tools (issue #1091). Preserve every unknown top-level frontmatter key automatically, with no project configuration. Keep each unknown entry's original YAML representation, including nested blocks and comments, bare dates, 007, 1.10 and flow lists. Backlog-owned keys retain their current meaning; preserved metadata is opaque user data.
 
-The maintainer's ruling on issues #918 and #1091 is that Backlog does not keep unknown keys implicitly; it keeps the keys a project lists in its config. Documents have their own list (working name `document_custom_fields`, added by BACK-746; the exact key name is settled during plan review). A key named there survives every write of a document. A key that is not in the list keeps being dropped as today.
+Alex's decision on 2026-10-18 supersedes the configured-only policy recorded when BACK-746 through BACK-752 were created: “Let’s get rid of custom fields and preserve all. I think it’s a better decision than my previous one.” BACK-749's decision-preservation scope is consolidated here. The earlier configured-only design is historical evidence, not the current contract.
 
-A kept key is written back exactly as the user wrote it: Backlog keeps the key's own frontmatter lines and does not write a parsed value back, by the same rule BACK-747 introduces for tasks and drafts. Documents reuse that rule; they do not get a second implementation.
+Scope: existing document CLI, HTTP and document MCP update paths; existing decision HTTP full saves and CLI status edits. No custom-field editing, output additions, config, task/draft implementation (#918), milestone behavior or future decision API work. BACK-733 remains an independent body-prefix bug; avoiding body re-parsing in this serializer is part of correct preservation, not completion of its wider scope.
 
-This first version only keeps the keys. Setting or clearing them through the CLI, MCP or web UI is not part of it. `backlog doc view --plain` prints the file as stored, so a kept key is already visible there; the other read surfaces are covered by separate tasks. Removing a name from the list needs no migration: files keep the key until their next write and lose it then.
-
-Depends on BACK-733 (the frontmatter writer no longer reads the body again), BACK-746 (the config list and its reserved names) and BACK-747 (the shared rule for keeping the lines of a key). The command is `backlog doc edit` once BACK-741 has landed.
+Source research confirms all document updates already reach FileSystem.saveDocument, decision full saves reach FileSystem.saveDecision, and decision status changes already preserve other text. BACK-733, BACK-746, BACK-747, BACK-737 and BACK-738 are not prerequisites for the current behavior.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 With `document_custom_fields: [depends_on, task]` set (working name), the reproduction from issue #1091 keeps the keys: after `backlog doc update doc-1 --content "x"` the lines `depends_on: [example]` and `task: TASK-1` are in the file byte for byte as they were, and the content is updated.
-- [ ] #2 Values are never rewritten: a configured key written as a bare date, a number such as `1.10` or `007`, a flow list or a nested block has exactly the same lines after any write.
-- [ ] #3 The kept lines follow the keys Backlog writes, in the order of the config list; the rest of the frontmatter and the body are written as today.
-- [ ] #4 A configured key survives every write of a document: content, title, type, tag and path changes from the CLI, saves from the web UI and the MCP `document_update` tool.
-- [ ] #5 A key that is in the file but not in the list is still dropped on the next write, and without the list set the issue #1091 reproduction behaves as it does today.
-- [ ] #6 A name reserved for documents, such as `tags`, in the list is rejected with the existing config error, and no document file is changed.
-- [ ] #7 Removing a name from the list makes it an unconfigured key again: no file is rewritten because of the config change, and each file that carries the key loses it on its next write.
-- [ ] #8 The task and decision lists have no effect on document files.
-- [ ] #9 The configuration reference states that the list keeps these keys for documents.
-- [ ] #10 Tests cover the issue #1091 reproduction with and without the list, the value shapes named above, and removing a name from the list.
+- [x] #1 With no custom-field configuration, the issue #1091 document reproduction keeps depends_on: [example] and task: TASK-1 while updating its body.
+- [x] #2 All unknown top-level document and decision entries retain their original YAML values and comments, including nested blocks, bare dates, 007, 1.10 and flow lists, across repeated saves.
+- [x] #3 Existing document CLI, HTTP and document_update MCP updates preserve unknown entries across content, title, type, tag and path changes.
+- [x] #4 Existing decision HTTP full saves and CLI status updates preserve unknown entries while correctly changing owned fields.
+- [x] #5 Optional owned fields remain owned when omitted or cleared; records without unknown metadata keep existing serialization behavior. Preservation adds no config, public JSON fields, field editing or task/draft behavior.
+- [x] #6 Focused regressions and the canonical type, Biome and build checks pass. Superseded configured-field plans are reconciled with the 2026-10-18 decision through the CLI.
+- [x] #7 Explicit null frontmatter entries before later owned fields survive without duplicate owned keys; the resulting document and decision YAML parses and remains stable across repeated saves.
+- [x] #8 Saves that would break a YAML reference in preserved metadata are refused with a clear error before any file is written or moved; original file bytes and path remain intact. Valid references between unknown entries still work. No new reference semantics are introduced.
+- [x] #9 Preserved YAML merges or references cannot silently restore an omitted owned field or undo its requested update. Compare readback with canonical intended owned fields, including absence; refuse conflicting saves with unchanged bytes/path instead of adding null or empty override semantics.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bunx tsc --noEmit passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bun run check:types passes
+- [x] #2 bun run check . passes
+- [x] #3 Focused and appropriate broader tests pass; bun run build passes
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Reproduce issue #1091 on the unchanged baseline and preserve objective failure evidence.
+2. Reconcile obsolete configured-field plans through the CLI: archive BACK-746/749/750/751/752 as canceled or consolidated; revise BACK-747 for future automatic task/draft preservation without implementing it.
+3. Extend the existing Markdown frontmatter owner with one small raw-entry helper. Use the existing YAML parser's source positions to retain unknown top-level entries; serialize only owned fields. Keep optional owned keys reserved when omitted.
+4. Pass original loaded document/decision source through existing storage and serializers, including moves/renames. Keep the decision status-only path unchanged. Avoid re-reading a supplied document body as frontmatter in this path; do not change task/draft persistence.
+5. Add focused regressions for raw values/comments/nested blocks, repeated saves, known-field updates/clears, CLI/HTTP/MCP document updates and decision full-save/status behavior.
+6. Run focused tests, appropriate broader existing tests, bun run check:types, Biome and build. Diagnose any failures before retrying.
+7. Review the diff for scope and simpler code; leave verified uncommitted changes for coordinator architecture review. Do not check AC, write a final summary, mark Done, commit or publish before that review.
+
+Raw extraction detail: reuse the existing parser normalization for @assignee/@reporter/due_date input. Move those unchanged normalization helpers to the existing frontmatter owner and map YAML node offsets back to original source lines, so accepted input and original unknown representations both survive.
+
+Approved bounded follow-up (Alex: “Sure. Do it”, 2026-10-19): correct omitted-value root entry boundaries; validate the combined frontmatter through the existing YAML engine and refuse only broken YAML references before storage writes/moves. Route the refusal through the existing core error contract so CLI, HTTP and MCP report the same clear message. Leave decision status-only behavior unchanged; correct its stale serializer comment. Document automatic preservation and the refusal limit in the shipped CLI reference. Add only the focused null-entry/reference regressions, then re-run affected tests, canonical checks and built CLI proof. Hold uncommitted for focused architecture review.
+
+Verified ownership boundary: compare the preserved header's owned fields with the parsed canonical intended header, including missing optional fields. Refuse only a preserved-reference conflict such as a merge restoring cleared tags; do not introduce null/empty overrides or new reference semantics.
+
+Review and finalization: both architecture reviews returned KEEP; fresh build and compiled CLI proofs passed on unchanged reviewed source. Coordinator authorized checking verified AC/DoD, marking Done, and creating the local feature-branch commit. No push, PR, CI changes or branch switch are included.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-10-18 scope decision: Alex replaced the earlier configured-only policy with automatic unknown-key preservation. Original BACK-748/749 criteria and dependency chains described that superseded plan. Existing shared write paths need none of those future feature gates. BACK-733 remains open; the necessary body-prefix connection is limited to the document/decision serializer used here.
+
+Baseline proof (main 75e9e972416bff53f54ea93f4b32d7252389c026, before source edits): /private/tmp/back-748-baseline.ts ran the existing CLI doc update doc-1 --content x against a filesystem-only fixture containing depends_on: [example] and task: TASK-1. Exit code 0, body updated to x, both unknown entries lost (metadataRetained: false). Fixture: /var/folders/fd/cgvn5zh52tb_sbt7hp_vtbmm0000gn/T/back-748-baseline-2Nhw6v. Reconciled BACK-746/749/750/751/752 as archived, canceled/consolidated and unimplemented; BACK-747 remains To Do with automatic-preservation scope.
+
+Source inspection found the parser normalizes selected field values before YAML parsing even for documents/decisions. Raw extraction must reuse this behavior; parsing the raw header without it would reject currently accepted @assignee values. No new YAML syntax is introduced.
+
+Validation found an existing save behavior: records may carry a previous path whose file no longer exists (including reused document fixtures). Initial source reads threw ENOENT in 15 broader tests. Read original metadata only when that source file exists, preserving the prior writeRecordFile behavior for absent sources. These were diagnosed implementation failures, not flaky tests. Initial Biome findings are formatting and test-literal issues being corrected.
+
+Verification before contextual review: 357 tests passed across content-frontmatter-preservation, markdown, filesystem, core, cli-doc-decision-board, cli-decision-status, server-documents-endpoint, mcp-documents, content-identity, document-archive, decision-archive and content-store (bun test --timeout=10000; log /private/tmp/back-748-focused.log). bun run check:types passed (567 files); bun run check . passed (462 files); bun run build passed. Built CLI reproduction /private/tmp/back-748-built-repro.ts exited 0 and retained depends_on/task with body x; fixture /var/folders/fd/cgvn5zh52tb_sbt7hp_vtbmm0000gn/T/back-748-baseline-6AMoTL. Local HTTP test commands require sandbox escalation because a bare Bun.serve({port:0}) cannot listen inside the sandbox.
+
+Subtraction review: no new dependencies, config, public model/JSON fields or task/draft serialization behavior. Existing normalization moved unchanged to the Markdown frontmatter owner for reuse; original source spans preserve raw values. Found one unresolved existing-YAML case and reported it to the coordinator: title: &t Original plus unknown owner: *t parses before save, but regenerating title without its anchor leaves an invalid unknown alias. No anchor policy was silently added. Waiting for that contextual decision before declaring ready; AC and DoD remain unchecked and status In Progress.
+
+2026-10-19: Alex approved the bounded follow-up after the contextual architecture review kept the shared Markdown/storage approach. Frozen production/test hashes match /private/tmp/back-748-review-evidence.json. Confirmed null-entry defect evidence is /private/tmp/back-748-explicit-null-evidence.json. The previous open anchor-policy note is superseded: reference-breaking saves will be refused with unchanged bytes/path, rather than adding reference support.
+
+2026-10-19 follow-up review confirmed `defaults: &d {tags: [old]}` plus `<<: *d` can recover tags after a clear. The coordinator authorized a small canonical ownership comparison under the existing accepted invariant and safe-refusal boundary. This replaces no serialization semantics: conflicting saves fail before writes or moves. Direct null-entry and unresolved-reference regressions currently pass (10 tests).
+
+2026-10-19 final verification and review: broad contextual architecture review KEEP; focused follow-up architecture review KEEP with no further edits or worthwhile simplification. Coordinator authorized task finalization and the local feature-branch commit after confirming the fresh build and compiled proofs. The seven reviewed source/document/test hashes remained unchanged after review.
+
+Objective AC evidence:
+- AC 1: unchanged main reproduction lost depends_on/task with exit 0; fresh compiled CLI retains them and writes body x (/private/tmp/back-748-built-repro-revision.json).
+- AC 2-5: 11 focused regressions cover original YAML scalar spelling, nested comments/blocks, flow lists, repeated saves, owned optional-field clears, document CLI/HTTP/MCP moves and metadata edits, decision HTTP full saves and exact status-only edits. Existing Markdown, storage, identity, archive, core and content-store tests also pass.
+- AC 6: BACK-746/749/750/751/752 are archived unimplemented with explicit cancellation/consolidation notes. BACK-747 stays To Do under automatic-preservation scope; #918 remains unimplemented.
+- AC 7: explicit null before an owned title and trailing null survive with one changed title and stable repeated document saves. Direct decision storage proof likewise reparses and is stable (/private/tmp/back-748-decision-null-evidence.json).
+- AC 8: CLI/HTTP/MCP document refusal and decision HTTP refusal preserve exact original bytes/path; valid unknown-to-unknown references still work. Decision status-only edits retain existing text behavior.
+- AC 9: preserved merge restoring cleared tags is refused instead of silently undoing the update. Parsed canonical owned fields, including absence, are the comparison target.
+- DoD: bun test --timeout=10000 across the 12 affected files: 361 pass, 0 fail, 1281 assertions (/private/tmp/back-748-focused-revision.log). bun run check:types: no errors in 567 files (/private/tmp/back-748-types-revision.log). bun run check .: 462 files checked, no fixes (/private/tmp/back-748-biome-revision.log). bun run build: exit 0 (/private/tmp/back-748-build-revision.log). Fresh compiled CLI null/reference/merge results: /private/tmp/back-748-built-bounded-evidence.json.
+Subtraction pass kept one Markdown source-span implementation and one core refusal conversion, with no dependencies, config, new public data fields, reference semantics or task/draft behavior. BACK-733 remains open. A temporary incomplete-body decision check exposed the same pre-existing empty-section repetition in the baseline serializer; it is outside this frontmatter fix and was not changed (/private/tmp/back-748-decision-empty-baseline.json).
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Document and decision updates now preserve unknown top-level frontmatter automatically, keeping raw YAML values and comments through existing shared storage paths. Owned fields keep their existing meaning. Explicit null entries are handled correctly, and saves that would break a preserved YAML reference or undo an owned-field change fail before any write or move.
+
+Reconciled the superseded configured-field plans, documented the preservation/refusal contract, and left task/draft preservation in BACK-747. Verified 361 affected tests, canonical types/Biome/build, fresh compiled CLI reproductions, and two KEEP architecture reviews.
+<!-- SECTION:FINAL_SUMMARY:END -->

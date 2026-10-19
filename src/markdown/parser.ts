@@ -1,7 +1,7 @@
 import type { AcceptanceCriterion, Decision, Document, Milestone, ParsedMarkdown, Task } from "../types/index.ts";
 import { normalizeDueDate } from "../utils/due-date.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
-import { parseFrontmatter } from "./frontmatter.ts";
+import { parseFrontmatter, preprocessFrontmatter } from "./frontmatter.ts";
 import {
 	AcceptanceCriteriaManager,
 	CommentsManager,
@@ -9,80 +9,6 @@ import {
 	extractStructuredSection,
 	STRUCTURED_SECTION_KEYS,
 } from "./structured-sections.ts";
-
-function normalizeFlowList(prefix: string, rawValue: string): string | null {
-	// Handle inline lists like assignee: [@user, "someone"]
-	const match = rawValue.match(/^\[(.*)\]\s*(#.*)?$/);
-	if (!match) return null;
-
-	const listBody = match[1] ?? "";
-	const comment = match[2];
-	const items = listBody
-		.split(",")
-		.map((entry) => entry.trim())
-		.filter((entry) => entry.length > 0);
-
-	const normalizedItems = items.map((entry) => {
-		if (entry.startsWith("'") || entry.startsWith('"')) {
-			return entry;
-		}
-		if (entry.startsWith("@")) {
-			const escaped = entry.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-			return `"${escaped}"`;
-		}
-		return entry;
-	});
-
-	const trailingComment = comment ? ` ${comment}` : "";
-	return `${prefix}[${normalizedItems.join(", ")}]${trailingComment}`;
-}
-
-function preprocessFrontmatter(frontmatter: string): string {
-	return frontmatter
-		.split(/\r?\n/) // Handle both Windows (\r\n) and Unix (\n) line endings
-		.map((line) => {
-			// The key spelling matters: an unquoted timestamp left for YAML to resolve comes back as a
-			// Date with its written offset already discarded, so a due date read under a quoted key
-			// would land on a different day than the same value read under a bare one.
-			const dueDateMatch = line.match(/^(\s*(?:due_date|"due_date"|'due_date')\s*:\s*)(.*)$/);
-			if (dueDateMatch) {
-				const prefix = dueDateMatch[1] ?? "";
-				const raw = dueDateMatch[2] ?? "";
-				const scalarMatch = raw.match(/^(.*?)(\s+#.*)?$/);
-				const value = (scalarMatch?.[1] ?? raw).trim();
-				const comment = scalarMatch?.[2] ?? "";
-				const isYamlNull = /^(?:null|~)$/i.test(value);
-				if (value && !isYamlNull && !value.startsWith("'") && !value.startsWith('"')) {
-					return `${prefix}"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"${comment}`;
-				}
-			}
-
-			// Handle both assignee and reporter fields that start with @
-			const match = line.match(/^(\s*(?:assignee|reporter):\s*)(.*)$/);
-			if (!match) return line;
-
-			const prefix = match[1] ?? "";
-			const raw = match[2] ?? "";
-			const value = raw.trim();
-
-			const normalizedFlowList = normalizeFlowList(prefix, value);
-			if (normalizedFlowList !== null) {
-				return normalizedFlowList;
-			}
-
-			if (
-				value &&
-				!value.startsWith("[") &&
-				!value.startsWith("'") &&
-				!value.startsWith('"') &&
-				!value.startsWith("-")
-			) {
-				return `${prefix}"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-			}
-			return line;
-		})
-		.join("\n"); // Always join with \n for consistent YAML parsing
-}
 
 function normalizeDate(value: unknown): string {
 	if (!value) return "";

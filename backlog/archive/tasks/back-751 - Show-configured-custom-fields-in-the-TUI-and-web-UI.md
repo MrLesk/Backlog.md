@@ -4,6 +4,7 @@ title: Show configured custom fields in the TUI and web UI
 status: To Do
 assignee: []
 created_date: '2026-10-11 19:35'
+updated_date: '2026-10-18 19:45'
 labels:
   - enhancement
 dependencies:
@@ -51,3 +52,9 @@ Depends on BACK-747, BACK-748 and BACK-749, which make the keys available on tas
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-10-18: Canceled: Alex's 2026-10-18 decision replaced registered custom fields with automatic preservation of opaque user metadata. The proposed custom-field TUI/web display plan is superseded; BACK-748 adds preservation only. This task is archived unimplemented, not Done.
+<!-- SECTION:NOTES:END -->

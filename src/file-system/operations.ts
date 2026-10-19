@@ -396,8 +396,8 @@ export class DraftIdentityError extends Error {
  * Returns a decision file's text with its frontmatter status set to `status`, or null when that
  * cannot be done without changing anything else.
  *
- * The text is edited as text and never parsed and written back out: `serializeDecision` writes
- * only the frontmatter keys and sections it knows, so it would drop every other key and section.
+ * The text is edited as text and never parsed and written back out: a full decision save rebuilds
+ * owned fields and body sections, while this operation must leave every other byte unchanged.
  * Only the status entry is replaced: the `status:` line and the indented lines that continue its
  * value. Every other line stays as it is, with its own line ending.
  */
@@ -1584,8 +1584,14 @@ export class FileSystem {
 		const decisionsDir = await this.getDecisionsDir();
 		const filepath = join(decisionsDir, filename);
 		const loadedFromPath = decision.path ? this.contentRecordFilePath("decision", decision) : undefined;
+		const originalFile = loadedFromPath ? Bun.file(loadedFromPath) : undefined;
+		const originalContent = (await originalFile?.exists()) ? await originalFile?.text() : undefined;
 
-		const movedFrom = await this.writeRecordFile(filepath, serializeDecision(decision), loadedFromPath);
+		const movedFrom = await this.writeRecordFile(
+			filepath,
+			serializeDecision(decision, originalContent),
+			loadedFromPath,
+		);
 
 		return { filepath, movedFrom };
 	}
@@ -1650,8 +1656,14 @@ export class FileSystem {
 		const relativePath = normalizedSubPath ? `${normalizedSubPath}/${filename}` : filename;
 		const filepath = join(docsDir, ...relativePath.split("/"));
 		const loadedFromPath = document.path ? this.contentRecordFilePath("document", document) : undefined;
+		const originalFile = loadedFromPath ? Bun.file(loadedFromPath) : undefined;
+		const originalContent = (await originalFile?.exists()) ? await originalFile?.text() : undefined;
 
-		const movedFrom = await this.writeRecordFile(filepath, serializeDocument(document), loadedFromPath);
+		const movedFrom = await this.writeRecordFile(
+			filepath,
+			serializeDocument(document, originalContent),
+			loadedFromPath,
+		);
 
 		document.path = relativePath;
 		return { relativePath, movedFrom };
