@@ -152,6 +152,7 @@ import { sectionTasks, sortTasks, TASK_SORT_FIELDS } from "./utils/task-sorting.
 import { formatValidTaskTypeValues, getTaskTypeValues, resolveTaskTypeValues } from "./utils/task-type-config.ts";
 import { getTerminalStatus } from "./utils/terminal-status.ts";
 import { formatUtcDateForDisplay } from "./utils/utc-date-display.ts";
+import { formatUtcTimestamp } from "./utils/utc-timestamp.ts";
 import { getVersion } from "./utils/version.ts";
 
 type IntegrationMode = "mcp" | "cli" | "none";
@@ -5100,7 +5101,7 @@ addHelpSchema(decisionCmd.command("create <title>"), {
 		const decision: Decision = {
 			id,
 			title: title as string,
-			date: new Date().toISOString().slice(0, 16).replace("T", " "),
+			date: formatUtcTimestamp(),
 			status: (options.status || "proposed") as Decision["status"],
 			context: "",
 			decision: "",

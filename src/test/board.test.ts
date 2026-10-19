@@ -4,8 +4,31 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildKanbanStatusGroups, exportKanbanBoardToFile, generateMilestoneGroupedBoard } from "../board.ts";
 import type { Milestone, Task } from "../types/index.ts";
+import { pinTimeZone } from "./pin-timezone.ts";
+
+pinTimeZone("Asia/Taipei");
 
 describe("exportKanbanBoardToFile", () => {
+	it("orders mixed legacy and explicit UTC timestamps by their instant", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "board-mixed-timestamps-"));
+		try {
+			const file = join(dir, "board.md");
+			const tasks = ["2026-10-19T10:00:00Z", "2026-10-19 11:00"].map((createdDate, index) => ({
+				id: `task-${index + 1}`,
+				title: `Task ${index + 1}`,
+				status: "To Do",
+				assignee: [],
+				labels: [],
+				dependencies: [],
+				createdDate,
+			}));
+			await exportKanbanBoardToFile(tasks, ["To Do"], file, "Mixed timestamps");
+			const board = await Bun.file(file).text();
+			expect(board.indexOf("TASK-2")).toBeLessThan(board.indexOf("TASK-1"));
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
 	it("creates file and overwrites board content", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "board-export-"));
 		const file = join(dir, "README.md");

@@ -1,3 +1,4 @@
+import { parseStoredUtcDate } from "../utils/utc-timestamp.ts";
 /**
  * Task loading with optimized index-first, hydrate-later pattern
  * Dramatically reduces git operations for multi-branch task loading
@@ -284,7 +285,7 @@ function chooseWinners(
 
 		// If strategy is "most_recent", only hydrate if any remote is newer
 		if (strategy === "most_recent") {
-			const localTs = local.updatedDate ? new Date(local.updatedDate).getTime() : 0;
+			const localTs = local.updatedDate ? (parseStoredUtcDate(local.updatedDate)?.getTime() ?? Number.NaN) : 0;
 			const newestRemote = selectPreferredIdentityEntry(entries);
 
 			if (newestRemote.lastModified.getTime() > localTs) {
@@ -301,7 +302,7 @@ function chooseWinners(
 
 		// For "most_progressed", we might need to check if remote is newer
 		// to potentially have a more progressed status
-		const localTs = local.updatedDate ? new Date(local.updatedDate).getTime() : 0;
+		const localTs = local.updatedDate ? (parseStoredUtcDate(local.updatedDate)?.getTime() ?? Number.NaN) : 0;
 		const maybeNewer = entries.some((e) => e.lastModified.getTime() > localTs);
 
 		if (maybeNewer) {

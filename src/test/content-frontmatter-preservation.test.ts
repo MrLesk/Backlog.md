@@ -109,7 +109,7 @@ describe("document and decision unknown frontmatter", () => {
 		expect(repeated).toContain(METADATA);
 		expect(repeated.match(/^# external owner$/gm)).toHaveLength(1);
 		expect(parseMarkdown(repeated).frontmatter).not.toHaveProperty("tags");
-		expect(parseDocument(repeated).updatedDate).toMatch(/^\d{4}-\d{2}-\d{2} /);
+		expect(parseDocument(repeated).updatedDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/);
 	});
 
 	it("keeps raw metadata through document HTTP saves without adding response fields", async () => {

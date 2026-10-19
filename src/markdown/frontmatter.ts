@@ -10,8 +10,41 @@ import matter from "gray-matter";
  * parse. Passing an options object skips the cache entirely (gray-matter 4.x only reads and writes
  * the cache when `options` is falsy), so every call here passes one.
  */
-export function parseFrontmatter(content: string): { data: Record<string, unknown>; content: string } {
-	const file = matter(content, {});
+export function parseFrontmatter(
+	content: string,
+	dateFields: readonly string[] = [],
+): { data: Record<string, unknown>; content: string } {
+	const starts: number[] = [];
+	const dateScalars = new Map<Date, string>();
+	const file = matter(content, {
+		language: "yaml",
+		...(dateFields.length > 0 && {
+			listener(event: string, state: { position: number; input: string; kind: string; result: unknown }) {
+				if (event === "open") {
+					starts.push(state.position);
+				} else {
+					const start = starts.pop() ?? state.position;
+					if (state.kind === "scalar" && state.result instanceof Date && !dateScalars.has(state.result)) {
+						// Keep the innermost scalar; wrapper nodes can include preceding comments.
+						// YAML has validated the scalar. Keep its written date/time, excluding tags or anchors.
+						dateScalars.set(
+							state.result,
+							state.input
+								.slice(start, state.position)
+								.trim()
+								.replace(/^(?:[!&]\S+\s+)*/, ""),
+						);
+					}
+				}
+			},
+		}),
+	});
+	// Only record-owned fields opt in: opaque metadata keeps the YAML engine's normal meaning.
+	// In particular, UTC midnight is a timestamp when its source includes a time, not a date-only value.
+	for (const key of dateFields) {
+		const value = file.data[key];
+		if (value instanceof Date && dateScalars.has(value)) file.data[key] = dateScalars.get(value);
+	}
 	return { data: file.data, content: file.content };
 }
 

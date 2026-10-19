@@ -4,6 +4,7 @@ import type { Task } from "../types/index.ts";
 import { type DuplicateGroup, detectDuplicateTaskIds } from "../utils/duplicate-detection.ts";
 import { escapeRegex, generateNextId, generateNextSubtaskId, idForFilename } from "../utils/prefix-config.ts";
 import { canonicalTaskId, isNumericTaskId } from "../utils/task-id.ts";
+import { parseStoredUtcDate } from "../utils/utc-timestamp.ts";
 import type { Core } from "./backlog.ts";
 import type { TaskCorpusSnapshot } from "./content-store.ts";
 import type { BranchTaskStateEntry } from "./task-loader.ts";
@@ -127,7 +128,7 @@ export async function findCrossBranchDuplicateTaskIds(
 			type: "task",
 			branch: current,
 			path: normalizeRelativePath(core.filesystem.rootDir, task.filePath),
-			lastModified: task.updatedDate ? new Date(task.updatedDate) : new Date(0),
+			lastModified: task.updatedDate ? (parseStoredUtcDate(task.updatedDate) ?? new Date(Number.NaN)) : new Date(0),
 		});
 	}
 	for (const task of archivedTasks) {
@@ -137,7 +138,7 @@ export async function findCrossBranchDuplicateTaskIds(
 			type: "archived",
 			branch: current,
 			path: normalizeRelativePath(core.filesystem.rootDir, task.filePath),
-			lastModified: task.updatedDate ? new Date(task.updatedDate) : new Date(0),
+			lastModified: task.updatedDate ? (parseStoredUtcDate(task.updatedDate) ?? new Date(Number.NaN)) : new Date(0),
 		});
 	}
 

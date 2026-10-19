@@ -13,39 +13,15 @@ import {
 function normalizeDate(value: unknown): string {
 	if (!value) return "";
 	if (value instanceof Date) {
-		// Check if this Date object came from a date-only string (time is midnight UTC)
-		const hours = value.getUTCHours();
-		const minutes = value.getUTCMinutes();
-		const seconds = value.getUTCSeconds();
-
-		if (hours === 0 && minutes === 0 && seconds === 0) {
-			// This was likely a date-only value, preserve it as date-only
-			return value.toISOString().slice(0, 10);
-		}
-		// This has actual time information, preserve it
-		return value.toISOString().slice(0, 16).replace("T", " ");
+		return value.toISOString();
 	}
 	const str = String(value)
 		.trim()
 		.replace(/^['"]|['"]$/g, "");
 	if (!str) return "";
 
-	// Check for datetime format first (YYYY-MM-DD HH:mm)
-	let match: RegExpMatchArray | null = str.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
-	if (match) {
-		// Already in correct format, return as-is
-		return str;
-	}
-
-	// Check for ISO datetime format (YYYY-MM-DDTHH:mm)
-	match = str.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
-	if (match) {
-		// Convert T separator to space
-		return str.replace("T", " ");
-	}
-
 	// Check for date-only format (YYYY-MM-DD) - backward compatibility
-	match = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+	let match = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
 	if (match) {
 		return `${match[1]}-${match[2]}-${match[3]}`;
 	}
@@ -69,7 +45,7 @@ function normalizeDate(value: unknown): string {
 	return str;
 }
 
-export function parseMarkdown(content: string): ParsedMarkdown {
+export function parseMarkdown(content: string, dateFields: readonly string[] = []): ParsedMarkdown {
 	// Updated regex to handle both Windows (\r\n) and Unix (\n) line endings
 	const fmRegex = /^---\r?\n([\s\S]*?)\r?\n---/;
 	const match = content.match(fmRegex);
@@ -81,7 +57,7 @@ export function parseMarkdown(content: string): ParsedMarkdown {
 		toParse = content.replace(fmRegex, () => `---\n${processed}\n---`);
 	}
 
-	const parsed = parseFrontmatter(toParse);
+	const parsed = parseFrontmatter(toParse, dateFields);
 	return {
 		frontmatter: parsed.data,
 		content: parsed.content.trim(),
@@ -103,7 +79,7 @@ function isStructuredDependency(value: unknown): boolean {
 }
 
 export function parseTask(content: string): Task {
-	const { frontmatter, content: rawContent } = parseMarkdown(content);
+	const { frontmatter, content: rawContent } = parseMarkdown(content, ["created_date", "updated_date"]);
 	const id = String(frontmatter.id || "");
 	const dependencies = frontmatter.dependencies;
 	if (Array.isArray(dependencies)) {
@@ -164,7 +140,7 @@ export function parseTask(content: string): Task {
 }
 
 export function parseDecision(content: string): Decision {
-	const { frontmatter, content: rawContent } = parseMarkdown(content);
+	const { frontmatter, content: rawContent } = parseMarkdown(content, ["date"]);
 
 	return {
 		id: String(frontmatter.id || ""),
@@ -180,7 +156,7 @@ export function parseDecision(content: string): Decision {
 }
 
 export function parseDocument(content: string): Document {
-	const { frontmatter, content: rawContent } = parseMarkdown(content);
+	const { frontmatter, content: rawContent } = parseMarkdown(content, ["created_date", "updated_date"]);
 
 	return {
 		id: String(frontmatter.id || ""),

@@ -3,6 +3,7 @@ import { ARCHIVED_TASK_DIRECTORIES } from "../constants/index.ts";
 import type { Task } from "../types/index.ts";
 import { canonicalTaskId, taskIdsEqual } from "../utils/task-path.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
+import { parseStoredUtcDate } from "../utils/utc-timestamp.ts";
 import type { TaskDirectoryType } from "./cross-branch-tasks.ts";
 
 export interface TaskIdentityRecord {
@@ -182,7 +183,9 @@ export class TaskIdentityIndex {
 				type: "task",
 				branch: "local",
 				path: task.filePath ?? task.id,
-				lastModified: task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0)),
+				lastModified:
+					task.lastModified ??
+					(task.updatedDate ? (parseStoredUtcDate(task.updatedDate) ?? new Date(Number.NaN)) : new Date(0)),
 				task: { ...task, source: "local" },
 				workingCopy: true,
 			});
@@ -193,7 +196,9 @@ export class TaskIdentityIndex {
 				type: "archived",
 				branch: "local",
 				path: task.filePath ?? task.id,
-				lastModified: task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0)),
+				lastModified:
+					task.lastModified ??
+					(task.updatedDate ? (parseStoredUtcDate(task.updatedDate) ?? new Date(Number.NaN)) : new Date(0)),
 				task: { ...task, source: "archived" },
 				workingCopy: true,
 			});

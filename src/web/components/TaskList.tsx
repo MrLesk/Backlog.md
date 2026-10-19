@@ -11,7 +11,7 @@ import { collectAvailableLabels } from "../../utils/label-filter.ts";
 import { compareTaskIds, compareTaskIdsDescending, sortTasks } from "../../utils/task-sorting.ts";
 import { isTerminalStatus } from "../../utils/terminal-status.ts";
 import { collectArchivedMilestoneKeys, getMilestoneLabel, milestoneKey } from "../utils/milestones";
-import { parseStoredUtcDate } from "../utils/date-display";
+import { parseStoredUtcDate } from "../../utils/utc-timestamp.ts";
 import {
 	formatPriorityLabel,
 	getPriorityOptions,

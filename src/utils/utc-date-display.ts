@@ -9,9 +9,9 @@ export type UtcDateDisplayOptions = {
 };
 
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
-const timezoneLessDateTimePattern = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/;
+const timezoneLessDateTimePattern = /^(\d{4})-(\d{2})-(\d{2})(?:T|[ \t]+)(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/i;
 const explicitTimezoneDateTimePattern =
-	/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)(Z|[+-]\d{2}:?\d{2})$/i;
+	/^(\d{4}-\d{2}-\d{2})(?:T|[ \t]+)(\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)[ \t]*(Z|[+-]\d{2}:?\d{2})$/i;
 const utcLabelPattern = /\s+\(UTC\)$/i;
 
 function padDatePart(value: number): string {
