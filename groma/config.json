@@ -1,8 +1,4 @@
 {
-  "exclude": [
-    "/scripts/",
-    "/src/test/"
-  ],
   "scanners": [
     {
       "id": "react",
@@ -53,5 +49,10 @@
         "coverage/"
       ]
     }
+  ],
+  "workSources": [],
+  "exclude": [
+    "/scripts/",
+    "/src/test/"
   ]
 }
