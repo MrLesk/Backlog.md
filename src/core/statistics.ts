@@ -1,6 +1,7 @@
 import type { Task } from "../types/index.ts";
 import { getPriorityValues, normalizePriorityValue } from "../utils/priority-config.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
+import { parseStoredUtcDate } from "../utils/utc-timestamp.ts";
 
 export interface TaskStatistics {
 	statusCounts: Map<string, number>;
@@ -84,7 +85,7 @@ export function getTaskStatistics(
 
 		// Track recent activity
 		if (task.createdDate) {
-			const createdDate = new Date(task.createdDate);
+			const createdDate = parseStoredUtcDate(task.createdDate) ?? new Date(Number.NaN);
 			if (createdDate >= oneWeekAgo) {
 				recentlyCreated.push(task);
 			}
@@ -94,7 +95,7 @@ export function getTaskStatistics(
 			// For active tasks, use the time from creation to now
 			let ageInDays: number;
 			if (task.status === "Done" && task.updatedDate) {
-				const updatedDate = new Date(task.updatedDate);
+				const updatedDate = parseStoredUtcDate(task.updatedDate) ?? new Date(Number.NaN);
 				ageInDays = Math.floor((updatedDate.getTime() - createdDate.getTime()) / (24 * 60 * 60 * 1000));
 			} else {
 				ageInDays = Math.floor((now.getTime() - createdDate.getTime()) / (24 * 60 * 60 * 1000));
@@ -104,7 +105,7 @@ export function getTaskStatistics(
 		}
 
 		if (task.updatedDate) {
-			const updatedDate = new Date(task.updatedDate);
+			const updatedDate = parseStoredUtcDate(task.updatedDate) ?? new Date(Number.NaN);
 			if (updatedDate >= oneWeekAgo) {
 				recentlyUpdated.push(task);
 			}
@@ -114,7 +115,7 @@ export function getTaskStatistics(
 		if (task.status !== "Done") {
 			const lastDate = task.updatedDate || task.createdDate;
 			if (lastDate) {
-				const date = new Date(lastDate);
+				const date = parseStoredUtcDate(lastDate) ?? new Date(Number.NaN);
 				if (date < oneMonthAgo) {
 					staleTasks.push(task);
 				}
@@ -137,14 +138,14 @@ export function getTaskStatistics(
 
 	// Sort recent activity by date
 	recentlyCreated.sort((a, b) => {
-		const dateA = new Date(a.createdDate || 0);
-		const dateB = new Date(b.createdDate || 0);
+		const dateA = parseStoredUtcDate(a.createdDate) ?? new Date(0);
+		const dateB = parseStoredUtcDate(b.createdDate) ?? new Date(0);
 		return dateB.getTime() - dateA.getTime();
 	});
 
 	recentlyUpdated.sort((a, b) => {
-		const dateA = new Date(a.updatedDate || 0);
-		const dateB = new Date(b.updatedDate || 0);
+		const dateA = parseStoredUtcDate(a.updatedDate) ?? new Date(0);
+		const dateB = parseStoredUtcDate(b.updatedDate) ?? new Date(0);
 		return dateB.getTime() - dateA.getTime();
 	});
 

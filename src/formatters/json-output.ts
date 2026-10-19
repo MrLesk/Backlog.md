@@ -121,7 +121,7 @@ function normalizePublicDate(value: string | undefined): string | null {
 	if (!value) return null;
 	if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
 
-	const minutePrecision = value.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(?::(\d{2}))?(?:\.\d+)?Z?$/);
+	const minutePrecision = value.match(/^(\d{4}-\d{2}-\d{2})(?:T|[ \t]+)(\d{2}:\d{2})(?::(\d{2}))?(?:\.\d+)?[ \t]*Z?$/i);
 	if (minutePrecision) {
 		const [, date, time, seconds = "00"] = minutePrecision;
 		return `${date}T${time}:${seconds}Z`;

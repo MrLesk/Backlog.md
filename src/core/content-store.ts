@@ -13,6 +13,7 @@ import { normalizeStatusSet, statusMatchesSet } from "../utils/status-filter.ts"
 import { canonicalTaskId, normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
+import { parseStoredUtcDate } from "../utils/utc-timestamp.ts";
 import {
 	normalizeTaskLifecyclePath,
 	type TaskIdentityIndex,
@@ -395,7 +396,9 @@ export class ContentStore {
 				type: "task",
 				branch: task.branch,
 				path: task.filePath ?? `${task.branch}:${task.id}`,
-				lastModified: task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0)),
+				lastModified:
+					task.lastModified ??
+					(task.updatedDate ? (parseStoredUtcDate(task.updatedDate) ?? new Date(Number.NaN)) : new Date(0)),
 				task,
 			});
 			this.replaceVisibleTasks(this.taskIdentityIndex.getTasks(false));

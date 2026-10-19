@@ -5,7 +5,10 @@ import { $ } from "bun";
 import { Core, formatCleanupResult } from "../core/backlog.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
+import { pinTimeZone } from "./pin-timezone.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+
+pinTimeZone("Asia/Taipei");
 
 let TEST_DIR: string;
 
@@ -94,6 +97,13 @@ describe("Cleanup functionality", () => {
 	});
 
 	describe("getTerminalStatusTasksByAge", () => {
+		it("uses the same cleanup age for legacy and explicit UTC updates", async () => {
+			const recent = new Date(Date.now() - 23 * 60 * 60 * 1000).toISOString().slice(0, 16);
+			for (const [index, updatedDate] of [recent.replace("T", " "), `${recent}:00Z`].entries()) {
+				await core.createTask({ ...sampleTask, id: `task-${index + 1}`, updatedDate }, false);
+			}
+			expect(await core.getTerminalStatusTasksByAge(1)).toEqual([]);
+		});
 		it("should filter Done tasks by age", async () => {
 			// Create old Done task (7 days ago)
 			const oldDate = new Date();

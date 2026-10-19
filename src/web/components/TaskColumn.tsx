@@ -2,7 +2,7 @@ import React from 'react';
 import { type Task } from '../../types';
 import { compareTaskIds, sortByPriority } from '../../utils/task-sorting';
 import type { ReorderTaskPayload } from '../lib/api';
-import { parseStoredUtcDate } from '../utils/date-display';
+import { parseStoredUtcDate } from '../../utils/utc-timestamp.ts';
 import TaskCard from './TaskCard';
 
 interface TaskColumnProps {

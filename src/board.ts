@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Milestone, Task } from "./types/index.ts";
+import { parseStoredUtcDate } from "./utils/utc-timestamp.ts";
 
 export interface BoardOptions {
 	statuses?: string[];
@@ -99,8 +100,8 @@ Project: ${projectName}
 		// Sort items: All columns by updatedDate descending (fallback to createdDate), then by ID as secondary
 		const sortedItems = items.sort((a, b) => {
 			// Primary sort: updatedDate (newest first), fallback to createdDate if updatedDate is missing
-			const dateA = a.updatedDate ? new Date(a.updatedDate).getTime() : new Date(a.createdDate).getTime();
-			const dateB = b.updatedDate ? new Date(b.updatedDate).getTime() : new Date(b.createdDate).getTime();
+			const dateA = parseStoredUtcDate(a.updatedDate || a.createdDate)?.getTime() ?? Number.NaN;
+			const dateB = parseStoredUtcDate(b.updatedDate || b.createdDate)?.getTime() ?? Number.NaN;
 			if (dateB !== dateA) {
 				return dateB - dateA; // Newest first
 			}

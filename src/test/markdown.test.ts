@@ -6,6 +6,16 @@ import { updateStructuredSections } from "../markdown/structured-sections.ts";
 import type { Decision, Document, Task } from "../types/index.ts";
 
 describe("Markdown Parser", () => {
+	it("preserves owned timestamp scalars without changing opaque YAML dates", () => {
+		const value = "2026-10-19T00:00:00Z";
+		const flow = `---\n{id: task-1, title: Midnight, created_date: &stamp ${value}, updated_date: *stamp, custom_timestamp: ${value}}\n---`;
+		expect(parseTask(flow)).toMatchObject({ createdDate: value, updatedDate: value });
+		expect(parseFrontmatter(flow).data.custom_timestamp).toBeInstanceOf(Date);
+		const tagged = `---\nid: doc-1\ntitle: Midnight\ncreated_date: !!timestamp ${value}\nupdated_date: '${value}'\n---`;
+		expect(parseDocument(tagged)).toMatchObject({ createdDate: value, updatedDate: value });
+		expect(parseDecision(`---\nid: decision-1\ndate: ${value}\n---`).date).toBe(value);
+		expect(parseTask("---\ncreated_date: 2026-10-19\n---").createdDate).toBe("2026-10-19");
+	});
 	describe("parseMarkdown", () => {
 		it("should parse frontmatter and content", () => {
 			const content = `---

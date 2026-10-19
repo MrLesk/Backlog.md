@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { getTaskStatistics } from "../core/statistics.ts";
 import type { Task } from "../types/index.ts";
+import { pinTimeZone } from "./pin-timezone.ts";
+
+pinTimeZone("Asia/Taipei");
 
 describe("getTaskStatistics", () => {
 	const statuses = ["To Do", "In Progress", "Done"];
@@ -35,6 +38,15 @@ describe("getTaskStatistics", () => {
 		expect(stats.statusCounts.get("In Progress")).toBe(0);
 		expect(stats.projectHealth.blockedTasks.map((task) => task.id)).toEqual(["task-1"]);
 		expect(stats.projectHealth.staleTasks.map((task) => task.id)).toEqual(["task-1"]);
+	});
+
+	test("measures completion age across legacy and explicit UTC timestamps", () => {
+		const task = createTask({
+			status: "Done",
+			createdDate: "2026-10-18 00:00",
+			updatedDate: "2026-10-18T23:00:00Z",
+		});
+		expect(getTaskStatistics([task], [], statuses).projectHealth.averageTaskAge).toBe(0);
 	});
 
 	test("handles empty task list", () => {

@@ -4,7 +4,10 @@ import { Core } from "../core/backlog.ts";
 import { BranchTaskLoader } from "../core/task-loader.ts";
 import type { GitBranchTip, GitOperations } from "../git/operations.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
+import { pinTimeZone } from "./pin-timezone.ts";
 import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
+
+pinTimeZone("Asia/Taipei");
 
 const config: BacklogConfig = {
 	projectName: "Loader test",
@@ -43,6 +46,43 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 }
 
 describe("shared immutable branch task loading", () => {
+	it("keeps newer local UTC updates ahead of older branch timestamps in either storage format", async () => {
+		const path = "backlog/tasks/task-1 - Local.md";
+		for (const strategy of ["most_recent", "most_progressed"] as const) {
+			for (const updatedDate of ["2026-10-19 11:00", "2026-10-19T11:00:00Z"]) {
+				let reads = 0;
+				const git = {
+					listFilesInTree: async () => [path],
+					getBranchLastModifiedMap: async () => new Map([[path, new Date("2026-10-19T10:30:00Z")]]),
+					showFile: async () => {
+						reads++;
+						return taskMarkdown("TASK-1", "Older branch");
+					},
+				} as unknown as GitOperations;
+				const local: Task = {
+					id: "TASK-1",
+					title: "Newer local",
+					status: "To Do",
+					assignee: [],
+					labels: [],
+					dependencies: [],
+					createdDate: "2026-10-19",
+					updatedDate,
+					filePath: `/tmp/mixed-utc/${path}`,
+				};
+				await new BranchTaskLoader(git).load(
+					[
+						{ name: "main", commit: "0".repeat(40), current: true },
+						{ name: "feature/older", commit: "1".repeat(40), current: false },
+					],
+					{ ...config, taskResolutionStrategy: strategy },
+					[local],
+					false,
+				);
+				expect(reads).toBe(0);
+			}
+		}
+	});
 	it("builds the Git-free working-copy corpus through lifecycle identity resolution", async () => {
 		const core = new Core("/tmp/working-copy-task-corpus-test");
 		const active: Task = {

@@ -105,6 +105,7 @@ import { attachSubtaskSummaries, findDirectSubtasks } from "../utils/task-subtas
 import { formatValidTaskTypeValues, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
+import { formatUtcTimestamp, parseStoredUtcDate } from "../utils/utc-timestamp.ts";
 import { moveWithoutReplacing } from "./archived-task-move.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore, type TaskCorpusSnapshot } from "./content-store.ts";
@@ -699,7 +700,9 @@ export class Core {
 				type: "task",
 				branch: "local",
 				path: task.filePath ?? join(filesystem.tasksDir, task.id),
-				lastModified: task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0)),
+				lastModified:
+					task.lastModified ??
+					(task.updatedDate ? (parseStoredUtcDate(task.updatedDate) ?? new Date(Number.NaN)) : new Date(0)),
 				task: { ...task, source: "local" },
 				workingCopy: true,
 			});
@@ -710,7 +713,9 @@ export class Core {
 				type: "archived",
 				branch: "local",
 				path: task.filePath ?? join(filesystem.archiveTasksDir, task.id),
-				lastModified: task.lastModified ?? (task.updatedDate ? new Date(task.updatedDate) : new Date(0)),
+				lastModified:
+					task.lastModified ??
+					(task.updatedDate ? (parseStoredUtcDate(task.updatedDate) ?? new Date(Number.NaN)) : new Date(0)),
 				task: { ...task, source: "archived" },
 				workingCopy: true,
 			});
@@ -1287,7 +1292,7 @@ export class Core {
 		filePaths: string[];
 	}> {
 		const filePaths: string[] = [];
-		const updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+		const updatedDate = formatUtcTimestamp();
 		const writeAll = async () => {
 			for (const task of cleanup.active) {
 				const updated = { ...task, updatedDate };
@@ -2193,7 +2198,7 @@ export class Core {
 		const priority = await this.normalizePriority(input.priority);
 		const type = await this.normalizeTaskType(input.type);
 		const project = await this.normalizeProject(input.project);
-		const createdDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+		const createdDate = formatUtcTimestamp();
 		if (
 			input.ordinal !== undefined &&
 			(typeof input.ordinal !== "number" || !Number.isFinite(input.ordinal) || input.ordinal < 0)
@@ -2380,7 +2385,7 @@ export class Core {
 		const statusChanged = oldStatus !== newStatus;
 
 		if (hasUpdatedDateRelevantChanges(originalTask, task)) {
-			task.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+			task.updatedDate = formatUtcTimestamp();
 		} else if (originalTask?.updatedDate) {
 			task.updatedDate = originalTask.updatedDate;
 		} else {
@@ -2807,7 +2812,7 @@ export class Core {
 		if (input.appendComments && input.appendComments.length > 0) {
 			const currentComments = Array.isArray(task.comments) ? task.comments.map((comment) => ({ ...comment })) : [];
 			let nextIndex = currentComments.length > 0 ? Math.max(...currentComments.map((comment) => comment.index)) + 1 : 1;
-			const createdDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+			const createdDate = formatUtcTimestamp();
 			for (const value of input.appendComments) {
 				const sanitized = sanitizeCommentInput(value);
 				if (!sanitized) continue;
@@ -3054,7 +3059,7 @@ export class Core {
 		// Drafts always keep status Draft
 		task.status = "Draft";
 		normalizeAssignee(task);
-		task.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
+		task.updatedDate = formatUtcTimestamp();
 
 		const previousPath = task.filePath;
 		const filepath = await this.fs.saveDraft(task);
@@ -3178,9 +3183,7 @@ export class Core {
 					// The path must be cleared so the save writes a new file. Left set, the save would take
 					// over the source file, and removing the source afterwards would delete the only copy.
 					filePath: undefined,
-					...(mutated || draft.status !== canonicalStatus
-						? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
-						: {}),
+					...(mutated || draft.status !== canonicalStatus ? { updatedDate: formatUtcTimestamp() } : {}),
 				};
 
 				normalizeAssignee(promotedTask);
@@ -3252,9 +3255,7 @@ export class Core {
 				// The path must be cleared so the save writes a new file. Left set, the save would take
 				// over the source file, and removing the source afterwards would delete the only copy.
 				filePath: undefined,
-				...(mutated || current.status !== "Draft"
-					? { updatedDate: new Date().toISOString().slice(0, 16).replace("T", " ") }
-					: {}),
+				...(mutated || current.status !== "Draft" ? { updatedDate: formatUtcTimestamp() } : {}),
 			};
 
 			normalizeAssignee(demotedDraft);
@@ -4021,8 +4022,8 @@ export class Core {
 			const taskDate = task.updatedDate || task.createdDate;
 			if (!taskDate) return false;
 
-			const date = new Date(taskDate);
-			return date < cutoffDate;
+			const date = parseStoredUtcDate(taskDate);
+			return date !== null && date < cutoffDate;
 		});
 	}
 
@@ -4370,7 +4371,9 @@ export class Core {
 		}
 
 		// Parse the markdown content to extract the decision data
-		const frontmatter = parseFrontmatter(content).data as Partial<Pick<Decision, "title" | "status" | "date">>;
+		const frontmatter = parseFrontmatter(content, ["date"]).data as Partial<
+			Pick<Decision, "title" | "status" | "date">
+		>;
 
 		const extractSection = (content: string, sectionName: string): string | undefined => {
 			const regex = new RegExp(`## ${sectionName}\\s*([\\s\\S]*?)(?=## |$)`, "i");
@@ -4398,7 +4401,7 @@ export class Core {
 		const decision: Decision = {
 			id,
 			title,
-			date: new Date().toISOString().slice(0, 16).replace("T", " "),
+			date: formatUtcTimestamp(),
 			status: "proposed",
 			context: "[Describe the context and problem that needs to be addressed]",
 			decision: "[Describe the decision that was made]",
@@ -4477,7 +4480,7 @@ export class Core {
 				id,
 				title,
 				type,
-				createdDate: new Date().toISOString().slice(0, 16).replace("T", " "),
+				createdDate: formatUtcTimestamp(),
 				rawContent: input.content ?? "",
 				...(tags && tags.length > 0 && { tags }),
 			};
@@ -4520,7 +4523,7 @@ export class Core {
 			title: normalizedTitle ?? existingDoc.title,
 			type,
 			rawContent: input.content,
-			updatedDate: new Date().toISOString().slice(0, 16).replace("T", " "),
+			updatedDate: formatUtcTimestamp(),
 			tags: tags && tags.length > 0 ? tags : undefined,
 		};
 
@@ -4916,7 +4919,7 @@ export class Core {
 			return { changed: false, task: outcome.task };
 		}
 
-		const now = new Date().toISOString().slice(0, 16).replace("T", " ");
+		const now = formatUtcTimestamp();
 
 		if (!taskFilePath) {
 			// Draft close: hold the draft lock around the write+validate window so a concurrent
