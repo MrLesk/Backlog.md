@@ -49,6 +49,21 @@ describe("Missing git remote preflight", () => {
 		console.warn = originalWarn;
 	});
 
+	it("GitOperations.fetch() silently skips when only a differently named remote exists", async () => {
+		await $`git remote add upstream https://example.invalid/backlog.git`.cwd(tempDir).quiet();
+		const gitOps = new GitOperations(tempDir, {
+			projectName: "Test",
+			statuses: ["To Do", "Done"],
+			labels: [],
+			milestones: [],
+			dateFormat: "YYYY-MM-DD",
+			remoteOperations: true,
+		} as BacklogConfig);
+
+		// Without the per-remote preflight this runs `git fetch origin` and rejects with exit code 128.
+		await expect(gitOps.fetch()).resolves.toBeUndefined();
+	});
+
 	it("Core cross-branch loading handles remoteOperations=true without a remote", async () => {
 		const config: BacklogConfig = {
 			projectName: "Test",
