@@ -3187,7 +3187,7 @@ export class Core {
 				};
 
 				normalizeAssignee(promotedTask);
-				const savedPath = await this.fs.saveTask(promotedTask);
+				const savedPath = await this.fs.saveTask(promotedTask, await Bun.file(current.filePath).text());
 
 				if (draftPath) {
 					await unlink(draftPath);
@@ -3259,7 +3259,10 @@ export class Core {
 			};
 
 			normalizeAssignee(demotedDraft);
-			const savedPath = await this.fs.saveDraft(demotedDraft);
+			const savedPath = await this.fs.saveDraft(
+				demotedDraft,
+				current.filePath ? await Bun.file(current.filePath).text() : undefined,
+			);
 
 			if (taskPath) {
 				await unlink(taskPath);
@@ -4115,7 +4118,7 @@ export class Core {
 				};
 
 				normalizeAssignee(promotedTask);
-				const savedPath = await this.fs.saveTask(promotedTask);
+				const savedPath = await this.fs.saveTask(promotedTask, await Bun.file(sourcePath).text());
 				await unlink(sourcePath);
 
 				const savedTask = await this.fs.loadTask(promotedTask.id);
