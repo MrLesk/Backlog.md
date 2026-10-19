@@ -87,7 +87,7 @@ jobs:
       - uses: MrLesk/groma.md-action@v1
         id: map
         with:
-          groma-version: '0.6.6'
+          groma-version: '0.7.0'
           output: groma-comparison
           theme: ${{ env.GROMA_THEME }}
           from: ${{ steps.commits.outputs.from }}
@@ -120,7 +120,7 @@ jobs:
           - name: Build the current architecture map
             uses: MrLesk/groma.md-action@v1
             with:
-              groma-version: '0.6.6'
+              groma-version: '0.7.0'
               output: ${{ runner.temp }}/groma-site
               theme: ${{ env.GROMA_THEME }}
 
