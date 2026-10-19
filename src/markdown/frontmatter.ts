@@ -75,7 +75,7 @@ function preserveUnknownFrontmatter(content: string, ownedKeys: Set<string>): { 
 		starts.push(offset);
 		offset += line.length;
 	}
-	type Node = { start: number; end: number; line: number; children: Node[]; result?: unknown };
+	type Node = { start: number; end: number; contentEnd: number; line: number; children: Node[]; result?: unknown };
 	const stack: Node[] = [];
 	const mappings: Node[] = [];
 	// The existing YAML engine reports node boundaries. Locate its actual root mapping by object
@@ -88,11 +88,14 @@ function preserveUnknownFrontmatter(content: string, ownedKeys: Set<string>): { 
 		) {
 			const position = (starts[state.line] ?? raw.length) + state.position - state.lineStart;
 			if (event === "open") {
-				stack.push({ start: position, end: position, line: state.line, children: [] });
+				stack.push({ start: position, end: position, contentEnd: position, line: state.line, children: [] });
 			} else {
 				const node = stack.pop();
 				if (!node) return;
 				node.end = position;
+				// Block collections consume following separator comments; their final child still
+				// identifies the value content. Keep the full source end separately for copying.
+				node.contentEnd = node.children.at(-1)?.contentEnd ?? position;
 				node.result = state.result;
 				stack.at(-1)?.children.push(node);
 				if (state.kind === "mapping") mappings.push(node);
@@ -103,7 +106,7 @@ function preserveUnknownFrontmatter(content: string, ownedKeys: Set<string>): { 
 	if (!mapping) return { text: "", indent: "" };
 	const flowMapping = raw[mapping.start] === "{";
 	const indent = flowMapping ? "" : (lines[mapping.line]?.match(/^[ \t]*/)?.[0] ?? "");
-	const entries: { key: string; start: number; end: number; omitted: boolean }[] = [];
+	const entries: { key: string; start: number; end: number; contentEnd: number; omitted: boolean }[] = [];
 	for (let index = 0; index < mapping.children.length; ) {
 		const key = mapping.children[index];
 		const value = mapping.children[index + 1];
@@ -115,10 +118,24 @@ function preserveUnknownFrontmatter(content: string, ownedKeys: Set<string>): { 
 			.replace(/#[^\r\n]*/g, "")
 			.trimStart();
 		const hasValue = separator.startsWith(":");
+		let firstLine = key.line;
+		// Only comments after the preceding parsed value can introduce the following entry.
+		// Deeper comments and # lines inside multiline scalars stay within that value's span.
+		if (!flowMapping) {
+			const previousEnd = entries.at(-1)?.contentEnd ?? 0;
+			while (
+				firstLine > 0 &&
+				(starts[firstLine - 1] ?? 0) >= previousEnd &&
+				lines[firstLine - 1]?.startsWith(`${indent}#`)
+			) {
+				firstLine--;
+			}
+		}
 		entries.push({
 			key: String(key.result),
-			start: flowMapping ? key.start : (starts[key.line] ?? key.start),
+			start: flowMapping ? key.start : (starts[firstLine] ?? key.start),
 			end: hasValue && value ? value.end : key.end,
+			contentEnd: hasValue && value ? value.contentEnd : key.contentEnd,
 			omitted: !hasValue,
 		});
 		index += hasValue ? 2 : 1;

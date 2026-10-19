@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex-1091'
 created_date: '2026-10-11 19:35'
-updated_date: '2026-10-19 08:03'
+updated_date: '2026-10-19 08:31'
 labels:
   - enhancement
 dependencies: []
@@ -18,6 +18,7 @@ references:
   - src/markdown/parser.ts
   - src/test/content-frontmatter-preservation.test.ts
   - CLI-INSTRUCTIONS.md
+  - 'https://github.com/MrLesk/Backlog.md/pull/1119#discussion_r4311596800'
 modified_files:
   - >-
     backlog/tasks/back-748 -
@@ -114,6 +115,14 @@ Approved bounded follow-up (Alex: “Sure. Do it”, 2026-10-19): correct omitte
 Verified ownership boundary: compare the preserved header's owned fields with the parsed canonical intended header, including missing optional fields. Refuse only a preserved-reference conflict such as a merge restoring cleared tags; do not introduce null/empty overrides or new reference semantics.
 
 Review and finalization: both architecture reviews returned KEEP; fresh build and compiled CLI proofs passed on unchanged reviewed source. Coordinator authorized checking verified AC/DoD, marking Done, and creating the local feature-branch commit. No push, PR, CI changes or branch switch are included.
+
+PR #1119 review correction: reproduce the exact leading-comment loss on head 203b9582 through storage and CLI. Move the existing block entry source boundary backward over contiguous leading comment lines at the mapping indentation, leaving deeper nested-value comments in their existing span. Extend the shared metadata fixture so existing repeated document/decision and CLI/HTTP/MCP tests cover this shape. Re-run affected tests, canonical types/Biome/build and compiled CLI proof; perform a subtraction pass and hold uncommitted for focused correction review. No other YAML or product policy change.
+
+Verified adaptive regression in the comment correction: bound the backward leading-comment scan by the previous parsed value's source end. A root-level # line inside an unknown multiline quoted scalar cannot become part of a following owned entry. Add only the exact reported kept-to-discarded fixture and stable repeated-save assertion, re-run affected checks, then freeze for review.
+
+Coordinator-approved refinement for the two verified regressions: keep each parser node's full source end for raw slicing, and derive a separate content end from its final parsed child (or its own leaf end). Use the content end only as the backward comment-scan lower bound. This generic distinction must pass the exact quoted-value regression and existing list-based metadata/repeated-save fixture together; no syntax-specific exceptions or new fixtures.
+
+Final bounded correction review returned KEEP on frozen source/test hashes; all current checks and compiled proofs passed. Coordinator authorized finalizing BACK-748 and committing only the task record, frontmatter helper and focused test correction. Push and PR/CI handling remain with the coordinator.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -146,12 +155,30 @@ Objective AC evidence:
 - AC 9: preserved merge restoring cleared tags is refused instead of silently undoing the update. Parsed canonical owned fields, including absence, are the comparison target.
 - DoD: bun test --timeout=10000 across the 12 affected files: 361 pass, 0 fail, 1281 assertions (/private/tmp/back-748-focused-revision.log). bun run check:types: no errors in 567 files (/private/tmp/back-748-types-revision.log). bun run check .: 462 files checked, no fixes (/private/tmp/back-748-biome-revision.log). bun run build: exit 0 (/private/tmp/back-748-build-revision.log). Fresh compiled CLI null/reference/merge results: /private/tmp/back-748-built-bounded-evidence.json.
 Subtraction pass kept one Markdown source-span implementation and one core refusal conversion, with no dependencies, config, new public data fields, reference semantics or task/draft behavior. BACK-733 remains open. A temporary incomplete-body decision check exposed the same pre-existing empty-section repetition in the baseline serializer; it is outside this frontmatter fix and was not changed (/private/tmp/back-748-decision-empty-baseline.json).
+
+2026-10-19: Reopened after the confirmed PR #1119 review finding (thread PRRT_kwDOO2LIE86t1VGe). On clean head 203b9582aabcc40adc5ad589da41f58d56d9d116, both FileSystem.saveDocument and CLI doc update with title/body edits return success and drop the exact standalone `# external owner` line before unknown `owner: team`. Evidence: /private/tmp/back-748-leading-comment-before.json; reproduction: /private/tmp/back-748-leading-comment-repro.ts. This is a defect in the existing comment-preservation promise. Prior green checks apply to the earlier head; affected AC/DoD are reopened for the source correction. The coordinator approved the narrow source-boundary plan. No public thread action, push or commit is included before correction review.
+
+2026-10-19 comment-boundary correction verification: the exact review fixture loses its leading comment on 203b9582 via both storage and CLI (/private/tmp/back-748-leading-comment-before.json), then retains it after the six-line boundary adjustment (/private/tmp/back-748-leading-comment-after.json). Fresh compiled CLI and storage proof both preserve the comment exactly once after title/body edits and repeated saves (/private/tmp/back-748-leading-comment-compiled.json; both operations exit 0, repeatedStableApartFromEditTime true). The shared fixture also retains its nested-value comment, raw scalars, anchors and aliases across the existing CLI/HTTP/MCP/decision tests. Direct tests: 11 pass, 0 fail (/private/tmp/back-748-leading-comment-focused.log). Affected broader tests: 361 pass, 0 fail, 1282 assertions across 12 files (/private/tmp/back-748-leading-comment-broader.log). Canonical types: 567 files clean; Biome: 462 files clean; build: exit 0 (matching leading-comment types/biome/build logs under /private/tmp). git diff --check passed. Subtraction pass kept the single private helper and added only two fixture lines plus one repeat-count assertion; no new abstraction, dependencies, reference semantics, public policy or further supported defect found. Correction changes only the task record, src/markdown/frontmatter.ts and src/test/content-frontmatter-preservation.test.ts. Holding uncommitted for the focused correction review; affected AC/DoD remain open and previous green CI applies only to the earlier head.
+
+2026-10-19: Adaptive review check confirmed the exact unknown multiline quoted note followed by an owned title succeeds and is stable at published 203b9582, but the uncommitted comment scan consumes the quoted closing line into the discarded owned span and throws. Evidence: /private/tmp/back-748-value-boundary-owned-before.json; actual baseline modules extracted to /private/tmp without changing the checkout. This is a verified regression introduced by this correction and falls within the approved review-cycle exception. The scan will stop at the preceding parser-reported value boundary; no broader YAML audit or new behavior is included.
+
+2026-10-19: The first parser-end clamp fixes the confirmed quoted-scalar fixture and passes its new regression, but the focused suite reports 11 pass / 1 fail: the existing repeated CLI metadata test loses its leading owner comment after owned tags become a block sequence (/private/tmp/back-748-value-boundary-focused.log). Diagnosed reason: js-yaml collection node end includes following separator comments up to the next key; it is not the final value-content boundary. Stopped before another source patch and reported the distinction to the coordinator under the review-cycle guardrail. No broader verification or finalization is claimed for this intermediate version.
+
+2026-10-19: Coordinator authorized the small generic range/content distinction inside the existing private Node bookkeeping. The full parser source range remains authoritative for copying, while child/leaf content supplies the protected boundary. Continuing only the quoted-value and list/comment regressions already confirmed; no broader YAML audit or added policy.
+
+2026-10-19 final bounded correction review: KEEP on unchanged frontmatter SHA-256 e40e404c0f60b2fa49c6ffb46e335c7f02e3e8aafbf5c10660736f657b176ac6 and test SHA-256 6d7a22629e2c90d7e0d86abb647497d43156831ae3437b4df6e27d4bae4c1592. No new blocker, edit request or worthwhile simplification. Coordinator authorized task finalization and a three-file local correction commit after the following successful checks.
+
+The private helper now keeps full node source ranges for copying and derives a separate child/leaf content boundary for the comment scan. This retains same-level leading comments without moving multiline quoted content into regenerated owned entries. The exact published-baseline/current quoted-value storage comparison is /private/tmp/back-748-content-boundary-owned-after.json; both save/read back successfully and repeat stably. The original review comment fixture and quoted kept-to-discarded fixture both pass through the fresh compiled CLI with two exit-0 updates and stable results apart from edit time (/private/tmp/back-748-content-boundary-compiled.json). The original leading comment appears once; quoted note text and raw closing line remain intact.
+
+Current verification: 12 focused tests pass, 79 assertions (/private/tmp/back-748-content-boundary-focused.log). All 362 affected broader tests pass, 1285 assertions across 12 files (/private/tmp/back-748-content-boundary-broader.log). bun run check:types: 567 files clean (/private/tmp/back-748-content-boundary-types.log). bun run check .: 462 files clean (/private/tmp/back-748-content-boundary-biome.log). bun run build: exit 0 (/private/tmp/back-748-content-boundary-build.log). git diff --check passes. Existing null/reference refusal and owned-field merge contracts remain covered and green.
+
+Subtraction pass retained one parser/source-span owner with two distinct internal boundaries and only the confirmed quoted-value regression plus the shared leading-comment fixture. No new syntax, dependency, policy, public behavior, task/draft work or broad audit. The intermediate failed clamp and its diagnosis remain in the history above. Source changes require new CI for the correction commit; prior product CI was for 203b9582.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Document and decision updates now preserve unknown top-level frontmatter automatically, keeping raw YAML values and comments through existing shared storage paths. Owned fields keep their existing meaning. Explicit null entries are handled correctly, and saves that would break a preserved YAML reference or undo an owned-field change fail before any write or move.
+Document and decision updates automatically preserve unknown frontmatter, including raw YAML values, nested comments and leading field comments. Parser-derived content boundaries keep multiline quoted values intact while the full source ranges remain available for copying. Saves that would break references or undo owned-field changes still fail before writing or moving files.
 
-Reconciled the superseded configured-field plans, documented the preservation/refusal contract, and left task/draft preservation in BACK-747. Verified 361 affected tests, canonical types/Biome/build, fresh compiled CLI reproductions, and two KEEP architecture reviews.
+Verified the original review fixture and quoted-value regression against published baseline behavior and fresh compiled CLI saves, including repeated saves. All 362 affected tests, canonical type/Biome/build checks and final bounded KEEP review pass. Superseded configured-field plans remain reconciled; task/draft preservation remains future work in BACK-747.
 <!-- SECTION:FINAL_SUMMARY:END -->

@@ -13,6 +13,8 @@ import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = getTestCliPath();
 const METADATA = [
+	"# external owner",
+	"owner: team",
 	"depends_on: [example] # external dependency",
 	"task: TASK-1",
 	"reviewed: 2026-02-01",
@@ -105,6 +107,7 @@ describe("document and decision unknown frontmatter", () => {
 		await $`bun ${CLI_PATH} doc update doc-1 --tags ${""}`.cwd(root).quiet();
 		const repeated = await Bun.file(movedPath).text();
 		expect(repeated).toContain(METADATA);
+		expect(repeated.match(/^# external owner$/gm)).toHaveLength(1);
 		expect(parseMarkdown(repeated).frontmatter).not.toHaveProperty("tags");
 		expect(parseDocument(repeated).updatedDate).toMatch(/^\d{4}-\d{2}-\d{2} /);
 	});
@@ -293,6 +296,18 @@ describe("document and decision unknown frontmatter", () => {
 		expect(saved).toContain("ratio: 1.10 # ratio\r\ncode: 007\r\nreviewed: 2026-02-01\r\n");
 		expect(parseMarkdown(saved).frontmatter).not.toHaveProperty("tags");
 		expect(parseMarkdown(saved).frontmatter).not.toHaveProperty("updated_date");
+		expect(serializeDocument(parseDocument(saved), saved)).toBe(saved);
+	});
+
+	it("keeps a quoted # line inside an unknown value before a regenerated owned entry", () => {
+		const source =
+			'---\nid: doc-1\nnote: "first\n# still the quoted value"\n# title annotation\ntitle: Original\n---\nBody\n';
+		const saved = serializeDocument({ ...parseDocument(source), title: "Changed", rawContent: "Changed body" }, source);
+		expect(saved).toContain('note: "first\n# still the quoted value"\n');
+		expect(parseMarkdown(saved).frontmatter).toMatchObject({
+			note: "first # still the quoted value",
+			title: "Changed",
+		});
 		expect(serializeDocument(parseDocument(saved), saved)).toBe(saved);
 	});
 
