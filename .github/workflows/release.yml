@@ -36,27 +36,40 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --no-tags origin "$GITHUB_REF"
-          if [[ "$(git rev-parse FETCH_HEAD)" != "$EXPECTED_TAG_OBJECT" || \
-                "$(git rev-parse 'FETCH_HEAD^{commit}')" != "$GITHUB_SHA" ]]; then
-            echo "Release tag changed since this run started; refusing to move it." >&2
-            exit 1
-          fi
+          TAG_OBJECT="$(git rev-parse FETCH_HEAD)"
+          TAG_COMMIT="$(git rev-parse 'FETCH_HEAD^{commit}')"
 
           git checkout --detach "$GITHUB_SHA"
           TAG="${GITHUB_REF#refs/tags/v}"
           jq --arg version "$TAG" '.version = $version' package.json > package.json.tmp
           mv package.json.tmp package.json
-          if ! git diff --quiet -- package.json; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add package.json
-            git commit -m "chore: prepare $GITHUB_REF_NAME source version [skip ci]"
-            git push --force-with-lease="$GITHUB_REF:$EXPECTED_TAG_OBJECT" origin "HEAD:$GITHUB_REF"
+          git add package.json
+          EXPECTED_TREE="$(git write-tree)"
+          COMMIT_MESSAGE="$(printf 'chore: prepare %s source version [skip ci]\n\nBacklog-Release-Run: %s' \
+            "$GITHUB_REF_NAME" "$GITHUB_RUN_ID")"
+          if [[ "$TAG_OBJECT" == "$EXPECTED_TAG_OBJECT" && "$TAG_COMMIT" == "$GITHUB_SHA" ]]; then
+            if ! git diff --cached --quiet -- package.json; then
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git commit -m "$COMMIT_MESSAGE"
+              git push --force-with-lease="$GITHUB_REF:$EXPECTED_TAG_OBJECT" origin "HEAD:$GITHUB_REF"
+            fi
+            PREPARED_COMMIT="$(git rev-parse HEAD)"
+          elif ! git diff --cached --quiet -- package.json && \
+               [[ "$TAG_OBJECT" == "$TAG_COMMIT" && \
+                  "$(git show -s --format=%P "$TAG_COMMIT")" == "$GITHUB_SHA" && \
+                  "$(git rev-parse "$TAG_COMMIT^{tree}")" == "$EXPECTED_TREE" && \
+                  "$(git show -s --format=%B "$TAG_COMMIT")" == "$COMMIT_MESSAGE" ]]; then
+            # Retry only this run's existing version-only commit after a failed dispatch.
+            PREPARED_COMMIT="$TAG_COMMIT"
+          else
+            echo "Release tag changed outside this run's preparation; refusing to continue." >&2
+            exit 1
           fi
 
           # A new run gives npm provenance the same commit as the prepared source.
           gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" \
-            -f "prepared_commit=$(git rev-parse HEAD)"
+            -f "prepared_commit=$PREPARED_COMMIT"
 
   verify-source:
     if: github.event_name == 'workflow_dispatch'
