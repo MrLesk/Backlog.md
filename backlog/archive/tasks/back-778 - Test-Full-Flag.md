@@ -1,6 +1,6 @@
 ---
-id: BACK-88
-title: Test AC Feature
+id: BACK-778
+title: Test Full Flag
 status: To Do
 assignee: []
 created_date: '2025-06-19'
@@ -10,8 +10,7 @@ dependencies: []
 
 ## Description
 
-Testing acceptance criteria
-
 ## Acceptance Criteria
 
-- [ ] Must support multiple criteria
+- [ ] Full flag criterion 1
+- [ ] Full flag criterion 2
