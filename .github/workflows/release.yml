@@ -3,6 +3,12 @@ name: Release multi-platform executables
 on:
   push:
     tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      prepared_commit:
+        description: Prepared release commit
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -12,7 +18,83 @@ env:
   BUN_VERSION: 1.4.3
 
 jobs:
+  prepare-release:
+    if: github.event_name == 'push' && github.event.created
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - name: Prepare tagged source and start release
+        shell: bash
+        env:
+          EXPECTED_TAG_OBJECT: ${{ github.event.after }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$GITHUB_REF"
+          TAG_OBJECT="$(git rev-parse FETCH_HEAD)"
+          TAG_COMMIT="$(git rev-parse 'FETCH_HEAD^{commit}')"
+
+          git checkout --detach "$GITHUB_SHA"
+          TAG="${GITHUB_REF#refs/tags/v}"
+          jq --arg version "$TAG" '.version = $version' package.json > package.json.tmp
+          mv package.json.tmp package.json
+          git add package.json
+          EXPECTED_TREE="$(git write-tree)"
+          COMMIT_MESSAGE="$(printf 'chore: prepare %s source version [skip ci]\n\nBacklog-Release-Run: %s' \
+            "$GITHUB_REF_NAME" "$GITHUB_RUN_ID")"
+          if [[ "$TAG_OBJECT" == "$EXPECTED_TAG_OBJECT" && "$TAG_COMMIT" == "$GITHUB_SHA" ]]; then
+            if ! git diff --cached --quiet -- package.json; then
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git commit -m "$COMMIT_MESSAGE"
+              git push --force-with-lease="$GITHUB_REF:$EXPECTED_TAG_OBJECT" origin "HEAD:$GITHUB_REF"
+            fi
+            PREPARED_COMMIT="$(git rev-parse HEAD)"
+          elif ! git diff --cached --quiet -- package.json && \
+               [[ "$TAG_OBJECT" == "$TAG_COMMIT" && \
+                  "$(git show -s --format=%P "$TAG_COMMIT")" == "$GITHUB_SHA" && \
+                  "$(git rev-parse "$TAG_COMMIT^{tree}")" == "$EXPECTED_TREE" && \
+                  "$(git show -s --format=%B "$TAG_COMMIT")" == "$COMMIT_MESSAGE" ]]; then
+            # Retry only this run's existing version-only commit after a failed dispatch.
+            PREPARED_COMMIT="$TAG_COMMIT"
+          else
+            echo "Release tag changed outside this run's preparation; refusing to continue." >&2
+            exit 1
+          fi
+
+          # A new run gives npm provenance the same commit as the prepared source.
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" \
+            -f "prepared_commit=$PREPARED_COMMIT"
+
+  verify-source:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - name: Verify prepared release source
+        shell: bash
+        env:
+          EXPECTED_COMMIT: ${{ inputs.prepared_commit }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != refs/tags/v*.*.* || "$GITHUB_SHA" != "$EXPECTED_COMMIT" ]]; then
+            echo "Release must run at the expected prepared tag commit." >&2
+            exit 1
+          fi
+          git fetch --no-tags origin "$GITHUB_REF"
+          test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$EXPECTED_COMMIT"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
+          test "$(jq -r .version package.json)" = "${GITHUB_REF#refs/tags/v}"
+
   build:
+    needs: verify-source
     name: build-${{ matrix.target }}
     strategy:
       fail-fast: false
@@ -35,6 +117,8 @@ jobs:
       BIN: backlog-bin${{ contains(matrix.target,'windows') && '.exe' || '' }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
       - uses: oven-sh/setup-bun@v2
         with:
           # Bun >=1.3 includes stdin pause/subprocess handoff fixes used by TUI editor launch.
@@ -47,11 +131,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.target }}-bun-${{ env.BUN_VERSION }}-
       - run: bun install --frozen-lockfile
-      - name: Sync version to tag
-        shell: bash
-        run: |
-          TAG="${GITHUB_REF##refs/tags/v}"
-          jq ".version = \"$TAG\"" package.json > tmp.json && mv tmp.json package.json
       - name: Prime Bun cache for Windows x64 target
         if: ${{ matrix.target == 'bun-windows-x64' }}
         shell: bash
@@ -94,6 +173,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
       - name: Prepare npm package
         shell: bash
         run: |
@@ -164,6 +245,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
       - name: Download platform binary
         id: binary
         background: true
