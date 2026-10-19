@@ -15,7 +15,7 @@ import {
 	newTaskLockError,
 } from "../file-system/operations.ts";
 import { type GitBranchTip, type GitIndexEntry, GitOperations } from "../git/operations.ts";
-import { parseFrontmatter } from "../markdown/frontmatter.ts";
+import { FrontmatterReferenceError, parseFrontmatter } from "../markdown/frontmatter.ts";
 import { parseTask } from "../markdown/parser.ts";
 import { assertSectionInputHasNoMarkerLines, assertValidChecklistMarks } from "../markdown/structured-sections.ts";
 import {
@@ -418,6 +418,13 @@ function assertSectionInputsSafe(input: {
  * decision. The message is the answer for the caller, so every interface reports it as it is.
  */
 export class RecordRefusedError extends Error {}
+
+function refuseBrokenFrontmatterReference(error: unknown): never {
+	if (error instanceof FrontmatterReferenceError) {
+		throw new RecordRefusedError(error.message, { cause: error });
+	}
+	throw error;
+}
 
 /**
  * A change targeted a task that exists only in the archive, where tasks are read-only. Restoring
@@ -4341,7 +4348,7 @@ export class Core {
 	}
 
 	async createDecision(decision: Decision, autoCommit?: boolean): Promise<void> {
-		const { filepath, movedFrom } = await this.fs.saveDecision(decision);
+		const { filepath, movedFrom } = await this.fs.saveDecision(decision).catch(refuseBrokenFrontmatterReference);
 
 		if (await this.shouldAutoCommit(autoCommit)) {
 			await this.commitWrittenFile(`backlog: Add decision ${decision.id}`, movedFrom ? [movedFrom] : [], filepath);
@@ -4425,7 +4432,9 @@ export class Core {
 	}
 
 	async createDocument(doc: Document, autoCommit?: boolean, subPath = ""): Promise<void> {
-		const { relativePath, movedFrom } = await this.fs.saveDocument(doc, normalizeDocumentSubPath(subPath));
+		const { relativePath, movedFrom } = await this.fs
+			.saveDocument(doc, normalizeDocumentSubPath(subPath))
+			.catch(refuseBrokenFrontmatterReference);
 		doc.path = relativePath;
 
 		if (await this.shouldAutoCommit(autoCommit)) {

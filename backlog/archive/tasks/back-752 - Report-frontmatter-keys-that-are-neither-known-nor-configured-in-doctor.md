@@ -4,6 +4,7 @@ title: Report frontmatter keys that are neither known nor configured in doctor
 status: To Do
 assignee: []
 created_date: '2026-10-11 19:36'
+updated_date: '2026-10-18 19:45'
 labels:
   - enhancement
 dependencies:
@@ -50,3 +51,9 @@ Depends on BACK-746 (the lists and the reserved names) and on BACK-747, BACK-748
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-10-18: Canceled: Alex's 2026-10-18 decision preserves all unknown keys automatically. No configuration lists or unconfigured-key doctor warning are planned. BACK-748 implements document/decision preservation, and BACK-747 retains future task/draft scope. This task is archived unimplemented, not Done.
+<!-- SECTION:NOTES:END -->

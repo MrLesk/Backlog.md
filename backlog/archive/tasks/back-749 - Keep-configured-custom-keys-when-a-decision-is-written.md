@@ -4,6 +4,7 @@ title: Keep configured custom keys when a decision is written
 status: To Do
 assignee: []
 created_date: '2026-10-11 19:35'
+updated_date: '2026-10-18 19:45'
 labels:
   - enhancement
 dependencies:
@@ -53,3 +54,9 @@ Depends on BACK-733 (the frontmatter writer no longer reads the body again), BAC
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-10-18: Consolidated into BACK-748: Alex's 2026-10-18 decision requires automatic unknown-key preservation for documents and decisions. The old decision_custom_fields plan and future decision-feature dependencies are superseded. Existing HTTP full saves and CLI status edits are the current scope. This task is archived unimplemented, not Done; its original configured-only specification remains historical evidence.
+<!-- SECTION:NOTES:END -->

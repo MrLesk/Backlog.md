@@ -391,6 +391,8 @@ To keep the Web UI running in the background with auto-start on boot, see [Runni
 | Restore doc | `backlog doc restore doc-1` (move an archived document back to `backlog/docs/` with the same ID) |
 | Delete doc | `backlog doc delete doc-1` (archived documents only; no prompt; removes the file and releases the ID) |
 
+Document and decision updates automatically keep unknown top-level YAML frontmatter keys, including their written values and comments. No configuration is needed. If preserving a YAML reference would break it or prevent applying a change to a Backlog-owned field, the save fails with a clear error and leaves the file and path unchanged. For example, `owner: *name` refers to the value marked with `&name`; edit that reference or its anchor in the file before trying again.
+
 ## Decisions
 
 | Action      | Example                                              |
