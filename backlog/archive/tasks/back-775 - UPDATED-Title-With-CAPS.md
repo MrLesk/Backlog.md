@@ -1,9 +1,10 @@
 ---
-id: BACK-81
-title: Test Mixed Case Filename
+id: BACK-775
+title: UPDATED Title With CAPS
 status: To Do
 assignee: []
 created_date: '2025-06-17'
+updated_date: '2025-06-17'
 labels: []
 dependencies: []
 ---

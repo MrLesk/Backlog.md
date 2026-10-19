@@ -48,7 +48,7 @@ Render the browser shell immediately while the shared watcher-backed Core corpus
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Replaces the branch-local BACK-569 coordination task after a concurrently published active branch claimed the same ID. The prior task was archived through the CLI; this task is the authoritative implementation record.
+Replaces BACK-781 (formerly the branch-local BACK-569 coordination task) after a concurrently published active branch claimed the same ID. The prior task was archived through the CLI; this task is the authoritative implementation record.
 
 Implemented a deferred, coalesced browser service boundary: the HTTP shell and lightweight metadata routes respond before the shared watcher-backed Core corpus is ready, while task/search/duplicate and WebSocket consumers reuse the same initialization. Repeated cross-branch reads now refresh only when the active-branch/config fingerprint changes. Task identity fingerprints use lifecycle identity fields instead of hydrated payload placement. The app applies lightweight shell data first, reuses loaded tasks in the modal, keeps sidebar navigation mounted with a count-only loading placeholder, and filters completed lifecycle entries only at the Kanban presentation boundary; archived identities remain excluded by the identity index.
 
