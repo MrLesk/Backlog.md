@@ -577,37 +577,37 @@ await import(${JSON.stringify(pathToFileURL(cliPath).href)});
 				expect(await loadDocumentation()).toEqual(["seed:b"]);
 			});
 
-			it.each([
-				"--add-doc",
-				"--remove-doc",
-			])("rejects invalid %s edits without changing any file bytes", async (flag) => {
-				await createTaskWithDocumentation();
-				const task = await loadTask();
-				if (!task?.filePath) throw new Error("expected task or draft file path");
-				const before = await Bun.file(task.filePath).bytes();
-				const emptyError = `Cannot use an empty value with ${flag}. Use --clear-docs to remove all documentation.`;
-				const replacementError = "Cannot combine --doc with --add-doc or --remove-doc";
-				const invalidEdits: Array<[string[], string]> = [
-					[[flag, ""], emptyError],
-					[[flag, "   "], emptyError],
-					[[flag, ", ,"], emptyError],
-					[[flag, "seed:a", flag, ""], emptyError],
-					[["--clear-docs", flag, "seed:a"], `Cannot combine --clear-docs with ${flag}`],
-					[["--doc", "only:c", flag, "seed:a"], replacementError],
-					[["--doc", "", flag, "seed:a"], replacementError],
-				];
-				for (const [args, error] of invalidEdits) {
-					const result = await $`bun ${cliPath} ${target} edit ${id} --notes "Must not be saved" ${args}`
-						.cwd(TEST_DIR)
-						.quiet()
-						.nothrow();
-					expect(result.exitCode).toBe(1);
-					expect(result.stderr.toString()).toContain(error);
-					expect(result.stderr.toString().split("No changes were applied.")).toHaveLength(2);
-					expect(result.stdout.toString()).not.toContain(`Updated ${target}`);
-					expect(await Bun.file(task.filePath).bytes()).toEqual(before);
-				}
-			});
+			it.each(["--add-doc", "--remove-doc"])(
+				"rejects invalid %s edits without changing any file bytes",
+				async (flag) => {
+					await createTaskWithDocumentation();
+					const task = await loadTask();
+					if (!task?.filePath) throw new Error("expected task or draft file path");
+					const before = await Bun.file(task.filePath).bytes();
+					const emptyError = `Cannot use an empty value with ${flag}. Use --clear-docs to remove all documentation.`;
+					const replacementError = "Cannot combine --doc with --add-doc or --remove-doc";
+					const invalidEdits: Array<[string[], string]> = [
+						[[flag, ""], emptyError],
+						[[flag, "   "], emptyError],
+						[[flag, ", ,"], emptyError],
+						[[flag, "seed:a", flag, ""], emptyError],
+						[["--clear-docs", flag, "seed:a"], `Cannot combine --clear-docs with ${flag}`],
+						[["--doc", "only:c", flag, "seed:a"], replacementError],
+						[["--doc", "", flag, "seed:a"], replacementError],
+					];
+					for (const [args, error] of invalidEdits) {
+						const result = await $`bun ${cliPath} ${target} edit ${id} --notes "Must not be saved" ${args}`
+							.cwd(TEST_DIR)
+							.quiet()
+							.nothrow();
+						expect(result.exitCode).toBe(1);
+						expect(result.stderr.toString()).toContain(error);
+						expect(result.stderr.toString().split("No changes were applied.")).toHaveLength(2);
+						expect(result.stdout.toString()).not.toContain(`Updated ${target}`);
+						expect(await Bun.file(task.filePath).bytes()).toEqual(before);
+					}
+				},
+			);
 
 			it("keeps --doc as the replace-all operation", async () => {
 				await createTaskWithDocumentation();

@@ -72,23 +72,23 @@ describe("MCP document_restore and document_delete", () => {
 		await safeCleanup(TEST_DIR);
 	});
 
-	it.each([
-		"document_restore",
-		"document_delete",
-	])("offers %s with the one-ID input of document_view and rejects any other field", async (tool) => {
-		const tools = (await mcpServer.testInterface.listTools()).tools;
-		const offered = tools.find((candidate) => candidate.name === tool);
-		const viewTool = tools.find((candidate) => candidate.name === "document_view");
-		expect(offered?.inputSchema).toEqual(viewTool?.inputSchema);
-		expect(offered?.inputSchema).toMatchObject({ required: ["id"], additionalProperties: false });
-		const name = await createArchivedDocument("Kept");
+	it.each(["document_restore", "document_delete"])(
+		"offers %s with the one-ID input of document_view and rejects any other field",
+		async (tool) => {
+			const tools = (await mcpServer.testInterface.listTools()).tools;
+			const offered = tools.find((candidate) => candidate.name === tool);
+			const viewTool = tools.find((candidate) => candidate.name === "document_view");
+			expect(offered?.inputSchema).toEqual(viewTool?.inputSchema);
+			expect(offered?.inputSchema).toMatchObject({ required: ["id"], additionalProperties: false });
+			const name = await createArchivedDocument("Kept");
 
-		const rejected = await call(tool, { id: "doc-1", confirm: true });
+			const rejected = await call(tool, { id: "doc-1", confirm: true });
 
-		expect(rejected.isError).toBe(true);
-		expect(rejected.text).toContain("Unknown field 'confirm' is not allowed");
-		expect(await exists(archivePath(name))).toBe(true);
-	});
+			expect(rejected.isError).toBe(true);
+			expect(rejected.text).toContain("Unknown field 'confirm' is not allowed");
+			expect(await exists(archivePath(name))).toBe(true);
+		},
+	);
 
 	it("restores the file unchanged, after which the document lists, searches and updates again", async () => {
 		const name = await createArchivedDocument("Runbook", "Runbook steps.");
@@ -223,53 +223,56 @@ describe("MCP document_restore and document_delete", () => {
 		[true, 1],
 		[false, 2],
 		[true, 2],
-	] as const)("commits both record paths after an uncommitted archive (archive staged: %s, removed parents: %s)", async (stageArchive, removedParents) => {
-		await setAutoCommit(false);
-		const created = await call("document_create", {
-			title: "Mixed auto-commit",
-			content: "Committed content",
-			path: "guides/http",
-		});
-		expect(created.isError).toBe(false);
-		const name = "doc-1 - Mixed-auto-commit.md";
-		const activePath = `backlog/docs/guides/http/${name}`;
-		const archivedPath = `backlog/archive/docs/guides/http/${name}`;
-		await writeFile(join(TEST_DIR, "unstaged.txt"), "original\n");
-		await git("add", "-A");
-		await git("commit", "-m", "Track the active document");
-		const headBefore = await git("rev-parse", "HEAD");
+	] as const)(
+		"commits both record paths after an uncommitted archive (archive staged: %s, removed parents: %s)",
+		async (stageArchive, removedParents) => {
+			await setAutoCommit(false);
+			const created = await call("document_create", {
+				title: "Mixed auto-commit",
+				content: "Committed content",
+				path: "guides/http",
+			});
+			expect(created.isError).toBe(false);
+			const name = "doc-1 - Mixed-auto-commit.md";
+			const activePath = `backlog/docs/guides/http/${name}`;
+			const archivedPath = `backlog/archive/docs/guides/http/${name}`;
+			await writeFile(join(TEST_DIR, "unstaged.txt"), "original\n");
+			await git("add", "-A");
+			await git("commit", "-m", "Track the active document");
+			const headBefore = await git("rev-parse", "HEAD");
 
-		expect((await call("document_archive", { id: "doc-1" })).isError).toBe(false);
-		expect(await git("rev-parse", "HEAD")).toBe(headBefore);
-		expect(await git("diff", "--cached", "--name-only")).toBe("");
-		if (stageArchive) await git("add", "--", activePath, archivedPath);
-		for (const folder of ["guides/http", "guides"].slice(0, removedParents)) {
-			await rmdir(docsPath(folder));
-		}
-		await setAutoCommit(true);
-		await writeFile(join(TEST_DIR, "staged.txt"), "staged by the user\n");
-		await git("add", "staged.txt");
-		await writeFile(join(TEST_DIR, "staged.txt"), "unstaged edit of staged work\n");
-		await writeFile(join(TEST_DIR, "unstaged.txt"), "user edit\n");
-		const unrelatedPaths = ["staged.txt", "unstaged.txt", "backlog/config.yml"];
-		const stagedBefore = await git("diff", "--cached", "--", ...unrelatedPaths);
-		const unstagedBefore = await git("diff", "--", ...unrelatedPaths);
-		const commitsBefore = Number(await git("rev-list", "--count", "HEAD"));
+			expect((await call("document_archive", { id: "doc-1" })).isError).toBe(false);
+			expect(await git("rev-parse", "HEAD")).toBe(headBefore);
+			expect(await git("diff", "--cached", "--name-only")).toBe("");
+			if (stageArchive) await git("add", "--", activePath, archivedPath);
+			for (const folder of ["guides/http", "guides"].slice(0, removedParents)) {
+				await rmdir(docsPath(folder));
+			}
+			await setAutoCommit(true);
+			await writeFile(join(TEST_DIR, "staged.txt"), "staged by the user\n");
+			await git("add", "staged.txt");
+			await writeFile(join(TEST_DIR, "staged.txt"), "unstaged edit of staged work\n");
+			await writeFile(join(TEST_DIR, "unstaged.txt"), "user edit\n");
+			const unrelatedPaths = ["staged.txt", "unstaged.txt", "backlog/config.yml"];
+			const stagedBefore = await git("diff", "--cached", "--", ...unrelatedPaths);
+			const unstagedBefore = await git("diff", "--", ...unrelatedPaths);
+			const commitsBefore = Number(await git("rev-list", "--count", "HEAD"));
 
-		const deleted = await call("document_delete", { id: "doc-1" });
+			const deleted = await call("document_delete", { id: "doc-1" });
 
-		expect(deleted).toEqual({ isError: false, text: "Deleted document doc-1.", code: undefined });
-		expect(Number(await git("rev-list", "--count", "HEAD"))).toBe(commitsBefore + 1);
-		expect(await git("ls-tree", "-r", "--name-only", "HEAD", "--", activePath, archivedPath)).toBe("");
-		expect(await git("show", "--name-status", "--format=", "HEAD")).toBe(`D\t${activePath}`);
-		expect(await git("diff", "--cached", "--", ...unrelatedPaths)).toBe(stagedBefore);
-		expect(await git("diff", "--", ...unrelatedPaths)).toBe(unstagedBefore);
-		expect(await exists(docsPath("guides", "http", name))).toBe(false);
-		expect(await exists(archivePath("guides", "http", name))).toBe(false);
-		expect((await call("document_create", { title: "Created afterwards", content: "Body" })).text).toContain(
-			"Document doc-1 - Created afterwards",
-		);
-	});
+			expect(deleted).toEqual({ isError: false, text: "Deleted document doc-1.", code: undefined });
+			expect(Number(await git("rev-list", "--count", "HEAD"))).toBe(commitsBefore + 1);
+			expect(await git("ls-tree", "-r", "--name-only", "HEAD", "--", activePath, archivedPath)).toBe("");
+			expect(await git("show", "--name-status", "--format=", "HEAD")).toBe(`D\t${activePath}`);
+			expect(await git("diff", "--cached", "--", ...unrelatedPaths)).toBe(stagedBefore);
+			expect(await git("diff", "--", ...unrelatedPaths)).toBe(unstagedBefore);
+			expect(await exists(docsPath("guides", "http", name))).toBe(false);
+			expect(await exists(archivePath("guides", "http", name))).toBe(false);
+			expect((await call("document_create", { title: "Created afterwards", content: "Body" })).text).toContain(
+				"Document doc-1 - Created afterwards",
+			);
+		},
+	);
 
 	it("makes no commit and stages nothing when auto-commit is off", async () => {
 		await setAutoCommit(false);
