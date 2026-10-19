@@ -82,7 +82,7 @@ export interface Task {
 	filePath?: string;
 	// Metadata fields
 	lastModified?: Date;
-	source?: "local" | "remote" | "completed" | "local-branch";
+	source?: "local" | "remote" | "archived" | "local-branch";
 	/** Optional per-task callback command to run on status change (overrides global config) */
 	onStatusChange?: string;
 }
@@ -106,10 +106,20 @@ export interface MilestoneSummary {
 }
 
 /**
- * Check if a task is locally editable (not from a remote or other local branch)
+ * Check if a task record comes from the local working copy, on the board or in the archive, rather
+ * than from a remote or another local branch. It says where the record lives, not whether it can
+ * be changed; see {@link isReadOnlyTask} for that.
  */
-export function isLocalEditableTask(task: Task): boolean {
-	return task.source === undefined || task.source === "local" || task.source === "completed";
+export function isWorkingCopyTask(task: Task): boolean {
+	return task.source === undefined || task.source === "local" || task.source === "archived";
+}
+
+/**
+ * Check if a task can be shown but not changed here: it belongs to another branch, or it is
+ * archived. Every surface asks this one question before it offers or attempts a change.
+ */
+export function isReadOnlyTask(task: Task): boolean {
+	return !isWorkingCopyTask(task) || Boolean(task.branch) || task.source === "archived";
 }
 
 export interface TaskCreateInput {
@@ -210,7 +220,14 @@ export interface Decision {
 	consequences: string;
 	alternatives?: string;
 	readonly rawContent: string; // Raw markdown content without frontmatter
-	path?: string; // Decisions-relative file path, set when listed from disk
+	/**
+	 * The file name, set when listed from disk. Decisions are stored flat, so this is a file name
+	 * directly inside the decisions folder, or inside the archive folder for decisions when
+	 * `archived` is set.
+	 */
+	path?: string;
+	/** True when the decision's file is in the archive folder for decisions. An archived decision is read-only. */
+	archived?: boolean;
 }
 
 export interface Milestone {
@@ -219,6 +236,24 @@ export interface Milestone {
 	dueDate?: string;
 	description: string;
 	readonly rawContent: string; // Raw markdown content without frontmatter
+}
+
+/**
+ * The record kinds that are files of their own folder, with an archive folder beside it: documents
+ * and decisions. Archive, restore and delete are written once for them, keyed by this kind; tasks
+ * and drafts have their own operations. A new kind needs an entry in `CONTENT_RECORD_WORDS` and a
+ * case in `Core.contentRecords` (both in src/core/backlog.ts) and in
+ * `FileSystem.contentRecordStorage`.
+ */
+export type ContentRecordKind = "document" | "decision";
+
+/** The fields of a document or a decision that its archive, restore and delete read. */
+export interface ContentRecord {
+	id: string;
+	/** Where the file is under its folder: a relative path for a document, a file name for a decision. */
+	path?: string;
+	/** True when the file is in the archive folder of its kind. */
+	archived?: boolean;
 }
 
 export const DOCUMENT_TYPE_VALUES = ["readme", "guide", "specification", "other"] as const;
@@ -236,6 +271,11 @@ export interface Document {
 	name?: string;
 	path?: string;
 	lastModified?: string;
+	/**
+	 * True when the document's file is in the archive folder for documents. `path` is then relative
+	 * to that folder instead of the docs folder. An archived document can be viewed but not changed.
+	 */
+	archived?: boolean;
 }
 
 export interface DocumentCreateInput {

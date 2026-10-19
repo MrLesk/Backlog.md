@@ -98,7 +98,8 @@ export const TASK_SEARCH_FUSE_OPTIONS: IFuseOptions<TaskSearchFields> = {
 	includeScore: true,
 	threshold: 0.35,
 	ignoreLocation: true,
-	minMatchCharLength: 2,
+	// Keep single-character task ID searches available after Fuse 7.5 fixes exact-match filtering.
+	minMatchCharLength: 1,
 	keys: [
 		{ name: "title", weight: 0.35 },
 		{ name: "bodyText", weight: 0.3 },

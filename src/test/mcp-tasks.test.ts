@@ -8,6 +8,7 @@ import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import type { JsonSchema } from "../mcp/validation/validators.ts";
 import type { Task } from "../types/index.ts";
 import {
+	archiveTaskFile,
 	commitSamePathBranchTaskVariant,
 	createUniqueTestDir,
 	initializeFilesystemTestProject,
@@ -272,6 +273,257 @@ describe("MCP task tools (MVP)", () => {
 		});
 		expect(viewResult.isError).toBe(true);
 		expect(getText(viewResult.content)).toContain("is ambiguous");
+	});
+
+	it("archives a task in any status, keeps its ID, and then treats it as read-only", async () => {
+		const call = async (name: string, args: Record<string, unknown>) =>
+			await mcpServer.testInterface.callTool({ params: { name, arguments: args } });
+		await call("task_create", { title: "Finished work", status: "Done" });
+		await call("task_create", { title: "Set aside work" });
+
+		for (const id of ["task-1", "task-2"]) {
+			const archived = await call("task_archive", { id });
+			expect(archived.isError).not.toBe(true);
+			expect(getText(archived.content)).toContain(`Archived task ${id.toUpperCase()}.`);
+		}
+
+		const view = getText((await call("task_view", { id: "task-1" })).content);
+		expect(view).toContain("Task TASK-1 - Finished work");
+		expect(view).toContain("Status: ✔ Done (archived)");
+		expect((await mcpServer.filesystem.listArchivedTasks()).map((task) => [task.id, task.status])).toEqual([
+			["TASK-1", "Done"],
+			["TASK-2", "To Do"],
+		]);
+
+		// Both archived IDs stay taken, including the highest one.
+		expect(getText((await call("task_create", { title: "Next work" })).content)).toContain("Task TASK-3 - Next work");
+
+		for (const [name, args] of [
+			["task_edit", { id: "task-2", notesAppend: ["late note"] }],
+			["task_archive", { id: "task-2" }],
+		] as const) {
+			const refused = await call(name, args);
+			expect(refused.isError).toBe(true);
+			expect(getText(refused.content)).toContain(
+				"Task TASK-2 is archived. Archived tasks are read-only. Restore it to the board first: backlog task restore TASK-2",
+			);
+		}
+
+		const toolNames = (await mcpServer.testInterface.listTools()).tools.map((tool) => tool.name);
+		expect(toolNames).toContain("task_archive");
+		expect(toolNames.filter((name) => name.includes("complete"))).toEqual([]);
+	});
+
+	it("answers a lifecycle call on a task that exists only on another branch with core's read-only refusal", async () => {
+		await enableGitTestProject();
+		const config = await loadConfig(mcpServer);
+		await mcpServer.filesystem.saveConfig({ ...config, checkActiveBranches: true, remoteOperations: false });
+		const base = { status: "To Do", assignee: [], createdDate: "2026-08-01", labels: [], dependencies: [] };
+		await mcpServer.filesystem.saveTask({ ...base, id: "TASK-1", title: "On the board" });
+		await $`git add .`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Add the board task"`.cwd(TEST_DIR).quiet();
+		await $`git switch -c feature`.cwd(TEST_DIR).quiet();
+		await mcpServer.filesystem.saveTask({ ...base, id: "TASK-2", title: "Only on the feature branch" });
+		await Bun.write(
+			join(mcpServer.filesystem.archiveTasksDir, "task-3 - Archived-on-the-feature-branch.md"),
+			serializeTask({ ...base, id: "TASK-3", title: "Archived on the feature branch" }),
+		);
+		// Two files on that branch claim TASK-4.
+		for (const name of ["task-4 - First-claimant.md", "task-04 - Second-claimant.md"]) {
+			await Bun.write(
+				join(mcpServer.filesystem.tasksDir, name),
+				serializeTask({ ...base, id: name.startsWith("task-04") ? "TASK-04" : "TASK-4", title: name }),
+			);
+		}
+		await $`git add .`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Add the feature tasks"`.cwd(TEST_DIR).quiet();
+		await $`git switch main`.cwd(TEST_DIR).quiet();
+		const call = async (name: string, args: Record<string, unknown>) =>
+			await mcpServer.testInterface.callTool({ params: { name, arguments: args } });
+
+		// Both tasks are visible from here, on the other branch's board and in its archive, so
+		// "not found" would contradict what task_view just showed.
+		for (const [id, title] of [
+			["2", "Only on the feature branch"],
+			["3", "Archived on the feature branch"],
+		]) {
+			const view = await call("task_view", { id: `task-${id}` });
+			expect(view.isError).not.toBe(true);
+			expect(getText(view.content)).toContain(`Task TASK-${id} - ${title}`);
+
+			for (const operation of ["task_archive", "task_delete", "task_restore"]) {
+				const refused = await call(operation, { id: `task-${id}` });
+				expect(refused.isError).toBe(true);
+				expect(getText(refused.content)).toBe(
+					`Task TASK-${id} exists only on branch "feature" and is read-only here. Switch to that branch to change it.`,
+				);
+			}
+		}
+
+		const unknown = await call("task_archive", { id: "task-9" });
+		expect(unknown.isError).toBe(true);
+		expect(getText(unknown.content)).toBe("Task task-9 not found.");
+
+		// An ID that two records claim on the other branch fails closed instead of reading as missing.
+		const contested = await call("task_archive", { id: "task-4" });
+		expect(contested.isError).toBe(true);
+		expect(getText(contested.content)).toContain("is ambiguous");
+		await expect(mcpServer.archiveTask("task-4")).rejects.toThrow("is ambiguous");
+		await expect(mcpServer.deleteTask("task-4")).rejects.toThrow("is ambiguous");
+		await expect(mcpServer.restoreTask("task-4")).rejects.toThrow("is ambiguous");
+
+		expect((await mcpServer.filesystem.listTasks()).map((task) => task.id)).toEqual(["TASK-1"]);
+		expect(await mcpServer.filesystem.listArchivedTasks()).toEqual([]);
+	});
+
+	it("restores an archived task to the board under the same rules as the CLI", async () => {
+		const call = async (name: string, args: Record<string, unknown>) =>
+			await mcpServer.testInterface.callTool({ params: { name, arguments: args } });
+		await call("task_create", { title: "Comes back", status: "In Progress" });
+		await call("task_create", { title: "Stays on the board" });
+		await call("task_archive", { id: "task-1" });
+
+		const restored = await call("task_restore", { id: "task-1" });
+		expect(restored.isError).not.toBe(true);
+		const text = getText(restored.content);
+		expect(text).toContain("Restored task TASK-1.");
+		expect(text).toContain("Task TASK-1 - Comes back");
+		expect(text).toContain("In Progress");
+		expect(text).not.toContain("(archived)");
+		expect((await mcpServer.filesystem.listTasks()).map((task) => task.id)).toEqual(["TASK-1", "TASK-2"]);
+		expect(await mcpServer.filesystem.listArchivedTasks()).toEqual([]);
+
+		// Back on the board it is an ordinary task again.
+		const edited = await call("task_edit", { id: "task-1", notesAppend: ["Back on the board"] });
+		expect(edited.isError).not.toBe(true);
+		// task_list returns one text item per status; the restored task is in its own status group.
+		const listed = ((await call("task_list", {})).content ?? []).map((_item, index, items) => getText(items, index));
+		expect(listed.join("\n")).toContain("In Progress:\n  TASK-1 - Comes back");
+
+		const onBoard = await call("task_restore", { id: "task-2" });
+		expect(onBoard.isError).toBe(true);
+		expect(getText(onBoard.content)).toContain("Task TASK-2 is not archived. It is already on the board.");
+		const unknown = await call("task_restore", { id: "task-99" });
+		expect(unknown.isError).toBe(true);
+		expect(getText(unknown.content)).toContain("Task task-99 not found.");
+		expect((await mcpServer.filesystem.listTasks()).map((task) => task.id)).toEqual(["TASK-1", "TASK-2"]);
+
+		const restoreTool = (await mcpServer.testInterface.listTools()).tools.find((tool) => tool.name === "task_restore");
+		expect(restoreTool?.inputSchema).toMatchObject({
+			properties: { id: { type: "string" } },
+			required: ["id"],
+			additionalProperties: false,
+		});
+	});
+
+	it("deletes an archived task under the same rules as the CLI", async () => {
+		const call = async (name: string, args: Record<string, unknown>) =>
+			await mcpServer.testInterface.callTool({ params: { name, arguments: args } });
+		await call("task_create", { title: "Target" });
+		await call("task_create", { title: "Dependent", dependencies: ["task-1"] });
+		await call("task_create", { title: "Parent" });
+		await call("task_create", { title: "Child", parentTaskId: "task-3" });
+		await call("task_create", { title: "Draft dependent", status: "Draft", dependencies: ["task-1"] });
+
+		const notArchived = await call("task_delete", { id: "task-1" });
+		expect(notArchived.isError).toBe(true);
+		expect(getText(notArchived.content)).toContain(
+			"Task TASK-1 is not archived. A task must be archived before it can be deleted.",
+		);
+		expect((await mcpServer.filesystem.loadTask("task-1"))?.title).toBe("Target");
+
+		await call("task_archive", { id: "task-3" });
+		const withSubtasks = await call("task_delete", { id: "task-3" });
+		expect(withSubtasks.isError).toBe(true);
+		expect(getText(withSubtasks.content)).toContain(
+			"Task TASK-3 cannot be deleted while its subtasks exist: TASK-3.1.",
+		);
+		expect((await mcpServer.filesystem.listArchivedTasks()).map((task) => task.id)).toEqual(["TASK-3"]);
+
+		await call("task_archive", { id: "task-1" });
+		const deleted = await call("task_delete", { id: "task-1" });
+		expect(deleted.isError).not.toBe(true);
+		// The cleaned draft is named with the cleaned task, in the same line.
+		expect(getText(deleted.content)).toBe("Deleted task TASK-1.\nRemoved references to TASK-1 from TASK-2, DRAFT-1.");
+		expect((await mcpServer.filesystem.loadTask("task-2"))?.dependencies).toEqual([]);
+		expect((await mcpServer.filesystem.loadDraft("draft-1"))?.dependencies).toEqual([]);
+		for (const name of ["task_view", "task_delete"]) {
+			const gone = await call(name, { id: "task-1" });
+			expect(gone.isError).toBe(true);
+			expect(getText(gone.content)).toContain("Task task-1 not found.");
+		}
+
+		// The deleted ID is released: the highest ID is handed out again once its task is deleted.
+		expect(getText((await call("task_create", { title: "Last" })).content)).toContain("Task TASK-4 - Last");
+		await call("task_archive", { id: "task-4" });
+		expect(getText((await call("task_create", { title: "While archived" })).content)).toContain("Task TASK-5 - ");
+		await call("task_archive", { id: "task-5" });
+		await call("task_delete", { id: "task-5" });
+		await call("task_delete", { id: "task-4" });
+		expect(getText((await call("task_create", { title: "After delete" })).content)).toContain(
+			"Task TASK-4 - After delete",
+		);
+
+		const tools = (await mcpServer.testInterface.listTools()).tools;
+		const deleteTool = tools.find((tool) => tool.name === "task_delete");
+		expect(deleteTool?.description).toContain("release its ID once no other branch or worktree still holds the task");
+		expect(deleteTool?.description).toContain(
+			"removes the dependencies and references other tasks and drafts hold to it",
+		);
+		expect(deleteTool?.description).toContain("must have no subtasks, as tasks or as drafts");
+		// One task ID and nothing else: no confirmation argument.
+		expect(deleteTool?.inputSchema).toMatchObject({
+			properties: { id: { type: "string" } },
+			required: ["id"],
+			additionalProperties: false,
+		});
+	});
+
+	it.each(["commit", "lock release"])("reports an applied deletion when %s fails", async (failedStep) => {
+		await enableGitTestProject();
+		await $`git config user.name "Test User"`.cwd(TEST_DIR).quiet();
+		await $`git config user.email test@example.com`.cwd(TEST_DIR).quiet();
+		const call = async (name: string, args: Record<string, unknown>) =>
+			await mcpServer.testInterface.callTool({ params: { name, arguments: args } });
+		await call("task_create", { title: "Delete failure target" });
+		await call("task_archive", { id: "TASK-1" });
+		await $`git add -A`.cwd(TEST_DIR).quiet();
+		await $`git commit -m "Archive before deletion failure"`.cwd(TEST_DIR).quiet();
+		const config = await loadConfig(mcpServer);
+		await mcpServer.filesystem.saveConfig({ ...config, autoCommit: true });
+
+		const originalLock = mcpServer.filesystem.withCreateLock.bind(mcpServer.filesystem);
+		const failure =
+			failedStep === "commit"
+				? spyOn(mcpServer.gitOps, "commitFiles").mockRejectedValue(new Error("commit hook failed"))
+				: spyOn(mcpServer.filesystem, "withCreateLock").mockImplementation(async (run, options) => {
+						await originalLock(run, options);
+						throw new Error("allocator lock release failed");
+					});
+		try {
+			const result = await call("task_delete", { id: "TASK-1" });
+			expect(result.isError).toBe(true);
+			expect(result.structuredContent).toMatchObject({ code: "OPERATION_FAILED" });
+			expect(getText(result.content)).toBe(
+				failedStep === "commit"
+					? "Task TASK-1 was deleted, but committing the change failed: commit hook failed"
+					: "Task TASK-1 was deleted, but releasing deletion locks failed: allocator lock release failed",
+			);
+		} finally {
+			failure.mockRestore();
+		}
+
+		const view = await call("task_view", { id: "TASK-1" });
+		expect(view.isError).toBe(true);
+		expect(getText(view.content)).toBe("Task TASK-1 not found.");
+		expect((await $`git log -1 --format=%s`.cwd(TEST_DIR).text()).trim()).toBe(
+			failedStep === "commit" ? "Archive before deletion failure" : "backlog: Delete task TASK-1",
+		);
+		if (failedStep === "lock release") {
+			expect((await $`git show --name-status --format= HEAD`.cwd(TEST_DIR).text()).trim()).toBe(
+				"D\tbacklog/archive/tasks/task-1 - Delete-failure-target.md",
+			);
+		}
 	});
 
 	it("archives the local task when merge policy selects a same-path padded ID variant", async () => {
@@ -709,56 +961,15 @@ describe("MCP task tools (MVP)", () => {
 		expect(draftText).not.toContain("DRAFT-1 - Assigned Draft");
 	});
 
-	it("includes completed tasks in task_search results and excludes archived tasks", async () => {
-		await mcpServer.testInterface.callTool({
-			params: {
-				name: "task_create",
-				arguments: {
-					title: "Active task",
-				},
-			},
-		});
-
-		await mcpServer.testInterface.callTool({
-			params: {
-				name: "task_create",
-				arguments: {
-					title: "Completed task",
-					status: "Done",
-				},
-			},
-		});
-
-		await mcpServer.testInterface.callTool({
-			params: {
-				name: "task_complete",
-				arguments: {
-					id: "task-2",
-				},
-			},
-		});
-
-		await mcpServer.testInterface.callTool({
-			params: {
-				name: "task_create",
-				arguments: {
-					title: "Archived task",
-				},
-			},
-		});
-
-		await mcpServer.testInterface.callTool({
-			params: {
-				name: "task_archive",
-				arguments: {
-					id: "task-3",
-				},
-			},
-		});
-
-		// The setup mutations above moved task files; dispose the content store so
-		// pending fs-watcher reconciles can't fire inside the tripwire window.
-		mcpServer.disposeContentStore();
+	it("includes archived tasks in task_search results and marks them as archived", async () => {
+		// The fixture is written straight to disk, so no content store and no file watcher exist
+		// whose reconciliation could cross the branch-loading boundary inside the tripwire window.
+		const base = { assignee: [], createdDate: "2026-08-01", labels: [], dependencies: [] };
+		await mcpServer.filesystem.saveTask({ ...base, id: "TASK-1", title: "Active task", status: "To Do" });
+		await mcpServer.filesystem.saveTask({ ...base, id: "TASK-2", title: "Finished task", status: "Done" });
+		await mcpServer.filesystem.saveTask({ ...base, id: "TASK-3", title: "Set aside task", status: "To Do" });
+		expect(await archiveTaskFile(mcpServer.filesystem, "TASK-2")).toBe(true);
+		expect(await archiveTaskFile(mcpServer.filesystem, "TASK-3")).toBe(true);
 
 		const tripwires = installCrossBranchTripwires(mcpServer);
 		try {
@@ -774,7 +985,7 @@ describe("MCP task tools (MVP)", () => {
 			for (const searchResult of searchResults) {
 				expect(searchResult.isError).not.toBe(true);
 				expect(getText(searchResult.content)).toBe(
-					"Tasks:\n  TASK-1 - Active task (To Do)\n  TASK-2 - Completed task (Done)",
+					"Tasks:\n  TASK-1 - Active task (To Do)\n  TASK-2 - Finished task (Done, archived)\n  TASK-3 - Set aside task (To Do, archived)",
 				);
 			}
 
@@ -783,14 +994,13 @@ describe("MCP task tools (MVP)", () => {
 			});
 			expect(limitedResult.isError).not.toBe(true);
 			expect(getText(limitedResult.content)).toBe("Tasks:\n  TASK-1 - Active task (To Do)");
-			expect(getText(limitedResult.content)).not.toContain("TASK-3 - Archived task");
 			tripwires.expectUntouched();
 		} finally {
 			tripwires.restore();
 		}
 	});
 
-	it("searches one active lifecycle identity when the same path is also completed", async () => {
+	it("searches one active lifecycle identity when the same path is also archived", async () => {
 		const activeTask: Task = {
 			id: "TASK-1",
 			title: "Active lifecycle identity",
@@ -802,8 +1012,8 @@ describe("MCP task tools (MVP)", () => {
 		};
 		const activePath = await mcpServer.filesystem.saveTask(activeTask);
 		await Bun.write(
-			join(mcpServer.filesystem.completedDir, basename(activePath)),
-			serializeTask({ ...activeTask, title: "Completed lifecycle identity", status: "Done" }),
+			join(mcpServer.filesystem.archiveTasksDir, basename(activePath)),
+			serializeTask({ ...activeTask, title: "Archived lifecycle identity", status: "Done" }),
 		);
 
 		const searchResult = await mcpServer.testInterface.callTool({
@@ -1042,6 +1252,22 @@ describe("MCP task tools (MVP)", () => {
 		const criteriaText = getText(criteriaUpdate.content);
 		expect(criteriaText).toContain("- [x] #1 Plan documented");
 		expect(criteriaText).toContain("- [ ] #2 Agents can follow instructions end-to-end");
+
+		const replacement = await mcpServer.testInterface.callTool({
+			params: {
+				name: "task_edit",
+				arguments: {
+					id: "task-1",
+					acceptanceCriteriaSet: ["Agents can follow instructions end-to-end", " Plan documented ", "New requirement"],
+				},
+			},
+		});
+		expect(replacement.isError).toBeUndefined();
+		expect((await mcpServer.getTask("task-1"))?.acceptanceCriteriaItems).toEqual([
+			{ index: 1, text: "Agents can follow instructions end-to-end", checked: false },
+			{ index: 2, text: "Plan documented", checked: true },
+			{ index: 3, text: "New requirement", checked: false },
+		]);
 	});
 
 	it("rejects self-referential and cyclic dependencies through task_edit", async () => {

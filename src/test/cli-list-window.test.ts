@@ -8,8 +8,6 @@ import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } fro
 
 const CLI_PATH = getTestCliPath();
 
-let TEST_DIR: string;
-
 const buildTask = (partial: Partial<Task> & Pick<Task, "id" | "title">): Task => ({
 	status: "To Do",
 	assignee: [],
@@ -19,35 +17,57 @@ const buildTask = (partial: Partial<Task> & Pick<Task, "id" | "title">): Task =>
 	...partial,
 });
 
-async function runCli(args: string[], env: Record<string, string> = {}) {
-	const result = await $`bun ${[CLI_PATH, ...args]}`
-		.cwd(TEST_DIR)
-		.env({ ...process.env, ...env })
-		.nothrow()
-		.quiet();
-	return { exitCode: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
-}
-
-async function runJson(args: string[]) {
-	const result = await runCli([...args, "--json"]);
-	expect(result.exitCode).toBe(0);
-	return JSON.parse(result.stdout);
-}
-
-/** Runs a list command, then every `Next:` command its footer names, and returns each output in order. */
-async function followWindows(args: string[]): Promise<string[]> {
-	const outputs: string[] = [];
-	let stdout = (await runCli(args)).stdout;
-	while (true) {
-		outputs.push(stdout);
-		const next = stdout.match(/Next: backlog (.+)$/m)?.[1];
-		if (!next) return outputs;
-		stdout = (await $`bun ${CLI_PATH} ${{ raw: next }}`.cwd(TEST_DIR).nothrow().quiet()).stdout.toString();
+/** The CLI helpers of one test project, so each describe block runs against the directory it created. */
+function projectCli(projectDir: string) {
+	async function runCli(args: string[], env: Record<string, string> = {}) {
+		const result = await $`bun ${[CLI_PATH, ...args]}`
+			.cwd(projectDir)
+			.env({ ...process.env, ...env })
+			.nothrow()
+			.quiet();
+		return { exitCode: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
 	}
+
+	async function runJson(args: string[]) {
+		const result = await runCli([...args, "--json"]);
+		expect(result.exitCode).toBe(0);
+		return JSON.parse(result.stdout);
+	}
+
+	/** Runs a list command, then every `Next:` command its footer names, and returns each output in order. */
+	async function followWindows(args: string[]): Promise<string[]> {
+		const outputs: string[] = [];
+		let stdout = (await runCli(args)).stdout;
+		while (true) {
+			outputs.push(stdout);
+			const next = stdout.match(/Next: backlog (.+)$/m)?.[1];
+			if (!next) return outputs;
+			stdout = (await $`bun ${CLI_PATH} ${{ raw: next }}`.cwd(projectDir).nothrow().quiet()).stdout.toString();
+		}
+	}
+
+	return { runCli, runJson, followWindows };
 }
 
 function idsIn(output: string, pattern: RegExp): string[] {
 	return output.match(pattern) ?? [];
+}
+
+function taskIdsIn(output: string): string[] {
+	return idsIn(output, /TASK-\d+/g);
+}
+
+/** Reads the shown range, the total, and the `--skip` value of the `Next` command from a cut output. */
+function readFooter(output: string) {
+	const footer = output.match(/^Showing (\d+)-(\d+) of (\d+) items\.(?: Next: .+ --skip (\d+))?$/m);
+	if (!footer) throw new Error(`No window footer in:\n${output}`);
+	const [, first, last, total, nextSkip] = footer;
+	return {
+		first: Number(first),
+		last: Number(last),
+		total: Number(total),
+		nextSkip: nextSkip === undefined ? null : Number(nextSkip),
+	};
 }
 
 function printedLines(output: string): string[] {
@@ -70,10 +90,12 @@ function joinGroupedWindows(outputs: string[]): string[] {
 }
 
 describe("CLI list windows", () => {
+	const projectDir = createUniqueTestDir("test-cli-list-window");
+	const { runCli, runJson, followWindows } = projectCli(projectDir);
+
 	beforeAll(async () => {
-		TEST_DIR = createUniqueTestDir("test-cli-list-window");
-		await mkdir(TEST_DIR, { recursive: true });
-		const core = new Core(TEST_DIR);
+		await mkdir(projectDir, { recursive: true });
+		const core = new Core(projectDir);
 		await initializeFilesystemTestProject(core, "List Window Test");
 
 		for (const index of [1, 2, 3, 4]) {
@@ -130,10 +152,10 @@ describe("CLI list windows", () => {
 	});
 
 	afterAll(async () => {
-		await safeCleanup(TEST_DIR);
+		await safeCleanup(projectDir);
 	});
 
-	it("pages grouped task list output through the commands its footers name", async () => {
+	it("pages task list output through the commands its footers name", async () => {
 		const complete = await runCli(["task", "list", "--search", "Window task", "--plain"]);
 		expect(complete.stdout).not.toContain("Showing");
 		expect(printedLines(complete.stdout).filter((line) => !line.startsWith(" "))).toEqual([
@@ -147,7 +169,8 @@ describe("CLI list windows", () => {
 		expect(windows).toHaveLength(3);
 		expect(windows[0]).toContain("Showing 1-2 of 5 items. Next: backlog task list --search 'Window task'");
 		expect(windows[2]?.trimEnd().endsWith("Showing 5-5 of 5 items.")).toBe(true);
-		expect(joinGroupedWindows(windows)).toEqual(printedLines(complete.stdout));
+		// The windows follow the sorted list, and each one groups its own tasks by status.
+		expect(windows.map(taskIdsIn)).toEqual([["TASK-1", "TASK-2"], ["TASK-3", "TASK-4"], ["TASK-5"]]);
 	});
 
 	it("pages plain search output in the order it groups results", async () => {
@@ -192,11 +215,10 @@ describe("CLI list windows", () => {
 
 	it("keeps option values and a -- separator in the next command", async () => {
 		const searched = ["task", "list", "--search", "--skip", "--plain"];
-		const complete = await runCli(searched);
-		expect(idsIn(complete.stdout, /TASK-\d+/g).length).toBeGreaterThan(2);
-		expect(joinGroupedWindows(await followWindows([...searched, "--max-count", "2"]))).toEqual(
-			printedLines(complete.stdout),
-		);
+		const searchedIds = taskIdsIn((await runCli(searched)).stdout);
+		expect(searchedIds.length).toBeGreaterThan(2);
+		const searchedWindows = await followWindows([...searched, "--max-count", "2"]);
+		expect(searchedWindows.flatMap(taskIdsIn).sort()).toEqual(searchedIds.sort());
 
 		const separated = await followWindows(["doc", "list", "--max-count", "1", "--"]);
 		expect(separated[0]).toContain("Next: backlog doc list --max-count 1 --skip 1 --");
@@ -210,10 +232,15 @@ describe("CLI list windows", () => {
 		// Bun colors a logged number when color is forced, which would break `$(backlog ... --count)`.
 		expect((await runCli(["task", "list", "--count"], { FORCE_COLOR: "1" })).stdout).toBe("5\n");
 
-		const withJson = await runCli(["task", "list", "--count", "--json"]);
-		expect(withJson.exitCode).toBe(1);
-		expect(withJson.stdout).toBe("");
-		expect(withJson.stderr).toContain("--count cannot be combined with --json.");
+		for (const list of [
+			["task", "list"],
+			["draft", "list"],
+		]) {
+			const withJson = await runCli([...list, "--count", "--json"]);
+			expect(withJson.exitCode).toBe(1);
+			expect(withJson.stdout).toBe("");
+			expect(withJson.stderr).toContain("--count cannot be combined with --json.");
+		}
 	});
 
 	it("rejects invalid window values before printing", async () => {
@@ -273,6 +300,16 @@ describe("CLI list windows", () => {
 		expect(drafts.stdout).not.toContain("Next:");
 		expect((await runCli(["draft", "list", "--count"])).stdout).toBe("3\n");
 
+		const draftWindow = await runJson(["draft", "list", "--max-count", "2", "--skip", "1"]);
+		expect(draftWindow).toMatchObject({ kind: "draft-list", total: 3, nextSkip: null });
+		expect(draftWindow.drafts.map((draft: { id: string }) => draft.id)).toEqual(["DRAFT-2", "DRAFT-3"]);
+		const draftsFirst = await runJson(["draft", "list", "--max-count", "1"]);
+		expect(draftsFirst).toMatchObject({ total: 3, nextSkip: 1 });
+		expect(await runJson(["draft", "list", "--skip", "99"])).toMatchObject({ drafts: [], total: 3, nextSkip: null });
+		const completeDrafts = await runJson(["draft", "list"]);
+		expect(completeDrafts).not.toHaveProperty("total");
+		expect(completeDrafts.drafts).toHaveLength(3);
+
 		const completedWindow = await runCli(["milestone", "list", "--show-completed", "--max-count", "1", "--skip", "2"]);
 		expect(idsIn(completedWindow.stdout, /m-\d+:/g)).toEqual(["m-2:"]);
 		expect(completedWindow.stdout).toContain("Showing 3-3 of 3 items.");
@@ -301,4 +338,68 @@ describe("CLI list windows", () => {
 			expect(overview).toContain(option);
 		}
 	});
+});
+
+describe("CLI task list windows", () => {
+	const projectDir = createUniqueTestDir("test-cli-task-list-window");
+	const { runCli, runJson } = projectCli(projectDir);
+
+	beforeAll(async () => {
+		await mkdir(projectDir, { recursive: true });
+		const core = new Core(projectDir);
+		await initializeFilesystemTestProject(core, "Task List Window Test");
+
+		// Four tasks with ordinals 10 to 40, the first one In Progress, so every sort that plain output
+		// groups by status starts with a task it prints in the second group; `--sort priority` prints
+		// one flat list. The two priorities make the priority order (1, 3, 2, 4) differ from the ID
+		// and ordinal order.
+		const priorities: Record<number, string> = { 1: "high", 3: "medium" };
+		for (const index of [1, 2, 3, 4]) {
+			await core.createTask(
+				buildTask({
+					id: `task-${index}`,
+					title: `ordinal ${index * 10}`,
+					ordinal: index * 10,
+					status: index === 1 ? "In Progress" : "To Do",
+					priority: priorities[index],
+				}),
+				false,
+			);
+		}
+	});
+
+	afterAll(async () => {
+		await safeCleanup(projectDir);
+	});
+
+	it("selects the first tasks of the sorted list and groups only those by status", async () => {
+		const sorted = ["task", "list", "--plain", "--sort", "ordinal"];
+		const limited = await runCli([...sorted, "--limit", "2"]);
+		const window = await runCli([...sorted, "--max-count", "2"]);
+
+		expect(printedLines(limited.stdout).filter((line) => !line.startsWith(" "))).toEqual(["To Do:", "In Progress:"]);
+		expect(taskIdsIn(limited.stdout)).toEqual(["TASK-2", "TASK-1"]);
+		expect(window.stdout).toBe(
+			`${limited.stdout}Showing 1-2 of 4 items. Next: backlog task list --plain --sort ordinal --max-count 2 --skip 2\n`,
+		);
+	});
+
+	for (const sort of [[], ["--sort", "priority"], ["--sort", "id"], ["--sort", "ordinal"]]) {
+		it(`lists the tasks --json returns for the same window of task list ${sort.join(" ")}`.trimEnd(), async () => {
+			for (const skip of [0, 2]) {
+				const window = ["task", "list", ...sort, "--max-count", "2", "--skip", String(skip)];
+				const plain = (await runCli([...window, "--plain"])).stdout;
+				const json = await runJson(window);
+				const jsonIds: string[] = json.tasks.map((task: { id: string }) => task.id);
+
+				expect(taskIdsIn(plain).sort()).toEqual(jsonIds.sort());
+				expect(readFooter(plain)).toEqual({
+					first: skip + 1,
+					last: skip + jsonIds.length,
+					total: json.total,
+					nextSkip: json.nextSkip,
+				});
+			}
+		});
+	}
 });

@@ -5,7 +5,7 @@ status: To Do
 assignee:
   - '@codex'
 created_date: '2025-09-07 19:42'
-updated_date: '2026-07-30 17:10'
+updated_date: '2026-10-07 12:46'
 labels:
   - web-ui
   - filters
@@ -13,6 +13,7 @@ labels:
 dependencies: []
 references:
   - 'https://github.com/MrLesk/Backlog.md/issues/825'
+  - src/web/components/TaskList.tsx
 priority: medium
 ---
 

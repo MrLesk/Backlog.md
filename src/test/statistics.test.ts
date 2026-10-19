@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { getTaskStatistics } from "../core/statistics.ts";
 import type { Task } from "../types/index.ts";
+import { pinTimeZone } from "./pin-timezone.ts";
+
+pinTimeZone("Asia/Taipei");
 
 describe("getTaskStatistics", () => {
 	const statuses = ["To Do", "In Progress", "Done"];
@@ -16,6 +19,34 @@ describe("getTaskStatistics", () => {
 		createdDate: "2024-01-01",
 		rawContent: "",
 		...partial,
+	});
+
+	test("counts board tasks plus archived tasks in the final status", () => {
+		const tasks = [
+			createTask({ id: "task-1", status: "To Do", dependencies: ["task-4"] }),
+			createTask({ id: "task-2", status: "Done" }),
+			createTask({ id: "task-3", status: "Done", source: "archived" }),
+			// Set aside rather than finished: neither open work nor finished work.
+			createTask({ id: "task-4", status: "To Do", source: "archived" }),
+			createTask({ id: "task-5", status: "In Progress", source: "archived" }),
+		];
+
+		const stats = getTaskStatistics(tasks, [], statuses);
+		expect(stats.totalTasks).toBe(3);
+		expect(stats.completedTasks).toBe(2);
+		expect(stats.statusCounts.get("To Do")).toBe(1);
+		expect(stats.statusCounts.get("In Progress")).toBe(0);
+		expect(stats.projectHealth.blockedTasks.map((task) => task.id)).toEqual(["task-1"]);
+		expect(stats.projectHealth.staleTasks.map((task) => task.id)).toEqual(["task-1"]);
+	});
+
+	test("measures completion age across legacy and explicit UTC timestamps", () => {
+		const task = createTask({
+			status: "Done",
+			createdDate: "2026-10-18 00:00",
+			updatedDate: "2026-10-18T23:00:00Z",
+		});
+		expect(getTaskStatistics([task], [], statuses).projectHealth.averageTaskAge).toBe(0);
 	});
 
 	test("handles empty task list", () => {

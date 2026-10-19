@@ -1,3 +1,4 @@
+import { parseStoredUtcDate } from "../utils/utc-timestamp.ts";
 /**
  * Task loading with optimized index-first, hydrate-later pattern
  * Dramatically reduces git operations for multi-branch task loading
@@ -8,7 +9,7 @@
  * - Remote branch tasks
  */
 
-import { DEFAULT_DIRECTORIES } from "../constants/index.ts";
+import { ARCHIVED_TASK_DIRECTORIES, DEFAULT_DIRECTORIES } from "../constants/index.ts";
 import type { GitBranchTip, GitOperations } from "../git/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
@@ -58,8 +59,7 @@ function extractConfiguredTaskId(filePath: string, prefix: string): string | nul
 const STATE_DIRECTORIES: Array<{ path: string; type: TaskDirectoryType }> = [
 	{ path: "tasks", type: "task" },
 	{ path: "drafts", type: "draft" },
-	{ path: "archive/tasks", type: "archived" },
-	{ path: "completed", type: "completed" },
+	...ARCHIVED_TASK_DIRECTORIES.map((path) => ({ path, type: "archived" as const })),
 ];
 
 function getTaskTypeFromPath(path: string, backlogDir: string): TaskDirectoryType | null {
@@ -133,7 +133,7 @@ function logicalTaskPath(path: string, backlogDir: string): string {
 
 function lifecycleRank(type: TaskDirectoryType | undefined): number {
 	if (type === "task") return 2;
-	if (type === "completed") return 1;
+	if (type === "archived") return 1;
 	return 0;
 }
 
@@ -285,7 +285,7 @@ function chooseWinners(
 
 		// If strategy is "most_recent", only hydrate if any remote is newer
 		if (strategy === "most_recent") {
-			const localTs = local.updatedDate ? new Date(local.updatedDate).getTime() : 0;
+			const localTs = local.updatedDate ? (parseStoredUtcDate(local.updatedDate)?.getTime() ?? Number.NaN) : 0;
 			const newestRemote = selectPreferredIdentityEntry(entries);
 
 			if (newestRemote.lastModified.getTime() > localTs) {
@@ -302,7 +302,7 @@ function chooseWinners(
 
 		// For "most_progressed", we might need to check if remote is newer
 		// to potentially have a more progressed status
-		const localTs = local.updatedDate ? new Date(local.updatedDate).getTime() : 0;
+		const localTs = local.updatedDate ? (parseStoredUtcDate(local.updatedDate)?.getTime() ?? Number.NaN) : 0;
 		const maybeNewer = entries.some((e) => e.lastModified.getTime() > localTs);
 
 		if (maybeNewer) {
@@ -361,7 +361,7 @@ export class BranchTaskLoader {
 		tips: readonly GitBranchTip[],
 		userConfig: BacklogConfig | null,
 		localTasks: Task[],
-		includeCompleted: boolean,
+		includeArchived: boolean,
 		backlogDir: string = DEFAULT_DIRECTORIES.BACKLOG,
 		onProgress?: (message: string) => void,
 		currentBranch?: string,
@@ -409,7 +409,7 @@ export class BranchTaskLoader {
 							};
 							stateEntries.push(entry.stateEntry);
 						}
-						if (cached.type === "task" || (includeCompleted && cached.type === "completed")) {
+						if (cached.type === "task" || (includeArchived && cached.type === "archived")) {
 							const entries = index.get(cached.id);
 							if (entries) entries.push(entry);
 							else index.set(cached.id, [entry]);

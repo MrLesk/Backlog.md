@@ -435,9 +435,9 @@ const Board: React.FC<BoardProps> = ({
     }
   };
 
-  const handleCleanupSuccess = async (movedCount: number) => {
+  const handleCleanupSuccess = async (message: string) => {
     setShowCleanupModal(false);
-    setCleanupSuccessMessage(`Successfully moved ${movedCount} task${movedCount !== 1 ? 's' : ''} to completed folder`);
+    setCleanupSuccessMessage(message);
 
     // Refresh data to reflect the changes
     if (onRefreshData) {

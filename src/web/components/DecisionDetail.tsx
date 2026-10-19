@@ -10,6 +10,8 @@ import { SuccessToast } from './SuccessToast';
 import { useTheme } from '../contexts/ThemeContext';
 import { sanitizeUrlTitle } from '../utils/urlHelpers';
 import StoredDate from './StoredDate';
+import { decisionIdKey } from '../../utils/decision-id';
+import { ArchiveButton, ArchivedLabel, ArchiveRefusal, useRecordArchive } from './RecordArchive';
 
 // Utility function for ID transformations
 const stripIdPrefix = (id: string): string => {
@@ -84,16 +86,30 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 	const [originalDecisionTitle, setOriginalDecisionTitle] = useState<string>('');
 	const [isLoading, setIsLoading] = useState(true);
 	const [isSaving, setIsSaving] = useState(false);
-	const [isEditing, setIsEditing] = useState(false);
+	const [editRequested, setEditRequested] = useState(false);
 	const [error, setError] = useState<Error | null>(null);
 	const [isNewDecision, setIsNewDecision] = useState(false);
 	const [showSaveSuccess, setShowSaveSuccess] = useState(false);
+	// An archived decision is read-only: it shows the Archived label and no Archive button.
+	const routeIdentity = id && id !== 'new' ? decisionIdKey(id) : null;
+	const currentDecision = decision && routeIdentity && decisionIdKey(decision.id) === routeIdentity ? decision : null;
+	const isArchived = currentDecision?.archived === true;
+	// The editor opens on request (the Edit button, `?edit=true` in the URL, the new page), but never
+	// for an archived decision: the request can come before or after the record has loaded.
+	const isEditing = editRequested && !isArchived;
+	const { archive, isArchiving, archiveError, dismissArchiveError } = useRecordArchive(
+		'decision',
+		currentDecision && !isLoading && !isNewDecision ? { id: currentDecision.id, title: currentDecision.title } : null,
+		routeIdentity,
+		onRefreshData,
+	);
 
 	useEffect(() => {
+		let active = true;
 		if (id === 'new') {
 			// Handle new decision creation
 			setIsNewDecision(true);
-			setIsEditing(true);
+			setEditRequested(true);
 			setIsLoading(false);
 			// Creating is unrelated to whatever failed to load before, so clear any load error.
 			// Otherwise a previous ambiguity notice keeps rendering instead of the create editor.
@@ -105,15 +121,16 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 			setOriginalContent('');
 		} else if (id) {
 			setIsNewDecision(false);
-			setIsEditing(false); // Ensure we start in preview mode for existing decisions
-			loadDecisionContent();
+			setEditRequested(false); // Ensure we start in preview mode for existing decisions
+			void loadDecisionContent(() => active);
 		}
+		return () => { active = false; };
 	}, [id, decisions]);
 
 	// Check for edit query parameter to start in edit mode
 	useEffect(() => {
 		if (searchParams.get('edit') === 'true') {
-			setIsEditing(true);
+			setEditRequested(true);
 			// Remove the edit parameter from URL
 			setSearchParams(params => {
 				params.delete('edit');
@@ -122,20 +139,27 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 		}
 	}, [searchParams, setSearchParams]);
 
-	const loadDecisionContent = async () => {
-		if (!id) return;
-		
+	const loadDecisionContent = async (isCurrent: () => boolean) => {
 		try {
 			setIsLoading(true);
 			setError(null);
-			// Find decision from props
-			const prefixedId = addDecisionPrefix(id);
-			const decision = decisions.find(d => d.id === prefixedId);
+			setDecision(null);
+			setContent('');
+			setOriginalContent('');
+			if (!routeIdentity) {
+				setDecisionTitle('');
+				setOriginalDecisionTitle('');
+				return;
+			}
+			// Find decision from props using the same identity as the route.
+			const prefixedId = routeIdentity;
+			const decision = decisions.find(d => decisionIdKey(d.id) === routeIdentity);
 			
 			// Always try to fetch the decision from API, whether we found it in decisions or not
 			// This ensures deep linking works even before the parent component loads the decisions array
 			try {
 				const fullDecision = await apiClient.fetchDecision(prefixedId);
+				if (!isCurrent()) return;
 				setContent(fullDecision.rawContent || '');
 				setOriginalContent(fullDecision.rawContent || '');
 				setDecisionTitle(fullDecision.title || '');
@@ -143,6 +167,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 				// Update decision state with full data
 				setDecision(fullDecision);
 			} catch (fetchError) {
+				if (!isCurrent()) return;
 				// Never fall back to the cached list entry when the ID is ambiguous: that entry is
 				// one of the candidates, and showing it would silently pick a winner.
 				if (isAmbiguousIdConflict(fetchError)) {
@@ -160,9 +185,10 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 				}
 			}
 		} catch (error) {
+			if (!isCurrent()) return;
 			console.error('Failed to load decision:', error);
 		} finally {
-			setIsLoading(false);
+			if (isCurrent()) setIsLoading(false);
 		}
 	};
 
@@ -184,7 +210,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 				setShowSaveSuccess(true);
 				setTimeout(() => setShowSaveSuccess(false), 4000);
 				// Exit edit mode and navigate to the new decision
-				setIsEditing(false);
+				setEditRequested(false);
 				setIsNewDecision(false);
 				const newId = stripIdPrefix(decision.id);
 				navigate(`/decisions/${newId}/${sanitizeUrlTitle(decisionTitle)}`);
@@ -198,7 +224,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 				setShowSaveSuccess(true);
 				setTimeout(() => setShowSaveSuccess(false), 4000);
 				// Exit edit mode and navigate to decision detail page (this will load in preview mode)
-				setIsEditing(false);
+				setEditRequested(false);
 				navigate(`/decisions/${id}/${sanitizeUrlTitle(decisionTitle)}`);
 			}
 		} catch (error) {
@@ -209,7 +235,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 	};
 
 	const handleEdit = () => {
-		setIsEditing(true);
+		setEditRequested(true);
 	};
 
 	const handleCancelEdit = () => {
@@ -220,7 +246,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 			// Revert changes for existing decisions
 			setContent(originalContent);
 			setDecisionTitle(originalDecisionTitle);
-			setIsEditing(false);
+			setEditRequested(false);
 		}
 	};
 
@@ -236,7 +262,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 		return colors[status.toLowerCase() as keyof typeof colors] || 'bg-gray-50 text-gray-700 border-gray-200';
 	};
 
-	if (!id) {
+	if (!id || (id !== 'new' && !routeIdentity)) {
 		return (
 			<div className="flex-1 flex items-center justify-center p-8">
 				<div className="text-center">
@@ -268,7 +294,8 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 			{/* Header Section - Confluence/Linear Style */}
 			<div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 transition-colors duration-200">
 				<div className="max-w-4xl mx-auto px-8 py-6">
-					<div className="flex items-start justify-between mb-6">
+					{/* The header and its metadata row wrap, so on a narrow window the buttons stay on the page. */}
+					<div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 mb-6">
 						<div className="flex-1">
 							{isEditing ? (
 								<input
@@ -283,7 +310,8 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 									{decisionTitle || decision?.title || (title ? decodeURIComponent(title) : `Decision ${id}`)}
 								</h1>
 							)}
-							<div className="flex items-center space-x-6 text-sm text-gray-500 dark:text-gray-400 transition-colors duration-200">
+							<div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-500 dark:text-gray-400 transition-colors duration-200">
+								{isArchived && <ArchivedLabel />}
 								<div className="flex items-center space-x-2">
 									<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a.997.997 0 01-1.414 0l-7-7A1.997 1.997 0 013 12V7a4 4 0 014-4z" />
@@ -318,7 +346,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 								)}
 							</div>
 						</div>
-						<div className="flex items-center space-x-3 ml-6">
+						<div className="flex items-center space-x-3">
 							{/* Temporarily hidden - decisions editing not ready */}
 								{false ? (
 									<button
@@ -331,6 +359,9 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 										Edit
 								</button>
 							) : null}
+							{currentDecision && !isNewDecision && !isEditing && !isArchived && (
+								<ArchiveButton onClick={archive} disabled={isArchiving} />
+							)}
 							{isEditing && (
 								<div className="flex items-center space-x-2">
 										<button
@@ -358,6 +389,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 						</div>
 					</div>
 				</div>
+				{archiveError && <ArchiveRefusal message={archiveError} onDismiss={dismissArchiveError} />}
 			</div>
 
 			{/* Content Section */}

@@ -11,9 +11,11 @@ Use this guide when implementation is complete and ready for review.
 
 ### Task Lifecycle
 
-Leave finished tasks on the board until periodic cleanup. Complete (`backlog task complete {{TASK_ID:123}}`) moves them to completed storage while preserving their record and dependency links.
+Leave finished tasks on the board until periodic cleanup. Archive (`backlog task archive {{TASK_ID:123}}`) then moves them off the board while keeping their ID, record, and dependency links.
 
-Use Archive only for canceled, duplicate, or invalid work. Archiving removes incoming dependencies and task references.
+Archive also takes canceled, duplicate, or invalid work off the board. Archived tasks are read-only, so finish notes and the final summary before archiving. To change an archived task or work on it again, bring it back to the board with `backlog task restore {{TASK_ID:123}}`; it keeps its ID and status.
+
+To remove a task for good, archive it and then delete it with `backlog task delete {{TASK_ID:123}}`. Delete releases the ID once no other branch or worktree still holds the task, and removes the links other tasks and drafts hold to the task, so use it only for work that should leave no record.
 
 ### Follow-up Work
 

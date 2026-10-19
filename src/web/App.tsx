@@ -890,26 +890,25 @@ function AppContent() {
 
   const handleArchiveTask = async (taskId: string) => {
     try {
-      const { cleanedTaskIds } = await apiClient.archiveTask(taskId);
-      // Record what the archive changed before anything that can fail or be superseded, the way
-      // the demotion flow already does: other tasks were rewritten, and that is not the refresh's
-      // news to lose.
-      reportDependencyCleanup(taskId, cleanedTaskIds);
+      await apiClient.archiveTask(taskId);
       handleCloseModal();
       await refreshData();
     } catch (error) {
       console.error('Failed to archive task:', error);
-      // The task reached the archive and something after it failed. Close and refresh so the view
+      // The task reached the archive and the commit after it failed. Close and refresh so the view
       // shows what happened, and say so: a dialog left open on an archived task invites a retry.
       if (readMovedFailureState(error, 'archiveState')) {
         handleCloseModal();
         try {
-          window.alert('The task was archived, but cleanup failed and references may be stale. Check the tasks that referenced it before retrying.');
+          window.alert('The task was archived, but committing the change failed. Check the repository before retrying.');
         } catch {
           // A blocked dialog must not take the refresh down with it.
         }
         await refreshData();
+        return;
       }
+      // Any other failure is core's answer about the task the dialog still shows; the dialog reports it.
+      throw error;
     }
   };
 

@@ -74,11 +74,7 @@ export function serializeTask(task: Task): string {
 
 	let contentBody = task.rawContent ?? "";
 	const rawContent = task.rawContent ?? "";
-	if (
-		typeof task.description === "string" &&
-		task.description.trim() !== "" &&
-		sectionChanged(rawContent, "description", task.description)
-	) {
+	if (typeof task.description === "string" && sectionChanged(rawContent, "description", task.description)) {
 		contentBody = updateTaskDescription(contentBody, task.description);
 	}
 	if (Array.isArray(task.acceptanceCriteriaItems)) {
@@ -127,7 +123,7 @@ export function serializeTask(task: Task): string {
 	return serialized.replace(/^(---\n(?:.*\n)*?---)\n(?!$)/, "$1\n\n");
 }
 
-export function serializeDecision(decision: Decision): string {
+export function serializeDecision(decision: Decision, originalContent = ""): string {
 	const frontmatter = {
 		id: decision.id,
 		title: decision.title,
@@ -143,20 +139,20 @@ export function serializeDecision(decision: Decision): string {
 		content += `\n\n## Alternatives\n\n${decision.alternatives}`;
 	}
 
-	return stringifyFrontmatter(content, frontmatter);
+	return stringifyFrontmatter(content, frontmatter, originalContent);
 }
 
-export function serializeDocument(document: Document): string {
+export function serializeDocument(document: Document, originalContent = ""): string {
 	const frontmatter = {
 		id: document.id,
 		title: document.title,
 		type: document.type,
 		created_date: document.createdDate,
-		...(document.updatedDate && { updated_date: document.updatedDate }),
-		...(document.tags && document.tags.length > 0 && { tags: document.tags }),
+		updated_date: document.updatedDate || undefined,
+		tags: document.tags && document.tags.length > 0 ? document.tags : undefined,
 	};
 
-	return stringifyFrontmatter(document.rawContent, frontmatter);
+	return stringifyFrontmatter(document.rawContent, frontmatter, originalContent);
 }
 
 export function updateTaskAcceptanceCriteria(content: string, criteria: string[]): string {

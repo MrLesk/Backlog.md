@@ -16,7 +16,7 @@ Create a task when work requires planning, decisions, or handoff notes. Search f
 
 For long lists, use `--max-count` and `--skip`, follow the printed `Next` command, or use `--count` for the total; command help covers the details.
 
-For scripts, `task list`, `task view`, `task <id>`, and `search` accept versioned `--json` output instead of `--plain`. `task list --json --watch` emits complete replacement responses; read successive JSON values, not individual lines. Filters and local scope are unchanged; intermediate edits may be coalesced. Restart for a fresh snapshot.
+For scripts, `task list`, `task view`, `task <id>`, `draft list`, `decision list`, and `search` accept versioned `--json` output instead of `--plain`. `task list --json --watch` emits complete replacement responses; read successive JSON values, not individual lines. Filters and local scope are unchanged; intermediate edits may be coalesced. Restart for a fresh snapshot.
 
 ### Required Guides
 
@@ -30,8 +30,12 @@ Use `backlog <command> --help` before unfamiliar operations. Help describes fiel
 
 ### Task Lifecycle
 
-Mark finished work Done (or the configured final status). During periodic cleanup, use Complete (`backlog task complete {{TASK_ID:123}}`) to move it off the board while preserving its record and dependency links.
+Mark finished work Done (or the configured final status) and leave it on the board until periodic cleanup.
 
-Use Archive (`backlog task archive {{TASK_ID:123}}`) for canceled, duplicate, or invalid work. Archiving removes incoming dependencies and task references.
+Archive (`backlog task archive {{TASK_ID:123}}`) moves a task in any status off the board: finished work during cleanup, and canceled, duplicate, or invalid work at any time. An archived task keeps its ID, its record, and every dependency and reference to it. It stays readable with `backlog task view` and is read-only. A dependency on an archived task counts as satisfied only when that task is in the final status.
+
+Restore (`backlog task restore {{TASK_ID:123}}`) moves an archived task back to the board with the same ID and the status it had. Restore a task before changing it: editing an archived task fails and names this command.
+
+Deleting a task takes two steps: archive it, then run `backlog task delete {{TASK_ID:123}}`. Delete permanently removes the archived task and releases its ID once no other branch or worktree still holds the task. It removes the dependencies and references other tasks and drafts hold to it and names the tasks and drafts it changed. A task whose subtasks still exist, as tasks or as drafts, is not deleted.
 
 Use the CLI for Backlog changes. Never edit task, draft, document, decision, or milestone markdown files directly; commands preserve metadata, relationships, and history.

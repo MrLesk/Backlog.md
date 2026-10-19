@@ -258,7 +258,7 @@ describe("CLI Integration", () => {
 			expect(updatedTask?.title).toBe("Updated Title");
 			expect(extractStructuredSection(updatedTask?.rawContent || "", "description")).toBe("Updated description");
 			expect(updatedTask?.status).toBe("In Progress");
-			const today = new Date().toISOString().slice(0, 16).replace("T", " ");
+			const today = `${new Date().toISOString().slice(0, 16)}:00Z`;
 			expect(updatedTask?.updatedDate).toBe(today);
 		});
 
@@ -509,7 +509,7 @@ describe("CLI Integration", () => {
 
 			// Verify updated_date was automatically set to today's date
 			const updatedTask = await core.filesystem.loadTask("task-6");
-			const today = new Date().toISOString().slice(0, 16).replace("T", " ");
+			const today = `${new Date().toISOString().slice(0, 16)}:00Z`;
 			expect(updatedTask?.updatedDate).toBe(today);
 			expect(updatedTask?.createdDate).toBe("2025-06-07"); // Should remain unchanged
 		});
@@ -549,7 +549,7 @@ describe("CLI Integration", () => {
 			expect(updatedTask?.status).toBe("In Progress");
 			expect(updatedTask?.assignee).toEqual(["testuser"]);
 			expect(updatedTask?.createdDate).toBe("2025-06-08");
-			const today = new Date().toISOString().slice(0, 16).replace("T", " ");
+			const today = `${new Date().toISOString().slice(0, 16)}:00Z`;
 			expect(updatedTask?.updatedDate).toBe(today);
 			expect(updatedTask?.labels).toEqual(["yaml", "test"]);
 			expect(updatedTask?.dependencies).toEqual(["task-1"]);

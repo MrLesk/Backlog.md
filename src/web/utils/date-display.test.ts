@@ -1,11 +1,28 @@
 import { describe, expect, it } from "bun:test";
-import { formatStoredDateForCompactDisplay, formatStoredDateForDisplay, parseStoredUtcDate } from "./date-display";
+import { parseStoredUtcDate } from "../../utils/utc-timestamp.ts";
+import { formatStoredDateForCompactDisplay, formatStoredDateForDisplay } from "./date-display";
 
 // Every case passes an explicit timeZone so results never depend on the machine running the tests.
 const TOKYO = "Asia/Tokyo"; // UTC+9, no DST
 const LOS_ANGELES = "America/Los_Angeles"; // UTC-8/-7
 
 describe("parseStoredUtcDate", () => {
+	it("reads explicit and legacy UTC as the same instant, including midnight", () => {
+		for (const [legacy, explicit] of [
+			["2026-10-19 00:00", "2026-10-19T00:00:00Z"],
+			["2026-10-19T11:48", "2026-10-19T11:48:00Z"],
+			["2026-10-19t00:00:00", "2026-10-19T00:00:00Z"],
+			["2026-10-19  08:00:00 +08:00", "2026-10-19T00:00:00Z"],
+		]) {
+			expect(parseStoredUtcDate(explicit)?.getTime()).toBe(parseStoredUtcDate(legacy)?.getTime());
+			for (const timeZone of [TOKYO, LOS_ANGELES, "UTC"]) {
+				expect(formatStoredDateForDisplay(explicit, { timeZone })).toEqual(
+					formatStoredDateForDisplay(legacy, { timeZone }),
+				);
+			}
+		}
+		expect(parseStoredUtcDate("2026-10-19T08:00:37.125+0800")?.toISOString()).toBe("2026-10-19T00:00:37.125Z");
+	});
 	it("parses stored UTC datetime strings", () => {
 		const parsed = parseStoredUtcDate("2026-02-09 06:01");
 		expect(parsed).not.toBeNull();

@@ -3,11 +3,11 @@ import type { Task } from "../types/index.ts";
 import { canonicalTaskId } from "./task-id.ts";
 import { isTerminalStatus } from "./terminal-status.ts";
 
-/** A record found in the corpus a read is allowed to see, with the evidence that it is finished. */
+/** A record found in the corpus a read is allowed to see. */
 export interface TaskRecord {
 	task: Task;
-	/** The record lives in the completed corpus, which is completion evidence on its own. */
-	completedRecord: boolean;
+	/** The record lives in the archive, off the board. */
+	archived: boolean;
 }
 
 /** `undefined` when no record claims the identity, `"ambiguous"` when more than one does. */
@@ -18,8 +18,8 @@ export type TaskRecordLookup = TaskRecord | "ambiguous" | undefined;
  *
  * Readiness and the dependency graph both answer questions about the same corpus, so they resolve
  * identity here rather than each keeping its own rule: one canonical key per record, an identity
- * claimed by more than one record is ambiguous instead of won by insertion order, and completion
- * keeps its two independent signals of corpus location and terminal status.
+ * claimed by more than one record is ambiguous instead of won by insertion order, and a record is
+ * finished when it holds the final status, on the board and in the archive alike.
  */
 export interface TaskRecordIndex {
 	lookup(taskId: string): TaskRecordLookup;
@@ -33,14 +33,13 @@ export interface TaskRecordIndex {
 /**
  * Build the index.
  *
- * `completedTasks` are records that live in the completed corpus (`backlog/completed`). Their
- * location is the completion evidence, so they count as finished whatever their status string says:
- * the terminal status may have been renamed since, or the record may predate the current
- * configuration. Passing them separately is what keeps that distinction available.
+ * `archivedTasks` are records that live in the archive. They claim their IDs like any task on the
+ * board. Being archived says nothing about whether the work was finished: canceled and duplicate
+ * work is archived too, so only the status answers that.
  */
 export function createTaskRecordIndex(options: {
 	tasks: Task[];
-	completedTasks?: Task[];
+	archivedTasks?: Task[];
 	statuses?: readonly string[];
 	ambiguousIds?: ReadonlySet<string>;
 }): TaskRecordIndex {
@@ -52,34 +51,33 @@ export function createTaskRecordIndex(options: {
 	// failing closed on the collision its source saw rather than on the records that reached us.
 	for (const id of options.ambiguousIds ?? []) byIdentity.set(canonicalTaskId(id), "ambiguous");
 
-	const add = (task: Task, completedRecord: boolean) => {
+	const add = (task: Task, archived: boolean) => {
 		const key = canonicalTaskId(task.id);
 		const existing = byIdentity.get(key);
 
-		// One file can arrive twice: `task view <completed-id>` hands the viewer the record to display
-		// while the viewer separately loads the completed corpus. That is the same record listed
-		// twice, not two records claiming one identity, and poisoning it would throw away the
-		// completion evidence the corpus location carries. Two *different* files claiming one
-		// identity still poison it, which is the collision worth failing closed on.
+		// One file can arrive twice: `task view <archived-id>` hands the viewer the record to display
+		// while the viewer separately loads the archived corpus. That is the same record listed
+		// twice, not two records claiming one identity. Two *different* files claiming one identity
+		// still poison it, which is the collision worth failing closed on.
 		if (
 			existing !== undefined &&
 			existing !== "ambiguous" &&
 			task.filePath &&
 			existing.task.filePath === task.filePath
 		) {
-			if (completedRecord) {
+			if (archived) {
 				existing.task = task;
-				existing.completedRecord = true;
+				existing.archived = true;
 			}
 			return;
 		}
 
-		const record: TaskRecord = { task, completedRecord };
+		const record: TaskRecord = { task, archived };
 		records.push(record);
 		byIdentity.set(key, existing === undefined ? record : "ambiguous");
 	};
 	for (const task of options.tasks) add(task, false);
-	for (const task of options.completedTasks ?? []) add(task, true);
+	for (const task of options.archivedTasks ?? []) add(task, true);
 
 	return {
 		records,
@@ -88,7 +86,7 @@ export function createTaskRecordIndex(options: {
 			return byIdentity.get(canonicalTaskId(taskId));
 		},
 		isFinished(record) {
-			return record.completedRecord || isTerminalStatus(record.task.status, statuses);
+			return isTerminalStatus(record.task.status, statuses);
 		},
 	};
 }

@@ -53,7 +53,7 @@ describe("decision section round trips", () => {
 	it.each(["\n", "\r\n"])("preserves nested headings and inline hashes with %j line endings", async (newline) => {
 		const sections = {
 			context: "Before\n\n### Detail\n\nContext tail",
-			decision: "Use the literal ## marker here.\n\n#### Choice\n\nDecision tail",
+			decision: "Keep inline##text and the literal ## marker here.\n\n#### Choice\n\nDecision tail",
 			consequences: "### Consequences detail\n\nConsequences tail",
 			alternatives: "Before\n\n##### Alternative\n\nAlternatives tail",
 		};
@@ -73,19 +73,29 @@ describe("decision section round trips", () => {
 		expect(decisions[0]).toMatchObject({ context: "", decision: "", consequences: "" });
 	});
 
-	it("clears explicit empty sections and retains omitted sections", async () => {
+	it.each([
+		{
+			content: "## Context\n\n## Alternatives",
+			expected: { context: "", decision: "Keep decision", consequences: "Keep consequences" },
+			alternatives: undefined,
+			cleared: ["Original context", "Original alternatives"],
+		},
+		{
+			content: "## Decision\n\n## Consequences",
+			expected: { context: "Original context", decision: "", consequences: "" },
+			alternatives: "Original alternatives",
+			cleared: ["Keep decision", "Keep consequences"],
+		},
+	])("clears explicit empty sections and retains omitted sections: $content", async (testCase) => {
 		await update(
 			"## Context\n\nOriginal context\n\n## Decision\n\nKeep decision\n\n## Consequences\n\nKeep consequences\n\n## Alternatives\n\nOriginal alternatives\n",
 		);
-		const updated = await update("## Context\n\n## Alternatives");
-		expect(updated).toMatchObject({
-			context: "",
-			decision: "Keep decision",
-			consequences: "Keep consequences",
-		});
-		expect(updated.alternatives).toBeUndefined();
+		const updated = await update(testCase.content);
+		expect(updated).toMatchObject(testCase.expected);
+		expect(updated.alternatives).toBe(testCase.alternatives);
 		const persisted = await Bun.file(decisionPath).text();
-		expect(persisted).not.toContain("Original context");
-		expect(persisted).not.toContain("Original alternatives");
+		for (const cleared of testCase.cleared) {
+			expect(persisted).not.toContain(cleared);
+		}
 	});
 });

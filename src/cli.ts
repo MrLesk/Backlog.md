@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { basename, dirname, isAbsolute, join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { dirname, isAbsolute, join } from "node:path";
 import { stdin as input } from "node:process";
 import { createInterface } from "node:readline/promises";
 import * as clack from "@clack/prompts";
@@ -22,6 +23,8 @@ import { registerMcpCommand } from "./commands/mcp.ts";
 import { pickTaskForEditWizard, runTaskCreateWizard, runTaskEditWizard } from "./commands/task-wizard.ts";
 import { watchJson } from "./commands/watch-json.ts";
 import { DEFAULT_DIRECTORIES, DEFAULT_FILES, DEFAULT_STATUSES } from "./constants/index.ts";
+import { type ArchivedTaskMovePlan, moveArchivedTasks, previewArchivedTaskMove } from "./core/archived-task-move.ts";
+import { CONTENT_RECORD_WORDS, describeContentRecordChange, formatCleanupResult } from "./core/backlog.ts";
 import { type DuplicateRepairPlan, findLocalDuplicateTaskIds } from "./core/duplicate-task-repair.ts";
 import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
@@ -29,6 +32,7 @@ import { loadTaskDetail, loadTaskListItems } from "./core/task-detail.ts";
 import { isConfigValueError } from "./file-system/operations.ts";
 import {
 	decisionListJson,
+	draftListJson,
 	formatJson,
 	printJson,
 	type SearchResultInput,
@@ -53,11 +57,12 @@ import { MilestoneHandlers, type MilestoneRemoveArgs } from "./mcp/tools/milesto
 import type { CallToolResult } from "./mcp/types.ts";
 import {
 	type BacklogConfig,
+	type ContentRecordKind,
 	type Decision,
 	DOCUMENT_TYPE_VALUES,
 	type Document as DocType,
 	type DocumentSearchResult,
-	isLocalEditableTask,
+	isWorkingCopyTask,
 	type Milestone,
 	type SearchPriorityFilter,
 	type SearchResult,
@@ -77,6 +82,7 @@ import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-s
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { launchBrowser } from "./utils/browser-launch.ts";
 import { formatDependencyCleanupMessage } from "./utils/dependency-graph.ts";
+import { documentNotFoundMessage } from "./utils/document-id.ts";
 import {
 	type ContentIdentityReport,
 	type DraftIdentityFindings,
@@ -140,11 +146,13 @@ import {
 	isAmbiguousTaskIdError,
 	LOCAL_TASK_LOOKUP_HINT,
 	taskIdsEqual,
+	taskNotFoundMessage,
 } from "./utils/task-path.ts";
-import { sortTasks } from "./utils/task-sorting.ts";
+import { sectionTasks, sortTasks, TASK_SORT_FIELDS } from "./utils/task-sorting.ts";
 import { formatValidTaskTypeValues, getTaskTypeValues, resolveTaskTypeValues } from "./utils/task-type-config.ts";
-import { getTerminalStatus, isTerminalStatus } from "./utils/terminal-status.ts";
+import { getTerminalStatus } from "./utils/terminal-status.ts";
 import { formatUtcDateForDisplay } from "./utils/utc-date-display.ts";
+import { formatUtcTimestamp } from "./utils/utc-timestamp.ts";
 import { getVersion } from "./utils/version.ts";
 
 type IntegrationMode = "mcp" | "cli" | "none";
@@ -240,7 +248,6 @@ const MCP_CLIENT_INSTRUCTION_MAP: Record<string, AgentInstructionFile> = {
 
 const DOCUMENT_SEARCH_QUERY_MAX_LENGTH = 200;
 const DOCUMENT_SEARCH_LIMIT_MAX = 100;
-const TASK_SORT_FIELDS = ["priority", "id", "ordinal"];
 const TASK_SORT_FIELD_LIST = TASK_SORT_FIELDS.join(", ");
 const TASK_TYPE_EXAMPLE = JSON.stringify(getCliTaskTypeValues()[0] ?? "<configured-type>");
 
@@ -300,7 +307,7 @@ function formatTaskEditError(error: unknown, taskId: string, commandKind = "task
 		message.startsWith("Malformed Acceptance Criteria markers:") ||
 		message.startsWith("Malformed Definition of Done markers:")
 	) {
-		return `${message}\nThe edit was not applied. Run 'backlog ${commandKind} view ${taskId} --plain' to locate the ${commandKind} file, repair or remove the malformed marker block in that Markdown file, then rerun the edit.`;
+		return `${message}\nRun 'backlog ${commandKind} view ${taskId} --plain' to locate the ${commandKind} file, repair or remove the malformed marker block in that Markdown file, then rerun the edit.`;
 	}
 	if (message.startsWith("Invalid index:")) {
 		return `${message} Try 'backlog ${commandKind} edit ${taskId} --help' for index options.`;
@@ -443,6 +450,43 @@ function printDuplicateRepairPlan(plan: DuplicateRepairPlan): void {
 	}
 }
 
+function pluralizeFiles(count: number, noun: string): string {
+	return `${count} ${noun} ${count === 1 ? "file" : "files"}`;
+}
+
+/** Archived task files stored outside the archive folder: what `--fix` moves and what it cannot. */
+function printArchivedTaskMovePlan(plan: ArchivedTaskMovePlan, duplicateIdsPending: boolean): void {
+	const previewLimit = 5;
+	if (plan.moves.length > 0) {
+		console.log(`\n${pluralizeFiles(plan.moves.length, "archived task")} stored outside ${plan.archiveDirectory}:`);
+		for (const move of plan.moves.slice(0, previewLimit)) console.log(`  ${move.sourcePath}`);
+		if (plan.moves.length > previewLimit) console.log(`  ... and ${plan.moves.length - previewLimit} more`);
+		for (const { directory, realDirectory } of plan.linkedSources) {
+			console.log(
+				`${directory} is a link to ${realDirectory}, outside the backlog directory. The files are moved out of that folder.`,
+			);
+		}
+		if (plan.linkedDestination) {
+			const { directory, realDirectory } = plan.linkedDestination;
+			console.log(
+				`${directory} is a link to ${realDirectory}, outside the backlog directory. The files are moved into that folder.`,
+			);
+		}
+		console.log(
+			duplicateIdsPending
+				? `They are moved into ${plan.archiveDirectory} once the duplicate task IDs above are repaired. File names and task IDs stay the same.`
+				: `'backlog doctor --fix' moves them into ${plan.archiveDirectory}. File names and task IDs stay the same.`,
+		);
+	}
+	if (plan.blocked.length > 0) {
+		console.log(
+			`\n${pluralizeFiles(plan.blocked.length, "archived task")} cannot be moved because ${plan.archiveDirectory} already has a file with the same name:`,
+		);
+		for (const path of plan.blocked) console.log(`  ${path}`);
+		if (!duplicateIdsPending) console.log("Rename or remove one file of each pair by hand.");
+	}
+}
+
 function printContentIdentityReport(report: ContentIdentityReport): void {
 	const sections = [
 		["document", report.documents],
@@ -503,14 +547,14 @@ function printDependencyDefectsReport(defects: DependencyDefects): void {
 			console.log(`  - ${finding.taskId} depends on itself${spelling}`);
 		}
 		console.log(
-			"Rewrite the task's dependencies without its own ID: 'backlog task edit <id> --dep <ids>' (or --clear-deps); edit the file directly for records under backlog/completed.",
+			"Rewrite the task's dependencies without its own ID: 'backlog task edit <id> --dep <ids>' (or --clear-deps). Restore an archived task first: 'backlog task restore <id>'.",
 		);
 	}
 	if (defects.cycles.length > 0) {
 		console.log("\nDependency cycles (diagnostic only):");
 		for (const cycle of defects.cycles) console.log(`  - ${cycle.join(" -> ")}`);
 		console.log(
-			"Break each cycle by rewriting one task's dependencies: 'backlog task edit <id> --dep <ids>' (or --clear-deps); edit the file directly for records under backlog/completed.",
+			"Break each cycle by rewriting one task's dependencies: 'backlog task edit <id> --dep <ids>' (or --clear-deps). Restore an archived task first: 'backlog task restore <id>'.",
 		);
 	}
 }
@@ -617,6 +661,8 @@ function hasEditFieldFlags(options: Record<string, unknown>): boolean {
 			options.removeRef !== undefined ||
 			options.clearRefs ||
 			options.doc !== undefined ||
+			options.addDoc !== undefined ||
+			options.removeDoc !== undefined ||
 			options.clearDocs ||
 			options.modifiedFile !== undefined,
 	);
@@ -776,6 +822,22 @@ function validateTaskListFlags(
 			clearFlag: clearFlag("--clear-docs"),
 			subject: "documentation",
 			emptyClears: supportsClearFlags,
+		}) ??
+		validateClearableListInput({
+			rawValues: toStringArray(options.addDoc),
+			cleared: Boolean(options.clearDocs),
+			isBlank: isBlankListValue,
+			setterFlags: "--add-doc",
+			clearFlag: clearFlag("--clear-docs"),
+			subject: "documentation",
+		}) ??
+		validateClearableListInput({
+			rawValues: toStringArray(options.removeDoc),
+			cleared: Boolean(options.clearDocs),
+			isBlank: isBlankListValue,
+			setterFlags: "--remove-doc",
+			clearFlag: clearFlag("--clear-docs"),
+			subject: "documentation",
 		})
 	);
 }
@@ -1386,9 +1448,11 @@ addHelpSchema(program.command("init [projectName]"), {
 					result.bypassGitHooks = parseBoolean(options.bypassGitHooks, result.bypassGitHooks ?? false);
 					const paddingValue = parseNumber(options.zeroPaddedIds, result.zeroPaddedIds ?? 0);
 					result.zeroPaddedIds = paddingValue > 0 ? paddingValue : undefined;
+					// Only a project that has no config yet takes its editor from the environment. An existing
+					// project keeps its own choice, including no editor, unless --default-editor is passed.
 					result.defaultEditor =
 						options.defaultEditor ??
-						(existingConfig?.defaultEditor || process.env.EDITOR || process.env.VISUAL || undefined);
+						(existingConfig ? existingConfig.defaultEditor : process.env.EDITOR || process.env.VISUAL || undefined);
 					result.defaultPort = parseNumber(options.webPort, result.defaultPort ?? 6420);
 					result.autoOpenBrowser = parseBoolean(options.autoOpenBrowser, result.autoOpenBrowser ?? true);
 					return result;
@@ -1890,7 +1954,8 @@ function getTaskReadOutputMode(options: ReadOutputOptions): ReadOutputMode | nul
 
 taskCmd.hook("preSubcommand", (command, subcommand) => {
 	if (command.opts().json && !["list", "view"].includes(subcommand.name())) {
-		command.error("error: unknown option '--json'", { code: "commander.unknownOption", exitCode: 1 });
+		// Reported by the subcommand, like any other option it does not accept.
+		subcommand.error("error: unknown option '--json'", { code: "commander.unknownOption", exitCode: 1 });
 	}
 });
 
@@ -2456,7 +2521,7 @@ const SEARCH_RESULT_HEADINGS: Record<SearchResultType, string> = {
  * the results by type, and JSON keeps relevance order.
  */
 function searchResultsInPrintedOrder(results: SearchResult[], outputMode: "plain" | "json"): SearchResult[] {
-	const printable = results.filter((result) => !isTaskSearchResult(result) || isLocalEditableTask(result.task));
+	const printable = results.filter((result) => !isTaskSearchResult(result) || isWorkingCopyTask(result.task));
 	if (outputMode === "json") return printable;
 	return SEARCH_RESULT_TYPES.flatMap((type) => printable.filter((result) => result.type === type));
 }
@@ -2539,36 +2604,21 @@ function isDocumentSearchResult(result: SearchResult): result is DocumentSearchR
 }
 
 /**
- * Groups tasks the way plain `task list` prints them: configured statuses first, then any other
- * status, each group keeping the order of `tasks`.
+ * Prints the sections of a plain task list: each status under its heading, or the one section of
+ * a flat priority list under its own heading with the status on every row.
  */
-function groupTasksByStatus(tasks: Task[], statuses: string[]): Array<{ status: string; tasks: Task[] }> {
-	const canonicalByLower = new Map<string, string>();
-	for (const status of statuses) {
-		canonicalByLower.set(status.toLowerCase(), status);
-	}
-
-	const groups = new Map<string, Task[]>();
-	for (const task of tasks) {
-		const rawStatus = (task.status || "").trim();
-		const canonicalStatus = canonicalByLower.get(rawStatus.toLowerCase()) || rawStatus;
-		const list = groups.get(canonicalStatus) || [];
-		list.push(task);
-		groups.set(canonicalStatus, list);
-	}
-
-	const orderedStatuses = [
-		...statuses.filter((status) => groups.has(status)),
-		...Array.from(groups.keys()).filter((status) => !statuses.includes(status)),
-	];
-	return orderedStatuses.map((status) => ({ status, tasks: groups.get(status) ?? [] }));
-}
-
-function printTasksGroupedByStatus(tasks: Task[], statuses: string[]): void {
+function printTaskSections(tasks: Task[], sortField: string | undefined, statuses: string[]): void {
 	// Use the stdout stream, as JSON output does, so pending pipe writes keep the CLI alive.
-	for (const group of groupTasksByStatus(tasks, statuses)) {
-		process.stdout.write(`${group.status || "No Status"}:\n`);
-		for (const task of group.tasks) {
+	for (const section of sectionTasks(tasks, sortField, statuses)) {
+		if (section.status === null) {
+			process.stdout.write("Tasks (sorted by priority):\n");
+			for (const task of section.tasks) {
+				process.stdout.write(`${formatPlainTaskListRow(task, { includeStatus: true })}\n`);
+			}
+			continue;
+		}
+		process.stdout.write(`${section.status || "No Status"}:\n`);
+		for (const task of section.tasks) {
 			process.stdout.write(`${formatPlainTaskListRow(task)}\n`);
 		}
 		process.stdout.write("\n");
@@ -2719,17 +2769,17 @@ async function runTaskList(
 		// Ordering, the parent narrowing and the limit are the same whatever the rows carry, so the
 		// readiness projection below travels through them instead of being derived twice.
 		const parentFilter = resolvedParentId;
-		// The sort field was validated above, before any task was read.
-		const sortField = options.sort ? options.sort.toLowerCase() : "priority";
+		// The sort was validated above, before any task was read. Without one, sortTasks uses the
+		// default order of every task list.
 		const narrowForDisplay = <T extends Task>(rows: T[]): T[] => {
-			const sorted = sortTasks(rows, sortField, config?.priorities);
+			const sorted = sortTasks(rows, options.sort, config?.priorities);
 			const narrowed = parentFilter
 				? sorted.filter((task) => task.parentTaskId && taskIdsEqual(parentFilter, task.parentTaskId))
 				: sorted;
 			return taskLimit !== undefined ? narrowed.slice(0, taskLimit) : narrowed;
 		};
 
-		// Readiness needs the completed corpus, so only the reads that use it pay for one: --ready
+		// Readiness needs the archived corpus, so only the reads that use it pay for one: --ready
 		// filters on the verdict and --json publishes it. Both read it once, from the same pass, so
 		// a row selected as ready can never be serialized from a second, later verdict. A read that
 		// matched nothing describes nothing, so it reads no corpus at all.
@@ -2744,14 +2794,10 @@ async function runTaskList(
 		}
 		const displayTasks = narrowForDisplay(options.ready ? readyRows : tasks);
 
-		// The window follows the printed order, so an explicit priority sort prints one flat list and
-		// every other listing is cut after grouping by status.
-		const flatPriorityList = options.sort?.toLowerCase() === "priority";
+		// The window is taken from the sorted list, as it is for JSON, so both formats select the same
+		// tasks. Only the selected tasks are then split into the sections plain output prints.
 		const statuses = config?.statuses || [];
-		const printedTasks = flatPriorityList
-			? displayTasks
-			: groupTasksByStatus(displayTasks, statuses).flatMap((group) => group.tasks);
-		printListWindow(printedTasks, listWindow, (windowTasks) => {
+		printListWindow(displayTasks, listWindow, (windowTasks) => {
 			if (windowTasks.length === 0) {
 				if (resolvedParentId) {
 					process.stdout.write(`No child tasks found for parent task ${parentDisplayId}.\n`);
@@ -2760,14 +2806,7 @@ async function runTaskList(
 				}
 				return;
 			}
-			if (flatPriorityList) {
-				process.stdout.write("Tasks (sorted by priority):\n");
-				for (const t of windowTasks) {
-					process.stdout.write(`${formatPlainTaskListRow(t, { includeStatus: true })}\n`);
-				}
-				return;
-			}
-			printTasksGroupedByStatus(windowTasks, statuses);
+			printTaskSections(windowTasks, options.sort, statuses);
 		});
 		cleanup();
 		return;
@@ -2881,24 +2920,11 @@ async function runTaskList(
 				? await resolveParentFilterId(core, parentId, parentDisplayId ?? parentId)
 				: undefined;
 
-			let sortedTasks = tasks;
-			if (options.sort) {
-				const sortField = options.sort.toLowerCase();
-				if (!TASK_SORT_FIELDS.includes(sortField)) {
-					throw new Error(`Invalid sort field: ${options.sort}. Valid values are: ${TASK_SORT_FIELD_LIST}`);
-				}
-				sortedTasks = sortTasks(tasks, sortField, config?.priorities);
-			} else {
-				sortedTasks = sortTasks(tasks, "priority", config?.priorities);
-			}
-
-			let filtered = sortedTasks;
-			if (resolvedParentId) {
-				filtered = filtered.filter((task) => task.parentTaskId && taskIdsEqual(resolvedParentId, task.parentTaskId));
-			}
-
 			return {
-				tasks: filtered,
+				// The view orders these rows itself, from the sort in the filter below.
+				tasks: resolvedParentId
+					? tasks.filter((task) => task.parentTaskId && taskIdsEqual(resolvedParentId, task.parentTaskId))
+					: tasks,
 				statuses: config?.statuses || [],
 				// The filters above narrow what is displayed. Dependency readiness must still see
 				// every task, or a dependency assigned to someone else reads as unknown.
@@ -2951,7 +2977,11 @@ const taskListCommand = addHelpSchema(taskCmd.command("list"), {
 		{ name: "search", type: "String", description: "Search task title, description, notes, comments, and metadata" },
 		{ name: "ready", type: "Boolean", description: "Only show unblocked tasks with all dependencies completed" },
 		{ name: "limit", type: "Positive integer", description: "Maximum tasks to display after sorting" },
-		{ name: "sort", type: choiceType(TASK_SORT_FIELDS), description: "Task ordering before applying limit" },
+		{
+			name: "sort",
+			type: choiceType(TASK_SORT_FIELDS),
+			description: "Task order before limit and windows; without it: ordinal, then priority, then ID",
+		},
 		...LIST_WINDOW_HELP_FIELDS,
 		{ name: "plain", type: "Boolean", description: "Use text output instead of interactive UI" },
 		{ name: "json", type: "Boolean", description: "Use versioned machine-readable JSON output" },
@@ -3009,7 +3039,7 @@ const taskListCommand = addHelpSchema(taskCmd.command("list"), {
 	.option("--search <query>", "search task title, description, notes, comments, and metadata")
 	.option("--ready", "only show unblocked tasks with all dependencies completed")
 	.option("--limit <number>", "limit tasks displayed after sorting")
-	.option("--sort <field>", `sort tasks by field (${TASK_SORT_FIELD_LIST})`);
+	.option("--sort <field>", `sort tasks by field (${TASK_SORT_FIELD_LIST}); default: ordinal, then priority, then ID`);
 addListWindowOptions(taskListCommand)
 	.option("--plain", "use plain text output instead of interactive UI")
 	.option("--json", "print versioned machine-readable JSON output")
@@ -3027,11 +3057,11 @@ addListWindowOptions(taskListCommand)
 		const cwd = await requireProjectRoot();
 		const filesystem = new Core(cwd).filesystem;
 		// Notifications cover the whole backlog, including directories created later. The periodic stat
-		// pass covers only what the list reads: tasks, completed tasks for readiness, milestones for
+		// pass covers only what the list reads: tasks, archived tasks for readiness, milestones for
 		// --milestone, and the config.
 		const inputs = [
 			filesystem.tasksDir,
-			filesystem.completedDir,
+			...(await filesystem.getArchivedTaskDirs()),
 			filesystem.milestonesDir,
 			filesystem.archiveMilestonesDir,
 			filesystem.configFilePath,
@@ -3113,7 +3143,48 @@ const draftEditTarget: EditCommandTarget = {
 	notFoundMessage: (id) => `Draft ${id} not found.`,
 };
 
+const NO_CHANGES_APPLIED = "No changes were applied.";
+
+/**
+ * Share rejection output across task and draft edits. performEdit must write through target.update
+ * and report failures by throwing or setting exitCode, so this wrapper can finish the message.
+ * A successful update or changed file suppresses it, including saves followed by commit failure.
+ * Reads outside core's lock can observe another writer and conservatively suppress the sentence.
+ */
 async function runEditCommand(target: EditCommandTarget, requestedIds: string[] | undefined, options: OptionValues) {
+	const read = (filePath: string | undefined) => (filePath ? readFile(filePath).catch(() => null) : null);
+	let changesMayBeApplied = false;
+	const trackedTarget: EditCommandTarget = {
+		...target,
+		async update(core, existing, input) {
+			const before = await read(existing.filePath);
+			try {
+				const updated = await target.update(core, existing, input);
+				changesMayBeApplied = true;
+				return updated;
+			} catch (error) {
+				const after = await read(existing.filePath);
+				// A file that cannot be read counts as changed, so the sentence is never a guess.
+				if (!before || !after || !before.equals(after)) {
+					changesMayBeApplied = true;
+				}
+				throw error;
+			}
+		},
+	};
+
+	try {
+		await performEdit(trackedTarget, requestedIds, options);
+	} catch (error) {
+		console.error(error instanceof Error ? error.message : String(error));
+		process.exitCode = 1;
+	}
+	if (process.exitCode && !changesMayBeApplied) {
+		console.error(NO_CHANGES_APPLIED);
+	}
+}
+
+async function performEdit(target: EditCommandTarget, requestedIds: string[] | undefined, options: OptionValues) {
 	// Listing the same task twice is a slip, not a request to edit it twice, so identities that
 	// compare equal collapse to the first spelling the user typed. Canonical identity keeps a bare
 	// number on the default prefix, so "7" cannot swallow an explicit "JIRA-7".
@@ -3388,6 +3459,14 @@ async function runEditCommand(target: EditCommandTarget, requestedIds: string[] 
 		process.exitCode = 1;
 		return;
 	}
+
+	if (options.doc !== undefined && (options.addDoc !== undefined || options.removeDoc !== undefined)) {
+		console.error(
+			"Cannot combine --doc with --add-doc or --remove-doc. Use --doc a,b for the final full documentation set, or use add/remove flags without --doc.",
+		);
+		process.exitCode = 1;
+		return;
+	}
 	// These three read as clearable lists: an absent flag keeps the current list, and an explicit
 	// empty value produces [], which the assignments below apply as the same clear as --clear-deps.
 	const dependencyValues = parseClearableStringList([
@@ -3399,6 +3478,8 @@ async function runEditCommand(target: EditCommandTarget, requestedIds: string[] 
 	const addReferenceValues = parseDelimitedStringList(options.addRef) ?? [];
 	const removeReferenceValues = parseDelimitedStringList(options.removeRef) ?? [];
 	const normalizedDocumentation = parseClearableStringList(options.doc);
+	const addDocumentationValues = parseDelimitedStringList(options.addDoc) ?? [];
+	const removeDocumentationValues = parseDelimitedStringList(options.removeDoc) ?? [];
 	const normalizedModifiedFiles = parseDelimitedStringList(options.modifiedFile);
 
 	const planAppendValues = toStringArray(options.appendPlan);
@@ -3471,6 +3552,12 @@ async function runEditCommand(target: EditCommandTarget, requestedIds: string[] 
 		editArgs.documentation = normalizedDocumentation;
 	} else if (options.clearDocs) {
 		editArgs.documentation = [];
+	}
+	if (addDocumentationValues.length > 0) {
+		editArgs.addDocumentation = addDocumentationValues;
+	}
+	if (removeDocumentationValues.length > 0) {
+		editArgs.removeDocumentation = removeDocumentationValues;
 	}
 	if (normalizedModifiedFiles && normalizedModifiedFiles.length > 0) {
 		editArgs.modifiedFiles = normalizedModifiedFiles;
@@ -3571,7 +3658,10 @@ async function runEditCommand(target: EditCommandTarget, requestedIds: string[] 
 	}
 }
 
-function addEditFieldOptions(cmd: Command) {
+/** Gives `task edit` and `draft edit` the field options they share and their error output. */
+function configureEditCommand(cmd: Command) {
+	// Parser errors happen before the action can write, so they always get the sentence.
+	cmd.configureOutput({ outputError: (text, write) => write(`${text}${NO_CHANGES_APPLIED}\n`) });
 	return cmd
 		.option("-t, --title <title>")
 		.option("-d, --description <text>", "task description")
@@ -3641,7 +3731,7 @@ function addEditFieldOptions(cmd: Command) {
 		)
 		.option(
 			"--acceptance-criteria <criteria>",
-			"replace all acceptance criteria (can be used multiple times; commas are preserved)",
+			"replace all acceptance criteria (can be used multiple times; commas are preserved); matching trimmed text keeps checks",
 			createMultiValueAccumulator(),
 		)
 		.option("--clear-ac", "remove all acceptance criteria (cannot combine with acceptance criteria mutation options)")
@@ -3709,13 +3799,20 @@ function addEditFieldOptions(cmd: Command) {
 		)
 		.option(
 			"--doc <documentation>",
-			'set documentation (can be used multiple times); pass "" to clear it',
-			(value, previous) => {
-				const soFar = Array.isArray(previous) ? previous : previous ? [previous] : [];
-				return [...soFar, value];
-			},
+			'replace all documentation (comma-separated or repeatable; cannot combine with --add-doc/--remove-doc); pass "" to clear it',
+			createMultiValueAccumulator(),
 		)
-		.option("--clear-docs", "remove all documentation (cannot combine with --doc)");
+		.option(
+			"--add-doc <documentation>",
+			"add documentation without replacing existing documentation (comma-separated or repeatable)",
+			createMultiValueAccumulator(),
+		)
+		.option(
+			"--remove-doc <documentation>",
+			"remove documentation without replacing others (comma-separated or repeatable)",
+			createMultiValueAccumulator(),
+		)
+		.option("--clear-docs", "remove all documentation (cannot combine with --doc/--add-doc/--remove-doc)");
 }
 
 const taskEditCommand = addHelpSchema(taskCmd.command("edit [taskIds...]"), {
@@ -3785,9 +3882,19 @@ const taskEditCommand = addHelpSchema(taskCmd.command("edit [taskIds...]"), {
 			description: "Remove all references; cannot combine with --ref, --add-ref, or --remove-ref",
 		},
 		{
+			name: "add-doc",
+			type: "Comma-separated strings",
+			description: "Add documentation; repeat --add-doc or use doc1,doc2",
+		},
+		{
+			name: "remove-doc",
+			type: "Comma-separated strings",
+			description: "Remove documentation; repeat --remove-doc or use doc1,doc2",
+		},
+		{
 			name: "clear-docs",
 			type: "Boolean",
-			description: "Remove all documentation; cannot combine with --doc",
+			description: "Remove all documentation; cannot combine with --doc, --add-doc, or --remove-doc",
 		},
 		{ name: "plan", type: "Markdown", description: "Replacement implementation plan" },
 		{
@@ -3811,7 +3918,7 @@ const taskEditCommand = addHelpSchema(taskCmd.command("edit [taskIds...]"), {
 		'backlog task edit {{TASK_ID:1}} {{TASK_ID:2}} --status "<active status>"',
 	],
 }).description("edit an existing task");
-addEditFieldOptions(taskEditCommand).action(async (taskIds: string[] | undefined, options) => {
+configureEditCommand(taskEditCommand).action(async (taskIds: string[] | undefined, options) => {
 	await runEditCommand(taskEditTarget, taskIds, options);
 });
 
@@ -3863,97 +3970,86 @@ addHelpSchema(taskCmd.command("view <taskId>"), {
 	});
 
 addHelpSchema(taskCmd.command("archive <taskId>"), {
-	required: [{ name: "taskId", type: "Task ID", description: "Task to archive" }],
+	required: [{ name: "taskId", type: "Task ID", description: "Task to archive, in any status" }],
 	optional: [],
-	writes: "Archives canceled, duplicate, or invalid work and removes incoming dependencies and task references",
+	writes:
+		"Moves the task off the board into the archive. Its ID stays reserved, and its record, dependencies, and references are kept; no other task is changed.",
 	output: "Archive confirmation text",
 	examples: ["backlog task archive {{TASK_ID:1}}"],
 })
-	.description("archive canceled, duplicate, or invalid work")
+	.description("move a task off the board into the archive, keeping its ID and links")
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const task = await core.loadTaskById(taskId, { includeCrossBranch: false });
-		if (!task) {
-			console.error(`Task ${taskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
+		if (!task || !(await core.archiveTask(task.id, undefined, { includeCrossBranch: false }))) {
+			console.error(`${taskNotFoundMessage(taskId)} ${LOCAL_TASK_LOOKUP_HINT}`);
 			process.exitCode = 1;
 			return;
 		}
+		console.log(`Archived task ${task.id}`);
+	});
 
-		if (!isLocalEditableTask(task)) {
-			console.error(`Cannot archive task from another branch: ${task.id}`);
+addHelpSchema(taskCmd.command("delete <taskId>"), {
+	required: [{ name: "taskId", type: "Task ID", description: "Archived task to delete" }],
+	optional: [],
+	writes:
+		"Permanently removes an archived task. Its ID is released once no other branch or worktree still holds the task. Dependencies and references that other tasks and drafts hold to it are removed. A task must be archived first (backlog task archive), and a task whose subtasks still exist, as tasks or as drafts, is not deleted. There is no prompt.",
+	output: "Delete confirmation text, followed by the tasks and drafts that lost a dependency or reference",
+	examples: ["backlog task archive {{TASK_ID:1}}", "backlog task delete {{TASK_ID:1}}"],
+})
+	.description(
+		"permanently delete an archived task and release its ID once no other branch or worktree still holds the task",
+	)
+	.action(async (taskId: string) => {
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		const task = await core.loadTaskById(taskId, { includeCrossBranch: false });
+		const deletion = task ? await core.deleteTask(task.id, undefined, { includeCrossBranch: false }) : null;
+		if (!task || !deletion?.success) {
+			console.error(`${taskNotFoundMessage(taskId)} ${LOCAL_TASK_LOOKUP_HINT}`);
 			process.exitCode = 1;
 			return;
 		}
-
-		const { success, cleanedTaskIds } = await core.archiveTask(task.id, undefined, { includeCrossBranch: false });
-		if (success) {
-			console.log(`Archived task ${task.id}`);
-			const cleanupMessage = formatDependencyCleanupMessage(task.id, cleanedTaskIds);
-			if (cleanupMessage) {
-				console.log(cleanupMessage);
-			}
-		} else {
-			console.error(`Failed to archive task: ${task.id}`);
-			process.exitCode = 1;
+		console.log(`Deleted task ${task.id}`);
+		const cleanupMessage = formatDependencyCleanupMessage(task.id, deletion.cleanedTaskIds);
+		if (cleanupMessage) {
+			console.log(cleanupMessage);
 		}
 	});
 
-addHelpSchema(taskCmd.command("complete <taskId>"), {
-	required: [
-		{
-			name: "taskId",
-			type: "Task ID",
-			description: "Task in the configured terminal status to move to completed",
-		},
-	],
+addHelpSchema(taskCmd.command("restore <taskId>"), {
+	required: [{ name: "taskId", type: "Task ID", description: "Archived task to restore" }],
 	optional: [],
 	writes:
-		"During periodic cleanup, moves a finished task in the configured final status off the board to completed storage, preserving its record and dependency links.",
-	output: "Completion cleanup confirmation and completed file path",
-	examples: ["backlog task complete {{TASK_ID:1}}"],
+		"Moves an archived task back to the board with the same ID and the status it had. Archived tasks are read-only, so restore a task before editing it. A task that is already on the board is left as it is.",
+	output: "Restore confirmation text",
+	examples: ["backlog task restore {{TASK_ID:1}}"],
 })
-	.description("move a finished task to completed storage during cleanup")
+	.description("move an archived task back to the board, keeping its ID and status")
 	.action(async (taskId: string) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const task = await core.loadTaskById(taskId, { includeCrossBranch: false });
-
-		if (!task) {
-			console.error(`Task ${taskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
+		if (!task || !(await core.restoreTask(task.id, undefined, { includeCrossBranch: false }))) {
+			console.error(`${taskNotFoundMessage(taskId)} ${LOCAL_TASK_LOOKUP_HINT}`);
 			process.exitCode = 1;
 			return;
 		}
+		console.log(`Restored task ${task.id}`);
+	});
 
-		if (!isLocalEditableTask(task)) {
-			console.error(`Cannot complete task from another branch: ${task.id}`);
-			process.exitCode = 1;
-			return;
-		}
-
-		const config = await core.filesystem.loadConfig();
-		const statuses = config?.statuses ?? [...DEFAULT_STATUSES];
-		const terminalStatus = getTerminalStatus(statuses) ?? "Done";
-		if (!isTerminalStatus(task.status, statuses)) {
-			console.error(
-				`Task ${task.id} is not ${terminalStatus}. Set status to "${terminalStatus}" with: backlog task edit ${task.id} -s "${terminalStatus}" before cleanup.`,
-			);
-			process.exitCode = 1;
-			return;
-		}
-
-		const completedFilePath = task.filePath ? join(core.filesystem.completedDir, basename(task.filePath)) : undefined;
-		const success = await core.completeTask(task.id, undefined, { includeCrossBranch: false });
-		if (!success) {
-			console.error(`Failed to complete task: ${task.id}`);
-			process.exitCode = 1;
-			return;
-		}
-
-		console.log(`Completed task ${task.id}.`);
-		if (completedFilePath) {
-			console.log(`File: ${completedFilePath}`);
-		}
+// A removal notice, not a command: `task complete` was replaced by `task archive`. The entry only
+// answers people and scripts that still call it. It is hidden from help and completion, accepts
+// whatever follows its name, changes nothing and exits non-zero. With `--json` the task-level
+// check above answers first, so that call gets the parser's "unknown option" message instead.
+taskCmd
+	.command("complete [ignored...]", { hidden: true })
+	.allowUnknownOption()
+	.helpOption(false)
+	.action(() => {
+		console.error("backlog task complete was removed. Use backlog task archive <id>.");
+		process.exitCode = 1;
 	});
 
 taskCmd
@@ -3992,7 +4088,7 @@ taskCmd
 		const core = new Core(cwd);
 
 		// Don't handle commands that should be handled by specific command handlers
-		const reservedCommands = ["create", "list", "edit", "view", "archive", "complete", "demote"];
+		const reservedCommands = ["create", "list", "edit", "view", "archive", "delete", "restore", "demote"];
 		if (taskId && reservedCommands.includes(taskId)) {
 			console.error(`Unknown command: ${taskId}`);
 			taskCmd.help();
@@ -4063,17 +4159,29 @@ async function viewDraftById(core: Core, taskId: string, options?: { plain?: boo
 
 const draftCmd = program.command("draft");
 
-const draftListCommand = draftCmd
-	.command("list")
+const draftListCommand = addHelpSchema(draftCmd.command("list"), {
+	reads: "Drafts under the configured drafts directory",
+	writes: "None; this is a read-only command",
+	required: [],
+	optional: [
+		{ name: "sort", type: "String", description: `Sort drafts by field (${TASK_SORT_FIELD_LIST})` },
+		...LIST_WINDOW_HELP_FIELDS,
+		{ name: "plain", type: "Boolean", description: "Use plain text output" },
+		{ name: "json", type: "Boolean", description: "Use versioned machine-readable JSON output" },
+	],
+	output: `Interactive draft list, plain text with --plain, or versioned JSON with --json. ${LIST_WINDOW_OUTPUT_HELP}; JSON adds total and nextSkip`,
+	examples: ["backlog draft list --plain", "backlog draft list --json", "backlog draft list --sort id --max-count 20"],
+})
 	.description("list all drafts")
 	.option("--sort <field>", `sort drafts by field (${TASK_SORT_FIELD_LIST})`);
 addListWindowOptions(draftListCommand)
 	.option("--plain", "use plain text output")
+	.option("--json", "print versioned machine-readable JSON output")
 	.action(async (options: ListWindowOptions & { plain?: boolean; sort?: string }) => {
 		const listOutput = resolveListOutput({ ...options, plain: isPlainRequested(options) }, draftListCommand);
 		if (!listOutput) return;
 		const { outputMode, listWindow } = listOutput;
-		// Default to priority sorting to match web UI behavior
+		// The draft list keeps its own default: drafts are sorted by priority unless --sort is given.
 		const sortField = options.sort ? options.sort.toLowerCase() : "priority";
 		if (!TASK_SORT_FIELDS.includes(sortField)) {
 			console.error(`Invalid sort field: ${options.sort}. Valid values are: ${TASK_SORT_FIELD_LIST}`);
@@ -4086,6 +4194,12 @@ addListWindowOptions(draftListCommand)
 		const drafts = await core.filesystem.listDrafts();
 		const config = await core.filesystem.loadConfig();
 		const sortedDrafts = sortTasks(drafts, sortField, config?.priorities);
+
+		if (outputMode === "json") {
+			const page = selectListWindow(sortedDrafts, listWindow);
+			printJson(draftListJson(page.items, page));
+			return;
+		}
 
 		if (outputMode !== "interactive" || sortedDrafts.length === 0) {
 			// Plain text output for non-interactive environments
@@ -4112,6 +4226,8 @@ addListWindowOptions(draftListCommand)
 			tasks: sortedDrafts,
 			filter: {
 				filterDescription: "All Drafts",
+				// The view orders its own rows, so it needs the sort this list was printed with.
+				sort: sortField,
 			},
 			title: "Drafts",
 		});
@@ -4178,7 +4294,11 @@ const draftEditCommand = addHelpSchema(draftCmd.command("edit [taskId]"), {
 		{ name: "milestone", type: "String", description: "Assign to milestone by ID or title" },
 		{ name: "clear-milestone", type: "Boolean", description: "Clear the milestone assignment" },
 		{ name: "ac", type: "Comma-separated strings", description: "Add acceptance criteria; repeatable" },
-		{ name: "acceptance-criteria", type: "Comma-separated strings", description: "Replace all acceptance criteria" },
+		{
+			name: "acceptance-criteria",
+			type: "Markdown list item text",
+			description: "Replace all acceptance criteria; repeatable; matching trimmed text keeps checks",
+		},
 		{ name: "clear-ac", type: "Boolean", description: "Remove all acceptance criteria" },
 		{ name: "remove-ac", type: "Integer", description: "Remove acceptance criterion by 1-based index; repeatable" },
 		{ name: "check-ac", type: "Integer", description: "Check acceptance criterion by 1-based index; repeatable" },
@@ -4203,7 +4323,9 @@ const draftEditCommand = addHelpSchema(draftCmd.command("edit [taskId]"), {
 		{ name: "add-ref", type: "Comma-separated strings", description: "Add references; repeatable" },
 		{ name: "remove-ref", type: "Comma-separated strings", description: "Remove references; repeatable" },
 		{ name: "clear-refs", type: "Boolean", description: "Remove all references" },
-		{ name: "doc", type: "Comma-separated strings", description: 'Set documentation; pass "" to clear' },
+		{ name: "doc", type: "Comma-separated strings", description: 'Replace all documentation; pass "" to clear' },
+		{ name: "add-doc", type: "Comma-separated strings", description: "Add documentation; repeatable" },
+		{ name: "remove-doc", type: "Comma-separated strings", description: "Remove documentation; repeatable" },
 		{ name: "modified-file", type: "Comma-separated strings", description: "Set modified file paths; repeatable" },
 		{ name: "clear-docs", type: "Boolean", description: "Remove all documentation" },
 		{ name: "plain", type: "Boolean", description: "Use plain text output after editing" },
@@ -4212,7 +4334,7 @@ const draftEditCommand = addHelpSchema(draftCmd.command("edit [taskId]"), {
 	output: "Updated draft details; use --plain for text output",
 	examples: ['backlog draft edit DRAFT-1 -t "Renamed draft"', "backlog draft edit DRAFT-1 --check-ac 1"],
 }).description("edit an existing draft");
-addEditFieldOptions(draftEditCommand).action(async (taskId: string | undefined, options) => {
+configureEditCommand(draftEditCommand).action(async (taskId: string | undefined, options) => {
 	await runEditCommand(draftEditTarget, taskId ? [taskId] : [], options);
 });
 
@@ -4735,7 +4857,7 @@ addHelpSchema(docCmd.command("update <docId>"), {
 		const core = new Core(cwd);
 		const existingDocument = await core.getDocument(docId);
 		if (!existingDocument) {
-			throw new Error(`Document not found: ${docId}`);
+			throw new Error(documentNotFoundMessage(docId));
 		}
 
 		const document = await core.updateDocumentFromInput({
@@ -4752,6 +4874,66 @@ addHelpSchema(docCmd.command("update <docId>"), {
 			console.log(`Path: ${core.filesystem.backlogDirName}/docs/${document.path}`);
 		}
 	});
+
+/**
+ * The action of `doc archive|restore|delete` and `decision archive|restore|delete`: runs the core
+ * operation for the kind and prints the lines core describes for the change. An ID that no record
+ * of the kind claims is answered with the kind's not-found message.
+ */
+async function changeContentRecord(
+	kind: ContentRecordKind,
+	operation: "archive" | "restore" | "delete",
+	id: string,
+): Promise<void> {
+	const core = new Core(await requireProjectRoot());
+	const operations = {
+		archive: () => core.archiveContentRecord(kind, id),
+		restore: () => core.restoreContentRecord(kind, id),
+		delete: () => core.deleteContentRecord(kind, id),
+	};
+	const result = await operations[operation]();
+	if (!result) {
+		throw new Error(CONTENT_RECORD_WORDS[kind].notFound(id));
+	}
+	for (const line of describeContentRecordChange(kind, operation, result)) {
+		console.log(line);
+	}
+}
+
+addHelpSchema(docCmd.command("archive <docId>"), {
+	required: [{ name: "docId", type: "Document ID", description: "Document to archive" }],
+	optional: [],
+	writes:
+		"Moves the document's file, unchanged, to the same relative path under backlog/archive/docs. Its ID stays reserved. The document stays viewable with doc view, becomes read-only, and leaves doc list and search. No task or draft is changed.",
+	output: "Archive confirmation text, followed by the tasks and drafts whose documentation list names the moved file",
+	examples: ["backlog doc archive doc-1"],
+})
+	.description("move a document into the archive, keeping its ID reserved")
+	.action((docId: string) => changeContentRecord("document", "archive", docId));
+
+addHelpSchema(docCmd.command("restore <docId>"), {
+	required: [{ name: "docId", type: "Document ID", description: "Archived document to restore" }],
+	optional: [],
+	writes:
+		"Moves an archived document's file, unchanged, from backlog/archive/docs back to the same relative path under backlog/docs. It keeps its ID and can be listed, searched and updated again. A file already at that path is never replaced. No task or draft is changed.",
+	output:
+		"Restore confirmation text, followed by the tasks and drafts whose documentation list names the archive path the file left",
+	examples: ["backlog doc restore doc-1"],
+})
+	.description("move an archived document back to the docs folder")
+	.action((docId: string) => changeContentRecord("document", "restore", docId));
+
+addHelpSchema(docCmd.command("delete <docId>"), {
+	required: [{ name: "docId", type: "Document ID", description: "Archived document to delete" }],
+	optional: [],
+	writes:
+		"Permanently removes an archived document's file from backlog/archive/docs; a file that is a symbolic link is removed as a link. A document must be archived first (backlog doc archive). There is no prompt. Its ID is released once no other file and no committed file on any branch still uses the number. No task or draft is changed.",
+	output:
+		"Delete confirmation text, followed by the tasks and drafts whose documentation list names the removed file, by its archive path or by the path it had before it was archived",
+	examples: ["backlog doc archive doc-1", "backlog doc delete doc-1"],
+})
+	.description("permanently delete an archived document, releasing its ID")
+	.action((docId: string) => changeContentRecord("document", "delete", docId));
 
 const docListCommand = addHelpSchema(docCmd.command("list"), {
 	reads: "Documents under the configured docs directory",
@@ -4790,7 +4972,7 @@ addListWindowOptions(docListCommand)
 			// Resolve through the same reader as `doc view`. Matching filenames against the id
 			// only found `<id> - <title>.md` at the top level, so documents written under the
 			// older title-only filenames, or in a subdirectory, opened as nothing.
-			const content = await core.getDocumentContent(selected.id);
+			const content = await core.getDocumentViewText(selected.id);
 			if (content !== null) {
 				await scrollableViewer(content);
 			}
@@ -4875,7 +5057,7 @@ addHelpSchema(docCmd.command("view <docId>"), {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		try {
-			const content = await core.getDocumentContent(docId);
+			const content = await core.getDocumentViewText(docId);
 			if (content === null) {
 				console.error(`Document ${docId} not found.`);
 				return;
@@ -4919,7 +5101,7 @@ addHelpSchema(decisionCmd.command("create <title>"), {
 		const decision: Decision = {
 			id,
 			title: title as string,
-			date: new Date().toISOString().slice(0, 16).replace("T", " "),
+			date: formatUtcTimestamp(),
 			status: (options.status || "proposed") as Decision["status"],
 			context: "",
 			decision: "",
@@ -4929,6 +5111,69 @@ addHelpSchema(decisionCmd.command("create <title>"), {
 		await core.createDecision(decision);
 		console.log(`Created decision ${id}`);
 	});
+
+addHelpSchema(decisionCmd.command("edit <decisionId>"), {
+	required: [
+		{ name: "decisionId", type: "Decision ID", description: "Decision to update" },
+		{ name: "status", type: "String", description: "New decision status; free-form" },
+	],
+	optional: [{ name: "plain", type: "Boolean", description: "Use plain text output" }],
+	writes: "Replaces the status line in the decision's frontmatter; the rest of the file stays as it is",
+	output: "Updated decision ID",
+	examples: ["backlog decision edit decision-1 -s superseded"],
+})
+	.description("change the status of a decision")
+	.option("-s, --status <status>", "set decision status (free-form)")
+	// Accepted so agent guidance that always passes --plain works; edit output is already plain text.
+	.option("--plain", "use plain text output")
+	.action(async (decisionId: string, options) => {
+		if (!options.status) {
+			console.error(
+				"Status is required. Provide non-empty text, for example: backlog decision edit decision-1 -s superseded",
+			);
+			process.exitCode = 1;
+			return;
+		}
+		const cwd = await requireProjectRoot();
+		const core = new Core(cwd);
+		const id = await core.updateDecisionStatus(decisionId, options.status);
+		console.log(`Updated decision ${id}`);
+	});
+
+addHelpSchema(decisionCmd.command("archive <decisionId>"), {
+	required: [{ name: "decisionId", type: "Decision ID", description: "Decision to archive" }],
+	optional: [],
+	writes:
+		"Moves the decision's file, unchanged and under the same name, to backlog/archive/decisions. Its ID stays reserved. The decision becomes read-only and leaves decision list and search. No task or draft is changed.",
+	output: "Archive confirmation text, followed by the tasks and drafts whose documentation list names the moved file",
+	examples: ["backlog decision archive decision-1"],
+})
+	.description("move a decision into the archive, keeping its ID reserved")
+	.action((decisionId: string) => changeContentRecord("decision", "archive", decisionId));
+
+addHelpSchema(decisionCmd.command("restore <decisionId>"), {
+	required: [{ name: "decisionId", type: "Decision ID", description: "Archived decision to restore" }],
+	optional: [],
+	writes:
+		"Moves an archived decision's file, unchanged and under the same name, from backlog/archive/decisions back to backlog/decisions. It keeps its ID and is listed again. A file of that name already in backlog/decisions is never replaced. No task or draft is changed.",
+	output:
+		"Restore confirmation text, followed by the tasks and drafts whose documentation list names the archive path the file left",
+	examples: ["backlog decision restore decision-1"],
+})
+	.description("move an archived decision back to the decisions folder")
+	.action((decisionId: string) => changeContentRecord("decision", "restore", decisionId));
+
+addHelpSchema(decisionCmd.command("delete <decisionId>"), {
+	required: [{ name: "decisionId", type: "Decision ID", description: "Archived decision to delete" }],
+	optional: [],
+	writes:
+		"Permanently removes an archived decision's file from backlog/archive/decisions; a file that is a symbolic link is removed as a link. A decision must be archived first (backlog decision archive). There is no prompt. Its ID is released once no other file and no committed file on any branch still uses the number. No task or draft is changed.",
+	output:
+		"Delete confirmation text, followed by the tasks and drafts whose documentation list names the removed file, by its archive path or by the path it had before it was archived",
+	examples: ["backlog decision archive decision-1", "backlog decision delete decision-1"],
+})
+	.description("permanently delete an archived decision, releasing its ID")
+	.action((decisionId: string) => changeContentRecord("decision", "delete", decisionId));
 
 const decisionListCommand = addHelpSchema(decisionCmd.command("list"), {
 	reads: "Decisions under the configured decisions directory",
@@ -5526,22 +5771,26 @@ addHelpSchema(configCmd.command("list"), {
 		}
 	});
 addHelpSchema(program.command("doctor"), {
-	reads: "Active and completed task files, document, decision, and draft files, plus Backlog Markdown references",
+	reads: "Active and archived task files, document, decision, and draft files, plus Backlog Markdown references",
 	required: [],
 	optional: [
-		{ name: "fix", type: "Boolean", description: "Apply the displayed duplicate-ID repair" },
+		{
+			name: "fix",
+			type: "Boolean",
+			description: "Apply the displayed duplicate-ID repair and move archived tasks into the archive folder",
+		},
 		{ name: "yes", type: "Boolean", description: "Confirm --fix without an interactive prompt" },
 	],
 	writes:
-		"With --fix, atomically renames duplicate task files and updates only their frontmatter IDs; ambiguous references are reported for human review",
+		"With --fix, atomically renames duplicate task files and updates only their frontmatter IDs; ambiguous references are reported for human review. Archived task files stored outside the archive folder are then moved into it without changing IDs or replacing files",
 	output:
-		"Duplicate-ID diagnosis for tasks, documents, decisions, and drafts, a deterministic task repair preview, a reference-review report, and a report of self-referential and cyclic task dependencies",
+		"Duplicate-ID diagnosis for tasks, documents, decisions, and drafts, a deterministic task repair preview, a reference-review report, a report of self-referential and cyclic task dependencies, and the archived task files stored outside the archive folder",
 	examples: ["backlog doctor", "backlog doctor --fix", "backlog doctor --fix --yes"],
 })
 	.description(
-		"diagnose duplicate task, document, and decision IDs, report self-referential and cyclic dependencies, and safely repair duplicate task IDs",
+		"diagnose duplicate task, document, and decision IDs, report self-referential and cyclic dependencies, safely repair duplicate task IDs, and move archived tasks into the archive folder",
 	)
-	.option("--fix", "apply the displayed duplicate task ID repair")
+	.option("--fix", "apply the displayed duplicate task ID repair and archived task move")
 	.option("--yes", "confirm --fix without prompting")
 	.action(async (options: { fix?: boolean; yes?: boolean }) => {
 		if (options.yes && !options.fix) {
@@ -5577,38 +5826,47 @@ addHelpSchema(program.command("doctor"), {
 			const draftIdentityBroken = hasDraftIdentityFindings(draftIdentity);
 			const dependencyDefects = await findDependencyDefects(core);
 			const dependenciesBroken = dependencyDefects.selfDependencies.length > 0 || dependencyDefects.cycles.length > 0;
-			if (
-				plan.groups.length === 0 &&
-				plan.crossBranchFindings.length === 0 &&
-				!contentIdentityBroken &&
-				!draftIdentityBroken &&
-				!dependenciesBroken
-			) {
-				if (!reservedTaskPrefix) {
-					console.log("No duplicate IDs, self-referential dependencies, or dependency cycles found.");
-				}
-				return;
+			const archivedTaskMove = await previewArchivedTaskMove(core);
+			const archivedTasksOutsideArchive = archivedTaskMove.moves.length + archivedTaskMove.blocked.length;
+			// Archived tasks stored outside the archive folder work as they are; reporting them is
+			// not a failure, unlike the findings below.
+			const hasFindings =
+				plan.groups.length > 0 ||
+				plan.crossBranchFindings.length > 0 ||
+				contentIdentityBroken ||
+				draftIdentityBroken ||
+				dependenciesBroken;
+			if (!hasFindings && !reservedTaskPrefix) {
+				console.log("No duplicate IDs, self-referential dependencies, or dependency cycles found.");
 			}
+			if (!hasFindings && archivedTasksOutsideArchive === 0) return;
 
+			const repairsDuplicates = plan.groups.length > 0;
 			printDuplicateRepairPlan(plan);
 			printContentIdentityReport(contentIdentity);
 			printDraftIdentityReport(draftIdentity);
 			printDependencyDefectsReport(dependencyDefects);
+			printArchivedTaskMovePlan(archivedTaskMove, repairsDuplicates);
 			if (!options.fix) {
-				if (plan.groups.length > 0 && plan.repairable) {
+				if (repairsDuplicates && plan.repairable) {
 					console.log("\nRun 'backlog doctor --fix' to apply this repair after reviewing the preview.");
-				} else if (plan.groups.length > 0) {
+				} else if (repairsDuplicates) {
 					console.log("\nResolve the blocked reasons above, then run 'backlog doctor' again.");
 				}
-				process.exitCode = 1;
+				if (hasFindings) process.exitCode = 1;
 				return;
 			}
-			if (plan.groups.length === 0) {
+			// Repairing duplicates can free a file name in the archive folder, so the move is
+			// attempted after a repair even when the preview could not move anything yet.
+			const movesArchivedTasks = repairsDuplicates
+				? archivedTasksOutsideArchive > 0
+				: archivedTaskMove.moves.length > 0;
+			if (!repairsDuplicates && !movesArchivedTasks) {
 				console.error("The reported findings cannot be repaired automatically; resolve them by hand.");
 				process.exitCode = 1;
 				return;
 			}
-			if (!plan.repairable) {
+			if (repairsDuplicates && !plan.repairable) {
 				process.exitCode = 1;
 				return;
 			}
@@ -5620,8 +5878,16 @@ addHelpSchema(program.command("doctor"), {
 					process.exitCode = 1;
 					return;
 				}
+				const actions: string[] = [];
+				if (repairsDuplicates) actions.push(`rename ${pluralizeFiles(plan.changes.length, "duplicate task")}`);
+				if (movesArchivedTasks) {
+					actions.push(
+						`move ${pluralizeFiles(archivedTasksOutsideArchive, "archived task")} into ${archivedTaskMove.archiveDirectory}`,
+					);
+				}
+				const question = actions.join(" and ");
 				const confirmation = await clack.confirm({
-					message: `Rename ${plan.changes.length} duplicate task ${plan.changes.length === 1 ? "file" : "files"}?`,
+					message: `${question.charAt(0).toUpperCase()}${question.slice(1)}?`,
 					initialValue: false,
 				});
 				confirmed = !clack.isCancel(confirmation) && confirmation === true;
@@ -5631,19 +5897,27 @@ addHelpSchema(program.command("doctor"), {
 				return;
 			}
 
-			const result = await core.repairDuplicateTaskIds(plan.fingerprint);
-			console.log(
-				`\nRepaired ${result.repairedFiles} duplicate task ${result.repairedFiles === 1 ? "file" : "files"}.`,
-			);
-			for (const change of result.changes) {
-				console.log(`  ${change.sourcePath} -> ${change.targetPath} (${change.oldId} -> ${change.newId})`);
+			if (repairsDuplicates) {
+				const result = await core.repairDuplicateTaskIds(plan.fingerprint);
+				console.log(`\nRepaired ${pluralizeFiles(result.repairedFiles, "duplicate task")}.`);
+				for (const change of result.changes) {
+					console.log(`  ${change.sourcePath} -> ${change.targetPath} (${change.oldId} -> ${change.newId})`);
+				}
+				if (result.references.length > 0) {
+					console.log(
+						`Review the ${result.references.length} reported reference ${result.references.length === 1 ? "line" : "lines"}; they were intentionally not changed.`,
+					);
+				}
+				console.log("Verification passed: no duplicate task IDs remain.");
 			}
-			if (result.references.length > 0) {
-				console.log(
-					`Review the ${result.references.length} reported reference ${result.references.length === 1 ? "line" : "lines"}; they were intentionally not changed.`,
-				);
+			if (movesArchivedTasks) {
+				const moved = await moveArchivedTasks(core);
+				console.log(`\nMoved ${pluralizeFiles(moved.moves.length, "archived task")} into ${moved.archiveDirectory}.`);
+				if (moved.blocked.length > 0) {
+					printArchivedTaskMovePlan({ ...moved, moves: [] }, false);
+					process.exitCode = 1;
+				}
 			}
-			console.log("Verification passed: no duplicate active/completed task IDs remain.");
 			if (plan.crossBranchFindings.length > 0) {
 				console.log("Cross-branch findings remain diagnostic-only and still require branch-by-branch review.");
 				process.exitCode = 1;
@@ -5671,17 +5945,27 @@ addHelpSchema(program.command("doctor"), {
 		}
 	});
 
-// Cleanup command for managing completed tasks
+// Cleanup command: bulk-archive finished tasks by age
 addHelpSchema(program.command("cleanup"), {
 	reads: "Tasks in terminal status from the configured backlog directory",
 	required: [],
 	optional: [],
-	writes: "Moves selected terminal-status tasks to the completed folder",
-	output: "Interactive cleanup summary",
+	writes: "Archives the selected terminal-status tasks: moves them off the board into the archive, keeping their IDs",
+	output:
+		"Interactive cleanup summary. The command asks for an age and a confirmation, so it needs an interactive terminal for both its input and its output; without that it exits non-zero and archives nothing",
 	examples: ["backlog cleanup"],
 })
-	.description("move completed tasks to completed folder based on age")
+	.description("archive tasks in the final status that are older than a chosen age")
 	.action(async () => {
+		// Cleanup asks two questions. Unless its input and its output are both a terminal nobody can
+		// answer them, and exiting 0 after archiving nothing would read as success.
+		if (!hasInteractiveTTY) {
+			clack.cancel(
+				"Cleanup needs an interactive terminal for both its input and its output, because it asks which tasks to archive. Nothing was archived.",
+			);
+			process.exitCode = 1;
+			return;
+		}
 		try {
 			const cwd = await requireProjectRoot();
 			const core = new Core(cwd);
@@ -5692,7 +5976,6 @@ addHelpSchema(program.command("cleanup"), {
 				console.error("No backlog project found. Initialize one first with: backlog init");
 				process.exit(1);
 			}
-			core.gitOps.setConfig(config);
 
 			const statuses = config.statuses ?? [...DEFAULT_STATUSES];
 			const terminalStatus = getTerminalStatus(statuses);
@@ -5701,8 +5984,7 @@ addHelpSchema(program.command("cleanup"), {
 				return;
 			}
 
-			const tasks = await core.queryTasks();
-			const terminalStatusTasks = tasks.filter((task) => isTerminalStatus(task.status, statuses));
+			const terminalStatusTasks = await core.getTerminalStatusTasksByAge(0);
 
 			if (terminalStatusTasks.length === 0) {
 				console.log(`No ${terminalStatus} tasks found to clean up.`);
@@ -5722,7 +6004,7 @@ addHelpSchema(program.command("cleanup"), {
 			];
 
 			const selectedAgePrompt = await clack.select({
-				message: "Move tasks to completed folder if they are older than:",
+				message: "Archive tasks if they are older than:",
 				options: ageOptions.map((option) => ({ label: option.title, value: option.value })),
 			});
 			const selectedAge = clack.isCancel(selectedAgePrompt) ? undefined : selectedAgePrompt;
@@ -5733,28 +6015,28 @@ addHelpSchema(program.command("cleanup"), {
 			}
 
 			// Get tasks older than selected period
-			const tasksToMove = await core.getTerminalStatusTasksByAge(selectedAge);
+			const tasksToArchive = await core.getTerminalStatusTasksByAge(selectedAge);
 
-			if (tasksToMove.length === 0) {
+			if (tasksToArchive.length === 0) {
 				console.log(`No tasks found that are older than ${ageOptions.find((o) => o.value === selectedAge)?.title}.`);
 				return;
 			}
 
 			console.log(
-				`\nFound ${tasksToMove.length} tasks older than ${ageOptions.find((o) => o.value === selectedAge)?.title}:`,
+				`\nFound ${tasksToArchive.length} tasks older than ${ageOptions.find((o) => o.value === selectedAge)?.title}:`,
 			);
-			for (const task of tasksToMove.slice(0, 5)) {
+			for (const task of tasksToArchive.slice(0, 5)) {
 				const date = formatUtcDateForDisplay(task.updatedDate || task.createdDate, {
 					dateFormat: config.dateFormat,
 				});
 				console.log(`  - ${task.id}: ${task.title} (${date})`);
 			}
-			if (tasksToMove.length > 5) {
-				console.log(`  ... and ${tasksToMove.length - 5} more`);
+			if (tasksToArchive.length > 5) {
+				console.log(`  ... and ${tasksToArchive.length - 5} more`);
 			}
 
 			const confirmedPrompt = await clack.confirm({
-				message: `Move ${tasksToMove.length} tasks to completed folder?`,
+				message: `Archive ${tasksToArchive.length} tasks?`,
 				initialValue: false,
 			});
 			const confirmed = clack.isCancel(confirmedPrompt) ? false : confirmedPrompt;
@@ -5764,50 +6046,13 @@ addHelpSchema(program.command("cleanup"), {
 				return;
 			}
 
-			// Move tasks to completed folder
-			let successCount = 0;
-			const shouldAutoCommit = config.autoCommit ?? false;
-
-			console.log("Moving tasks...");
-			const movedTasks: Array<{ fromPath: string; toPath: string; taskId: string }> = [];
-
-			for (const task of tasksToMove) {
-				const fromPath = task.filePath ?? (await core.getTask(task.id))?.filePath ?? null;
-
-				if (!fromPath) {
-					console.error(`Failed to locate file for task ${task.id}`);
-					continue;
-				}
-
-				const taskFilename = basename(fromPath);
-				const toPath = join(core.filesystem.completedDir, taskFilename);
-
-				const success = await core.completeTask(task.id);
-				if (success) {
-					successCount++;
-					movedTasks.push({ fromPath, toPath, taskId: task.id });
-				} else {
-					console.error(`Failed to move task ${task.id}`);
-				}
-			}
-
-			// If autoCommit is disabled, stage the moves so Git recognizes them
-			const hasGitRepository = await core.gitOps.isRepository();
-			if (successCount > 0 && !shouldAutoCommit && hasGitRepository) {
-				console.log("Staging file moves for Git...");
-				for (const { fromPath, toPath } of movedTasks) {
-					try {
-						await core.gitOps.stageFileMove(fromPath, toPath);
-					} catch (error) {
-						console.warn(`Warning: Could not stage move for Git: ${error}`);
-					}
-				}
-			}
-
-			console.log(`Successfully moved ${successCount} of ${tasksToMove.length} tasks to completed folder.`);
-			if (successCount > 0 && !shouldAutoCommit && hasGitRepository) {
-				console.log("Files have been staged. To commit: git commit -m 'cleanup: Move completed tasks'");
-			}
+			console.log("Archiving tasks...");
+			// Only the tasks that were just shown and confirmed, not whatever matches the age by now.
+			const result = await core.archiveTerminalStatusTasks(tasksToArchive.map((task) => task.id));
+			const lines = formatCleanupResult(result, tasksToArchive.length);
+			for (const line of lines.skipped) console.log(line);
+			for (const line of lines.failed) console.error(line);
+			console.log(lines.summary);
 		} catch (err) {
 			reportCommandFailure("Failed to run cleanup", err);
 		}

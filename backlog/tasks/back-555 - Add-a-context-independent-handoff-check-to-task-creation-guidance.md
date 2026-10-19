@@ -4,8 +4,11 @@ title: Add a context-independent handoff check to task creation guidance
 status: To Do
 assignee: []
 created_date: '2026-07-27 21:20'
+updated_date: '2026-10-07 12:46'
 labels: []
 dependencies: []
+references:
+  - agent-instructions
 documentation:
   - MANIFESTO.md
   - src/guidelines/cli-instructions/task-creation.md

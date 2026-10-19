@@ -1,4 +1,5 @@
 import type { Milestone, Task } from "../../types";
+import { parseStoredUtcDate } from "../../utils/utc-timestamp.ts";
 import { getMilestoneLabel, milestoneKey, normalizeMilestoneName } from "../utils/milestones";
 
 export type LaneMode = "none" | "milestone";
@@ -219,13 +220,14 @@ export function sortTasksForStatus(tasks: Task[], status: string): Task[] {
 			return a.ordinal - b.ordinal;
 		}
 
-		if (isDoneStatus) {
-			const aDate = a.updatedDate || a.createdDate;
-			const bDate = b.updatedDate || b.createdDate;
-			return bDate.localeCompare(aDate);
+		const aDate = isDoneStatus ? a.updatedDate || a.createdDate : a.createdDate;
+		const bDate = isDoneStatus ? b.updatedDate || b.createdDate : b.createdDate;
+		const aTime = parseStoredUtcDate(aDate)?.getTime();
+		const bTime = parseStoredUtcDate(bDate)?.getTime();
+		if (aTime !== undefined && bTime !== undefined) {
+			return isDoneStatus ? bTime - aTime : aTime - bTime;
 		}
-
-		return a.createdDate.localeCompare(b.createdDate);
+		return isDoneStatus ? bDate.localeCompare(aDate) : aDate.localeCompare(bDate);
 	});
 }
 

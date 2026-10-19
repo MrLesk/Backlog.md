@@ -9,7 +9,7 @@ permissions:
   id-token: write
 
 env:
-  BUN_VERSION: 1.3.14
+  BUN_VERSION: 1.4.3
 
 jobs:
   build:
@@ -19,7 +19,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            target: bun-linux-x64-baseline
+            target: bun-linux-x64
           - os: ubuntu-latest
             target: bun-linux-arm64
           - os: macos-latest
@@ -27,7 +27,7 @@ jobs:
           - os: macos-latest
             target: bun-darwin-arm64
           - os: windows-latest
-            target: bun-windows-x64-baseline
+            target: bun-windows-x64
           - os: ubuntu-latest
             target: bun-windows-arm64
     runs-on: ${{ matrix.os }}
@@ -52,12 +52,12 @@ jobs:
         run: |
           TAG="${GITHUB_REF##refs/tags/v}"
           jq ".version = \"$TAG\"" package.json > tmp.json && mv tmp.json package.json
-      - name: Prime Bun cache for baseline target (Windows workaround)
-        if: ${{ contains(matrix.target, 'baseline') && contains(matrix.target, 'windows') }}
+      - name: Prime Bun cache for Windows x64 target
+        if: ${{ matrix.target == 'bun-windows-x64' }}
         shell: bash
         run: |
           # Workaround for https://github.com/oven-sh/bun/issues/13513
-          # Build a dummy project from C:\ to prime the baseline binary cache
+          # Build a dummy project from C:\ to prime the x64 binary cache
           cd /c
           mkdir -p bun-cache-primer
           cd bun-cache-primer
@@ -137,7 +137,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - target: bun-linux-x64-baseline
+          - target: bun-linux-x64
             package: backlog.md-linux-x64
             os: linux
             cpu: x64
@@ -153,7 +153,7 @@ jobs:
             package: backlog.md-darwin-arm64
             os: darwin
             cpu: arm64
-          - target: bun-windows-x64-baseline
+          - target: bun-windows-x64
             package: backlog.md-windows-x64
             os: win32
             cpu: x64
@@ -164,10 +164,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - name: Download platform binary
+        id: binary
+        background: true
+        uses: actions/download-artifact@v8
         with:
           name: backlog-${{ matrix.target }}
         timeout-minutes: 15
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Configure npm for trusted publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install -g npm@11.6.0
+          npm --version
+      - name: Wait for platform binary
+        wait: binary
       - name: Prepare package
         shell: bash
         run: |
@@ -202,15 +216,6 @@ jobs:
         shell: bash
         run: |
           chmod +x pkg/backlog
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-      - name: Configure npm for trusted publishing
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm install -g npm@11.6.0
-          npm --version
       - name: Dry run platform publish
         run: |
           cd pkg
@@ -234,6 +239,7 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
       - name: Wait for platform package installability (Unix)
+        background: true
         if: ${{ matrix.os != 'windows-latest' }}
         shell: bash
         run: |
@@ -360,6 +366,8 @@ jobs:
           }
 
           throw "Timed out waiting for $PackageName@$Version."
+      - name: Wait for platform package checks
+        wait-all:
 
   install-sanity:
     name: install-sanity-${{ matrix.os }}

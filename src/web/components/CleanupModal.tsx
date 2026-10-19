@@ -6,7 +6,7 @@ import StoredDate from './StoredDate';
 interface CleanupModalProps {
 	isOpen: boolean;
 	onClose: () => void;
-	onSuccess: (movedCount: number) => void;
+	onSuccess: (message: string) => void;
 	dateFormat?: string;
 }
 
@@ -56,16 +56,18 @@ const CleanupModal: React.FC<CleanupModalProps> = ({ isOpen, onClose, onSuccess,
 	};
 
 	const handleExecuteCleanup = async () => {
-		if (selectedAge === null) return;
+		if (previewTasks.length === 0) return;
 
 		setIsExecuting(true);
 		setError(null);
 
 		try {
-			const result = await apiClient.executeCleanup(selectedAge);
+			// Only the tasks the preview showed, not whatever matches the age by now.
+			const result = await apiClient.executeCleanup(previewTasks.map((task) => task.id));
 
-			if (result.success) {
-				onSuccess(result.movedCount);
+			// A task that could not be archived is shown as an error, not in the success toast.
+			if (result.success && !result.failedTasks?.length) {
+				onSuccess(result.message);
 				handleClose();
 			} else {
 				setError(result.message || 'Cleanup failed');
@@ -92,7 +94,7 @@ const CleanupModal: React.FC<CleanupModalProps> = ({ isOpen, onClose, onSuccess,
 				{/* Age Selector */}
 				<div>
 					<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-						Move tasks to completed folder if they are older than:
+						Archive tasks if they are older than:
 					</label>
 					<div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
 							{AGE_OPTIONS.map(option => (
@@ -110,15 +112,12 @@ const CleanupModal: React.FC<CleanupModalProps> = ({ isOpen, onClose, onSuccess,
 								</button>
 							))}
 						</div>
-						<p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-							Tasks will be moved to the backlog/completed/ folder and removed from the board
-						</p>
 					</div>
 
 				{/* Error Message */}
 				{error && (
 					<div className="rounded-md bg-red-100 dark:bg-red-900/40 p-3">
-						<p className="text-sm text-red-700 dark:text-red-200">{error}</p>
+						<p className="text-sm text-red-700 dark:text-red-200 whitespace-pre-line">{error}</p>
 					</div>
 				)}
 
@@ -176,8 +175,7 @@ const CleanupModal: React.FC<CleanupModalProps> = ({ isOpen, onClose, onSuccess,
 							Confirm Cleanup
 						</h3>
 							<p className="text-sm text-amber-700 dark:text-amber-300">
-								Are you sure you want to move {previewCount} task{previewCount !== 1 ? 's' : ''} to the completed folder?
-								These tasks will be moved to backlog/completed/ and removed from the board.
+								Are you sure you want to archive {previewCount} task{previewCount !== 1 ? 's' : ''}?
 							</p>
 						</div>
 					)}
@@ -208,7 +206,7 @@ const CleanupModal: React.FC<CleanupModalProps> = ({ isOpen, onClose, onSuccess,
 										disabled={isExecuting}
 										className="px-4 py-2 text-sm font-medium text-white bg-red-500 dark:bg-red-600 rounded-md hover:bg-red-600 dark:hover:bg-red-700 disabled:opacity-50 transition-colors duration-200"
 									>
-										{isExecuting ? 'Moving Tasks...' : `Move ${previewCount} Task${previewCount !== 1 ? 's' : ''}`}
+										{isExecuting ? 'Archiving Tasks...' : `Archive ${previewCount} Task${previewCount !== 1 ? 's' : ''}`}
 									</button>
 								)}
 						</>

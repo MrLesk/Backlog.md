@@ -1,0 +1,63 @@
+{
+  "scanners": [
+    {
+      "id": "react",
+      "source": "@groma/scanner-react@0.2.1",
+      "include": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/tsconfig*.json",
+        "**/package.json",
+        "**/*.html",
+        "**/project.json",
+        "**/nx.json"
+      ],
+      "exclude": [
+        "*.test.ts",
+        "*.test.tsx",
+        "*.spec.ts",
+        "*.spec.tsx",
+        "/test/",
+        "node_modules/",
+        "dist/",
+        "build/",
+        "coverage/"
+      ]
+    },
+    {
+      "id": "typescript",
+      "source": "@groma/scanner-typescript@0.2.1",
+      "include": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/tsconfig*.json",
+        "**/package.json",
+        "**/*.html",
+        "**/angular.json",
+        "**/project.json",
+        "**/nx.json"
+      ],
+      "exclude": [
+        "*.test.ts",
+        "*.test.tsx",
+        "*.spec.ts",
+        "*.spec.tsx",
+        "/test/",
+        "node_modules/",
+        "dist/",
+        "build/",
+        "coverage/"
+      ]
+    }
+  ],
+  "workSources": [
+    {
+      "id": "backlog",
+      "version": "1.54.0"
+    }
+  ],
+  "exclude": [
+    "/scripts/",
+    "/src/test/"
+  ]
+}

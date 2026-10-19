@@ -1,9 +1,37 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { EventEmitter } from "node:events";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { screen as createBlessedScreen, program as createProgram, list } from "neo-neo-bblessed";
 import { Core } from "../core/backlog.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
 import { createUniqueTestDir, initializeTestProject, safeCleanup } from "./test-utils.ts";
+
+/** Stands in for the terminal's keyboard so a real blessed program can pause and resume it. */
+class FakeTerminalInput extends EventEmitter {
+	setRawMode(): this {
+		return this;
+	}
+
+	pause(): this {
+		return this;
+	}
+
+	resume(): this {
+		return this;
+	}
+}
+
+/** Stands in for the terminal's display; what blessed writes to it is discarded. */
+class FakeTerminalOutput extends EventEmitter {
+	isTTY = true;
+	columns = 80;
+	rows = 24;
+
+	write(): boolean {
+		return true;
+	}
+}
 
 function createMockScreen(): Parameters<Core["editTaskInTui"]>[1] {
 	return {
@@ -137,5 +165,29 @@ process.exit(0);
 
 		const reloaded = await core.filesystem.loadTask(taskId);
 		expect(reloaded?.updatedDate).toBeUndefined();
+	});
+
+	it("turns mouse reporting back on after the editor closes", async () => {
+		const noopScript = await createEditorScript("noop-editor.js", "process.exit(0);\n");
+		await setEditor(`node ${noopScript}`);
+
+		const program = createProgram({
+			tput: false,
+			terminal: "xterm",
+			input: new FakeTerminalInput(),
+			output: new FakeTerminalOutput(),
+		});
+		const terminalScreen = createBlessedScreen({ program, smartCSR: false });
+		try {
+			// A mouse-aware widget, like the task list, is what makes blessed ask for mouse events.
+			list({ parent: terminalScreen, mouse: true });
+			expect(program.mouseEnabled).toBe(true);
+
+			await core.editTaskInTui(taskId, terminalScreen);
+
+			expect(program.mouseEnabled).toBe(true);
+		} finally {
+			terminalScreen.destroy();
+		}
 	});
 });

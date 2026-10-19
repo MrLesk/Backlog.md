@@ -56,8 +56,8 @@ describe("subtask ordering consistency", () => {
 	});
 
 	it("orders the board's task corpus numerically, so TASK-1.9 precedes TASK-1.10", async () => {
-		// The corpus `backlog board` hands to the unified view. Its task list renders this array
-		// as-is, so this order is what the TUI list shows after Tab.
+		// The corpus `backlog board` hands to the unified view. No task here has an ordinal or a
+		// priority, so the default order its task list shows after Tab is this ID order.
 		const ids = (await core.loadTasks()).map((task) => task.id);
 
 		expect(ids).toEqual(EXPECTED_ORDER);

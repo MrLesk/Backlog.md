@@ -10,8 +10,6 @@ export const DEFAULT_DIRECTORIES = {
 	TASKS: "tasks",
 	/** Draft tasks directory */
 	DRAFTS: "drafts",
-	/** Completed tasks directory */
-	COMPLETED: "completed",
 	/** Archive root directory */
 	ARCHIVE: "archive",
 	/** Archived tasks directory */
@@ -20,13 +18,25 @@ export const DEFAULT_DIRECTORIES = {
 	ARCHIVE_DRAFTS: "archive/drafts",
 	/** Archived milestones directory */
 	ARCHIVE_MILESTONES: "archive/milestones",
+	/** Archived documents directory. A document keeps the relative path it had under the docs directory. */
+	ARCHIVE_DOCS: "archive/docs",
 	/** Documentation directory */
 	DOCS: "docs",
 	/** Decision logs directory */
 	DECISIONS: "decisions",
+	/** Archived decisions directory. Decisions are stored flat, so a decision keeps its file name. */
+	ARCHIVE_DECISIONS: "archive/decisions",
 	/** Milestones directory */
 	MILESTONES: "milestones",
 } as const;
+
+/**
+ * Every directory archived tasks are read from, relative to the backlog directory.
+ *
+ * Archiving writes to the first. The second is a folder older projects can still hold archived
+ * tasks in; they are read like any other archived task until `backlog doctor --fix` moves them.
+ */
+export const ARCHIVED_TASK_DIRECTORIES = [DEFAULT_DIRECTORIES.ARCHIVE_TASKS, "completed"] as const;
 
 /**
  * Default configuration file names
