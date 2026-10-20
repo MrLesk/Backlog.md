@@ -93,9 +93,9 @@ function registerStartCommand(mcpCmd: Command): void {
 				process.stderr.once("error", handlePipeError);
 
 				process.once("SIGINT", () => shutdown("SIGINT"));
-				process.once("SIGTERM", () => shutdown("SIGTERM"));
+				process.on("SIGTERM", () => shutdown("SIGTERM"));
 				if (process.platform !== "win32") {
-					process.once("SIGHUP", () => shutdown("SIGHUP"));
+					process.on("SIGHUP", () => shutdown("SIGHUP"));
 					process.once("SIGPIPE", () => shutdown("SIGPIPE"));
 				}
 			} catch (error) {
