@@ -1,9 +1,9 @@
-import { afterAll, describe, expect, it } from "bun:test";
-import { spawnSync } from "node:child_process";
+import { afterAll, afterEach, describe, expect, it } from "bun:test";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createLauncherInstall } from "./test-utils.ts";
+import { createLauncherInstall, waitUntil } from "./test-utils.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { getCandidatePackageNames } = require("../../scripts/resolveBinary.cjs");
@@ -46,6 +46,89 @@ describe("cli launcher", () => {
 		const result = runLauncher(dir, ["task", "list"]);
 		expect(result.status).toBe(7);
 		expect(result.stdout).toContain("args: task list");
+	});
+});
+
+// A fixture binary that handles the signals named in its args: it records each delivery and exits
+// with 3 a moment later, so a duplicate delivery is counted too. Other signals keep their default.
+const SIGNAL_FIXTURE_BINARY = `#!/usr/bin/env node
+const received = [];
+for (const signal of process.argv.slice(2)) {
+	process.on(signal, () => {
+		received.push(signal);
+		setTimeout(() => {
+			console.log("received " + received.join(","));
+			process.exit(3);
+		}, 200);
+	});
+}
+console.log("ready " + process.pid);
+setInterval(() => {}, 1000);
+`;
+
+const binaryPids: number[] = [];
+
+function isRunning(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/** Start the launcher in its own process group, as a terminal starts a foreground command. */
+async function startSignalFixture(handledSignals: string[]) {
+	const dir = await createLauncherDir(SIGNAL_FIXTURE_BINARY);
+	const launcher = spawn("node", [join(dir, "cli.cjs"), ...handledSignals], {
+		stdio: ["ignore", "pipe", "pipe"],
+		detached: true,
+	});
+	let output = "";
+	launcher.stdout.on("data", (chunk) => {
+		output += chunk;
+	});
+	const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+		launcher.on("exit", (code, signal) => resolve({ code, signal }));
+	});
+	await waitUntil(() => /ready \d+/.test(output), "the fixture binary to start");
+	const binaryPid = Number(output.match(/ready (\d+)/)?.[1]);
+	binaryPids.push(binaryPid);
+	return { launcher, exited, binaryPid, output: () => output };
+}
+
+describe.skipIf(isWindows)("launcher signal handling", () => {
+	afterEach(() => {
+		for (const pid of binaryPids.splice(0)) {
+			if (isRunning(pid)) process.kill(pid, "SIGKILL");
+		}
+	});
+
+	for (const signal of ["SIGTERM", "SIGHUP", "SIGQUIT"] as const) {
+		it(`forwards ${signal} sent to the launcher and exits with the binary's code`, async () => {
+			const fixture = await startSignalFixture([signal]);
+			fixture.launcher.kill(signal);
+			expect(await fixture.exited).toEqual({ code: 3, signal: null });
+			await waitUntil(() => fixture.output().includes("received"), "the binary to report");
+			expect(fixture.output()).toContain(`received ${signal}\n`);
+			expect(isRunning(fixture.binaryPid)).toBe(false);
+		});
+	}
+
+	it("exits with 128 + the signal number when the forwarded signal kills the binary", async () => {
+		const fixture = await startSignalFixture([]);
+		fixture.launcher.kill("SIGTERM");
+		expect(await fixture.exited).toEqual({ code: 128 + 15, signal: null });
+		expect(isRunning(fixture.binaryPid)).toBe(false);
+	});
+
+	it("waits for the binary on Ctrl+C without delivering SIGINT to it twice", async () => {
+		const fixture = await startSignalFixture(["SIGINT"]);
+		// The terminal sends Ctrl+C to the whole foreground process group.
+		process.kill(-(fixture.launcher.pid as number), "SIGINT");
+		expect(await fixture.exited).toEqual({ code: 3, signal: null });
+		await waitUntil(() => fixture.output().includes("received"), "the binary to report");
+		expect(fixture.output()).toContain("received SIGINT\n");
 	});
 });
 

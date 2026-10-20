@@ -94,6 +94,15 @@ function main() {
 		return;
 	}
 
+	// Stay alive until the binary exits, so a signal sent to the launcher's PID does not leave it running.
+	// Ctrl+C already reaches the binary from the terminal, so SIGINT is waited out instead of sent twice.
+	if (process.platform !== "win32") {
+		process.on("SIGINT", () => {});
+		for (const signal of ["SIGTERM", "SIGHUP", "SIGQUIT"]) {
+			process.on(signal, () => child.kill(signal));
+		}
+	}
+
 	child.on("exit", (code, signal) => {
 		if (isArchitectureSignal(signal)) {
 			// Typical symptom of running a binary built for the other CPU architecture
