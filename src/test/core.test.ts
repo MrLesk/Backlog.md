@@ -1269,6 +1269,16 @@ describe("Core", () => {
 			expect(lastCommit).toContain(`backlog: Archive draft ${draft.id.toUpperCase()}`);
 		});
 
+		it("should not reuse an archived draft ID when creating a draft", async () => {
+			const { task: first } = await core.createTaskFromInput({ title: "First idea", status: "Draft" }, false);
+			expect(await core.archiveDraft(first.id, false)).toBe(true);
+
+			// The archived draft keeps its ID, as an archived task does.
+			const { task: second } = await core.createTaskFromInput({ title: "Second idea", status: "Draft" }, false);
+			expect(first.id).toBe("DRAFT-1");
+			expect(second.id).toBe("DRAFT-2");
+		});
+
 		it("should preserve draft metadata through the canonical create path", async () => {
 			const { task: draft } = await core.createTaskFromInput(
 				{
