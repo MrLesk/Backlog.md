@@ -6115,7 +6115,7 @@ program
 
 			await server.start(port, options.open !== false);
 
-			// Graceful shutdown on common termination signals (register once)
+			// Graceful shutdown on common termination signals.
 			let shuttingDown = false;
 			const shutdown = async (signal: string) => {
 				if (shuttingDown) return;
@@ -6131,8 +6131,8 @@ program
 			};
 
 			process.once("SIGINT", () => void shutdown("SIGINT"));
-			process.once("SIGTERM", () => void shutdown("SIGTERM"));
-			process.once("SIGQUIT", () => void shutdown("SIGQUIT"));
+			process.on("SIGTERM", () => void shutdown("SIGTERM"));
+			process.on("SIGQUIT", () => void shutdown("SIGQUIT"));
 		} catch (err) {
 			reportCommandFailure("Failed to start browser interface", err);
 		}
