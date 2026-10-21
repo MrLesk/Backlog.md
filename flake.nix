@@ -146,8 +146,8 @@
             node -e 'require("node:fs").writeFileSync("node-roots.pem", require("node:tls").rootCertificates.join("\n"))'
             node ${./scripts/filter-trusted-cas.cjs} node-roots.pem "$out"
           '';
-          # Git has no proxy CApath setting; an empty CAfile blocks HTTPS proxies
-          # before proxy HTTP/auth while leaving direct and HTTP-proxy traffic intact.
+          # Git has no proxy CApath setting. A path beneath this regular file cannot
+          # load, blocking HTTPS proxies before HTTP/auth; empty CAfiles can fall back.
           blockedProxyCA = pkgs.writeText "backlog-unsupported-https-proxy-ca.pem" "";
           shellTrust = {
             SSL_CERT_FILE = "${trustedCA}/ca-bundle.crt";
@@ -157,7 +157,7 @@
             NODE_USE_SYSTEM_CA = "0";
             GIT_SSL_CAINFO = "${trustedCA}/ca-bundle.crt";
             GIT_SSL_CAPATH = "${trustedCA}/empty";
-            GIT_PROXY_SSL_CAINFO = "${blockedProxyCA}";
+            GIT_PROXY_SSL_CAINFO = "${blockedProxyCA}/unavailable.pem";
             CURL_CA_BUNDLE = "${trustedCA}/ca-bundle.crt";
             NPM_CONFIG_CAFILE = "${trustedCA}/ca-bundle.crt";
             NIX_SSL_CERT_FILE = "${trustedCA}/ca-bundle.crt";
@@ -261,8 +261,8 @@
             test "$(npm --version)" = "12.2.0"
             test -s "$SSL_CERT_FILE"
             test -d "$SSL_CERT_DIR"
-            test -f "$GIT_PROXY_SSL_CAINFO"
-            test ! -s "$GIT_PROXY_SSL_CAINFO"
+            test -f "$(dirname "$GIT_PROXY_SSL_CAINFO")"
+            test ! -e "$GIT_PROXY_SSL_CAINFO"
             git --version
             curl --version
             touch "$out"

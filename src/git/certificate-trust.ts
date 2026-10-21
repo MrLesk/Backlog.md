@@ -40,45 +40,53 @@ export async function withGitFetchTrust(
 	fetch: (environment: NodeJS.ProcessEnv) => Promise<void>,
 ): Promise<void> {
 	const directory = await mkdtemp(join(tmpdir(), "backlog-git-trust-"));
-	const proxyCAFile = join(directory, "unsupported-https-proxy-ca.pem");
+	const proxyMarker = join(directory, "unsupported-https-proxy");
+	const proxyCAFile = join(proxyMarker, "unavailable.pem");
 	try {
 		// Git exposes proxy CAfile but no proxy CApath: a filtered file alone still
-		// admits affected host roots. An owned empty file fails before HTTPS-proxy
-		// HTTP/auth traffic, while direct connections and HTTP proxies ignore it.
-		await writeFile(proxyCAFile, "", { mode: 0o600 });
+		// admits affected host roots. A path beneath an owned regular file cannot
+		// load: empty CA files can silently fall back to the proxy CA directory.
+		// Direct connections and HTTP proxies ignore this HTTPS-proxy-only option.
+		await writeFile(proxyMarker, "", { mode: 0o600 });
 		const bypass = Object.fromEntries(
 			Object.keys(process.env)
 				.filter((key) => key.toUpperCase() === "GIT_SSL_NO_VERIFY")
 				.map((key) => [key, undefined]),
 		);
 		const proxyTrust = { ...bypass, GIT_PROXY_SSL_CAINFO: proxyCAFile };
-		if (!/^https:\/\//i.test(url)) {
-			await fetch(proxyTrust);
-			return;
-		}
-		if (caFile === "") throw new Error("Configured Git CA file is empty");
-		const bundles =
-			caFile || caDirectory
-				? []
-				: [
-						...rootCertificates,
-						...getCACertificates("default"),
-						...getCACertificates("system"),
-						...getCACertificates("extra"),
-					];
-		if (caFile) bundles.push(await readFile(resolve(projectRoot, caFile), "utf8"));
-		if (caDirectory) {
-			const directory = resolve(projectRoot, caDirectory);
-			for (const name of await readdir(directory)) {
-				// OpenSSL CA directories use hashed names; ignore unrelated files and CRLs.
-				if (/^[a-f0-9]{8}\.\d+$/i.test(name)) bundles.push(await readFile(join(directory, name), "utf8"));
+		const originTrust: NodeJS.ProcessEnv = {};
+		if (/^https:\/\//i.test(url)) {
+			if (caFile === "") throw new Error("Configured Git CA file is empty");
+			const bundles =
+				caFile || caDirectory
+					? []
+					: [
+							...rootCertificates,
+							...getCACertificates("default"),
+							...getCACertificates("system"),
+							...getCACertificates("extra"),
+						];
+			if (caFile) bundles.push(await readFile(resolve(projectRoot, caFile), "utf8"));
+			if (caDirectory) {
+				const directory = resolve(projectRoot, caDirectory);
+				for (const name of await readdir(directory)) {
+					// OpenSSL CA directories use hashed names; ignore unrelated files and CRLs.
+					if (/^[a-f0-9]{8}\.\d+$/i.test(name)) bundles.push(await readFile(join(directory, name), "utf8"));
+				}
 			}
+			const certificates = trustedCertificates(bundles);
+			const cafile = join(directory, "ca.pem");
+			const empty = join(directory, "empty");
+			await mkdir(empty);
+			await writeFile(cafile, `${certificates.join("\n")}\n`, { mode: 0o600 });
+			Object.assign(originTrust, {
+				GIT_SSL_CAINFO: cafile,
+				GIT_SSL_CAPATH: empty,
+				SSL_CERT_FILE: cafile,
+				SSL_CERT_DIR: empty,
+				CURL_CA_BUNDLE: cafile,
+			});
 		}
-		const certificates = trustedCertificates(bundles);
-		const cafile = join(directory, "ca.pem");
-		const empty = join(directory, "empty");
-		await mkdir(empty);
-		await writeFile(cafile, `${certificates.join("\n")}\n`, { mode: 0o600 });
 		const scope = gitURLScope(url);
 		const rawCount = gitTrustValue("GIT_CONFIG_COUNT") ?? "0";
 		const count = Number(rawCount);
@@ -97,11 +105,7 @@ export async function withGitFetchTrust(
 		// specificity in the child environment without adding credentials to argv.
 		await fetch({
 			...proxyTrust,
-			GIT_SSL_CAINFO: cafile,
-			GIT_SSL_CAPATH: empty,
-			SSL_CERT_FILE: cafile,
-			SSL_CERT_DIR: empty,
-			CURL_CA_BUNDLE: cafile,
+			...originTrust,
 			GIT_CONFIG_COUNT: String(count + 2),
 			GIT_CONFIG_PARAMETERS: [gitTrustValue("GIT_CONFIG_PARAMETERS"), parameters].filter(Boolean).join(" "),
 			[`GIT_CONFIG_KEY_${count}`]: `http.${scope}.sslVerify`,

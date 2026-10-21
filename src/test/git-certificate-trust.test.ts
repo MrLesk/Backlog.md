@@ -362,7 +362,7 @@ test.each(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonica
 
 // Use native Git for both the unsafe baseline and guarded fetch: zero requests
 // must mean completed TLS/file rejection, never a timeout or failed spawn.
-async function proxyFixtureRoot() {
+async function proxyFixtureRoot(backend = "schannel") {
 	const root = await temporary();
 	for (const key of Object.keys(process.env)) {
 		if (
@@ -377,8 +377,9 @@ async function proxyFixtureRoot() {
 	await writeFile(process.env.GIT_CONFIG_GLOBAL, "");
 	await git(root, "init", "--quiet");
 	await git(root, "config", "http.proxyAuthMethod", "basic");
+	await git(root, "config", "http.schannelUseSSLCAInfo", "true");
 	if (process.platform === "win32") {
-		await git(root, "config", "http.sslBackend", "schannel");
+		await git(root, "config", "http.sslBackend", backend);
 		await git(root, "config", "http.schannelCheckRevoke", "false");
 	}
 	process.env.GIT_SSL_CAINFO = join(fixtures, "registry-ca.pem");
@@ -390,17 +391,20 @@ async function proxyFixtureRoot() {
 
 const proxyCases = ["registry-server.pem", "incident-server-emudhra.pem", "incident-server-aaa.pem"].flatMap((chain) =>
 	["http", "https"].flatMap((protocol) =>
-		(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonical"]).map((style) => ({
-			chain,
-			protocol,
-			style,
-		})),
+		(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonical"]).flatMap((style) =>
+			(process.platform === "win32" ? ["openssl", "schannel"] : ["default"]).map((backend) => ({
+				chain,
+				protocol,
+				style,
+				backend,
+			})),
+		),
 	),
 );
 test.each(proxyCases)(
-	"HTTPS proxy restriction blocks HTTP and auth before transmission ($chain, $protocol, $style)",
-	async ({ chain, protocol, style }) => {
-		const root = await proxyFixtureRoot();
+	"HTTPS proxy restriction blocks HTTP and auth before transmission ($chain, $protocol, $style, $backend)",
+	async ({ chain, protocol, style, backend }) => {
+		const root = await proxyFixtureRoot(backend);
 		const incidents = (await Bun.file(join(fixtures, "compromised-cas.json")).json()).certificates;
 		const selected = join(root, "selected-proxy-ca.pem");
 		await writeFile(
@@ -447,20 +451,27 @@ test.each(proxyCases)(
 				) => Promise<{ stdout: string; stderr: string }>;
 			};
 			const execute = internals.execGit.bind(operations);
-			let baselineError: unknown;
-			await execute(["fetch", "origin", "--quiet"], {
-				timeoutMs: 10000,
-				env: { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" },
-			}).catch((error) => {
-				baselineError = error;
-			});
-			if (requests !== 1 || !/502/.test(String(baselineError)))
-				throw new Error(
-					`Unfiltered ${protocol} HTTPS proxy ${chain} must reach fixture: requests=${requests}, ${String(baselineError)}`,
-				);
-			expect(authorization).toBe(`Basic ${Buffer.from("fixture-user:fixture-password").toString("base64")}`);
+			// Windows' native Schannel proxy revocation can reject the incident roots
+			// independently. Keep raw acceptance controls on the same Git's OpenSSL
+			// backend; Schannel must instead fail on our exact owned impossible path.
+			if (backend !== "schannel") {
+				let baselineError: unknown;
+				await execute(["fetch", "origin", "--quiet"], {
+					timeoutMs: 10000,
+					env: { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" },
+				}).catch((error) => {
+					baselineError = error;
+				});
+				if (requests !== 1 || !/502/.test(String(baselineError)))
+					throw new Error(
+						`Unfiltered ${protocol} HTTPS proxy ${chain} must reach fixture: requests=${requests}, ${String(baselineError)}`,
+					);
+				expect(authorization).toBe(`Basic ${Buffer.from("fixture-user:fixture-password").toString("base64")}`);
+			}
 			requests = 0;
 			authorization = undefined;
+			// Schannel clears proxy CAinfo too unless the exact origin policy opts in.
+			await git(root, "config", `http.${protocol}://fixture-origin.invalid/repository.schannelUseSSLCAInfo`, "false");
 			let nativeError: unknown;
 			let fetchError: unknown;
 			internals.execGit = async (args, options) => {
@@ -474,13 +485,14 @@ test.each(proxyCases)(
 			await operations.fetch().catch((error) => {
 				fetchError = error;
 			});
-			const diagnostic = `${protocol} proxy ${chain} (${style}): ${String(nativeError)}`;
+			const diagnostic = `${protocol} proxy ${chain} (${style}, ${backend}): ${String(nativeError)}`;
 			if (
 				!(nativeError instanceof Error) ||
 				/timeout|could not spawn/i.test(diagnostic) ||
 				!/certificate|CAfile|schannel|SSL/i.test(diagnostic)
 			)
 				throw new Error(`Expected completed proxy TLS/file rejection: ${diagnostic}`);
+			expect(String(nativeError).replaceAll("\\", "/")).toContain("/unsupported-https-proxy/unavailable.pem");
 			if (requests !== 0 || authorization !== undefined)
 				throw new Error(`HTTPS proxy received HTTP/auth: requests=${requests}, ${diagnostic}`);
 			expect(String(fetchError)).toMatch(/HTTPS proxies are unsupported/);

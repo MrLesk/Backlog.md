@@ -54,7 +54,8 @@ for (const workflow of ["ci.yml", "release.yml", "architecture.yml"]) {
 			);
 			assert.ok(settings.GIT_CONFIG_PARAMETERS.startsWith(`${env.GIT_CONFIG_PARAMETERS} `));
 			assert.equal(settings.NODE_TLS_REJECT_UNAUTHORIZED, "1");
-			assert.equal(readFileSync(settings.GIT_PROXY_SSL_CAINFO, "utf8"), "");
+			assert.equal(readFileSync(path.dirname(settings.GIT_PROXY_SSL_CAINFO), "utf8"), "");
+			assert.throws(() => readFileSync(settings.GIT_PROXY_SSL_CAINFO), /ENOTDIR|ENOENT/);
 			assert.ok(settings.GIT_PROXY_SSL_CAINFO.startsWith(`${directory}${path.sep}backlog-proxy-trust-`));
 			assert.notEqual(path.dirname(settings.GIT_PROXY_SSL_CAINFO), settings.GIT_SSL_CAPATH);
 			// Keep the server and client in one child so synchronous execution cannot

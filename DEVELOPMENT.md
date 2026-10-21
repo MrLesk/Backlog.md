@@ -25,8 +25,10 @@ children filtered trust while preserving private CAs and authentication. Direct
 HTTP/HTTPS and ordinary HTTP proxies remain supported. Git HTTPS proxies are
 blocked for both HTTP and HTTPS origins, including proxies with valid private
 certificates: Git cannot isolate their CA directory, so a filtered proxy CA file
-alone still admits compromised host roots. Fetch children use an owned empty
-`GIT_PROXY_SSL_CAINFO` file to fail before proxy HTTP or authentication is sent.
+alone still admits compromised host roots. Fetch children set
+`GIT_PROXY_SSL_CAINFO` to an impossible path beneath an owned regular file to fail
+before proxy HTTP or authentication is sent. An empty CA file is insufficient
+because some libcurl versions fall back to their proxy CA directory.
 Use a direct connection, an HTTP proxy, or disable `remoteOperations` for offline
 use. SSH and local remotes use their normal Git behavior.
 
@@ -115,9 +117,10 @@ The shell exports a current Node/NSS root bundle filtered for the incident as
 `SSL_CERT_FILE`, an empty `SSL_CERT_DIR`,
 and matching Git/curl/npm trust settings. Run `bun install --cafile "$SSL_CERT_FILE"`
 inside `nix develop`; `bun run update-nix` uses the same bundle automatically.
-The shell also selects an owned empty `GIT_PROXY_SSL_CAINFO` file: native Git
-HTTPS proxies are unsupported for the same reason as runtime fetches. Keep that
-restriction when selecting private origin roots below; a different proxy CA file
+The shell also selects an impossible `GIT_PROXY_SSL_CAINFO` path beneath an
+owned regular file: native Git HTTPS proxies are unsupported for the same reason
+as runtime fetches. Keep that
+restriction when selecting private origin roots below; a real proxy CA file
 would not isolate the host's proxy CA directory.
 
 This is an explicit, reproducible public CA selection: it overrides the host's
