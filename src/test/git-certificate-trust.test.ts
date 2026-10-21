@@ -114,14 +114,21 @@ test("Node-only extra CAs do not become default Git authorities in a fresh proce
 			"remote.origin.url",
 			`https://fixture-user:fixture-password@localhost:${address.port}/repository`,
 		);
+		// Windows checkouts can use CRLF; authority identity must be DER-based.
+		const extraCA = join(root, "node-only-extra-ca.pem");
+		await writeFile(extraCA, (await readFile(join(fixtures, "registry-ca.pem"), "utf8")).replace(/\r?\n/g, "\r\n"));
 		const probe = join(root, "probe.ts");
 		await writeFile(
 			probe,
 			`
 			import {readFile} from 'node:fs/promises';
 			import {getCACertificates} from 'node:tls';
+			import {X509Certificate} from 'node:crypto';
 			import {GitOperations} from ${JSON.stringify(resolve(import.meta.dir, "../git/operations.ts"))};
-			const privateCA = (await readFile(process.env.NODE_EXTRA_CA_CERTS, 'utf8')).trim();
+			const privateCA = await readFile(process.env.NODE_EXTRA_CA_CERTS, 'utf8');
+			const fingerprint = pem => new X509Certificate(pem).fingerprint256;
+			const privateFingerprint = fingerprint(privateCA);
+			const extraFingerprints = getCACertificates('extra').map(fingerprint);
 			const operations = new GitOperations(process.cwd());
 			const execute = operations.execGit.bind(operations);
 			let bundle;
@@ -134,8 +141,8 @@ test("Node-only extra CAs do not become default Git authorities in a fresh proce
 				if (process.argv[2] === 'raw') await execute(['fetch', 'origin', '--quiet'], {timeoutMs:10000, env:{GIT_TERMINAL_PROMPT:'0', GCM_INTERACTIVE:'Never'}});
 				else await operations.fetch();
 			} catch (failure) { error = String(failure); }
-			console.log(JSON.stringify({error, extraHasPrivate:getCACertificates('extra').some(pem => pem.trim() === privateCA),
-				bundleHasPrivate:bundle?.includes(privateCA), bundlePresent:!!bundle}));
+			console.log(JSON.stringify({error, extraHasPrivate:extraFingerprints.includes(privateFingerprint), extraFingerprints, privateFingerprint,
+				bundleHasPrivate:bundle?.match(/-----BEGIN CERTIFICATE-----[\\s\\S]+?-----END CERTIFICATE-----/g)?.some(pem => fingerprint(pem) === privateFingerprint), bundlePresent:!!bundle}));
 		`,
 		);
 		const childEnvironment = Object.fromEntries(
@@ -149,7 +156,7 @@ test("Node-only extra CAs do not become default Git authorities in a fresh proce
 		Object.assign(childEnvironment, {
 			GIT_CONFIG_NOSYSTEM: "1",
 			GIT_CONFIG_GLOBAL: globalConfig,
-			NODE_EXTRA_CA_CERTS: join(fixtures, "registry-ca.pem"),
+			NODE_EXTRA_CA_CERTS: extraCA,
 		});
 		for (const mode of ["raw", "guarded"]) {
 			requests = 0;
@@ -166,6 +173,8 @@ test("Node-only extra CAs do not become default Git authorities in a fresh proce
 			]);
 			if (code !== 0) throw new Error(`${mode} Git trust child failed: ${stderr}`);
 			const result = JSON.parse(stdout);
+			if (!result.extraHasPrivate)
+				throw new Error(`Node-only CA fixture missing from extra pool: ${JSON.stringify(result)}`);
 			expect(result.extraHasPrivate).toBe(true);
 			if (
 				typeof result.error !== "string" ||
@@ -301,9 +310,12 @@ test("native CA lookup preserves username matching without putting HTTPS userinf
 	await expect(new GitOperations(root).fetch()).rejects.toThrow("failed to expand user dir");
 });
 
-test.each(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonical"])(
-	"native Git HTTPS fetch preserves private trust and auth but rejects both incident paths (%s)",
-	async (style) => {
+const nativeFetchCases = ["", "http::", "https::", "ftp::", "ftps::"].flatMap((helper) =>
+	(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonical"]).map((style) => ({ helper, style })),
+);
+test.each(nativeFetchCases)(
+	"native Git HTTPS fetch preserves private trust and auth but rejects both incident paths ($style, helper=$helper)",
+	async ({ style, helper }) => {
 		const root = await temporary();
 		const incidents = (await Bun.file(join(fixtures, "compromised-cas.json")).json()).certificates;
 		const selected = join(root, "selected-ca.pem");
@@ -390,7 +402,7 @@ test.each(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonica
 				if (!address || typeof address === "string") throw new Error("Expected loopback server address");
 				const url = `https://test=user:test-secret@localhost:${address.port}/repository`;
 				const configuredURL = `https://test=user@localhost:${address.port}/repository`;
-				await git(root, "config", "remote.origin.url", url);
+				await git(root, "config", "remote.origin.url", `${helper}${url}`);
 				await git(
 					root,
 					"config",
@@ -496,18 +508,21 @@ async function proxyFixtureRoot(backend = "schannel") {
 const proxyCases = ["registry-server.pem", "incident-server-emudhra.pem", "incident-server-aaa.pem"].flatMap((chain) =>
 	["http", "https"].flatMap((protocol) =>
 		(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonical"]).flatMap((style) =>
-			(process.platform === "win32" ? ["openssl", "schannel"] : ["default"]).map((backend) => ({
-				chain,
-				protocol,
-				style,
-				backend,
-			})),
+			(process.platform === "win32" ? ["openssl", "schannel"] : ["default"]).flatMap((backend) =>
+				(chain === "registry-server.pem" && protocol === "http" ? ["", "https::"] : [""]).map((helper) => ({
+					chain,
+					protocol,
+					style,
+					backend,
+					helper,
+				})),
+			),
 		),
 	),
 );
 test.each(proxyCases)(
-	"HTTPS proxy restriction blocks HTTP and auth before transmission ($chain, $protocol, $style, $backend)",
-	async ({ chain, protocol, style, backend }) => {
+	"HTTPS proxy restriction blocks HTTP and auth before transmission ($chain, $protocol, $style, $backend, helper=$helper)",
+	async ({ chain, protocol, style, backend, helper }) => {
 		const root = await proxyFixtureRoot(backend);
 		const incidents = (await Bun.file(join(fixtures, "compromised-cas.json")).json()).certificates;
 		const selected = join(root, "selected-proxy-ca.pem");
@@ -546,7 +561,7 @@ test.each(proxyCases)(
 			const address = server.address();
 			if (!address || typeof address === "string") throw new Error("Expected loopback proxy address");
 			await git(root, "config", "http.proxy", `https://fixture-user:fixture-password@localhost:${address.port}`);
-			await git(root, "config", "remote.origin.url", `${protocol}://fixture-origin.invalid/repository`);
+			await git(root, "config", "remote.origin.url", `${helper}${protocol}://fixture-origin.invalid/repository`);
 			const operations = new GitOperations(root);
 			const internals = operations as unknown as {
 				execGit: (

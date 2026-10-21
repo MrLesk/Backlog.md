@@ -616,7 +616,9 @@ export class GitOperations {
 
 		try {
 			const { stdout } = await this.execGit(["remote", "get-url", remote], { readOnly: true });
-			const url = stdout.trim(); // Git expands insteadOf rules before deciding the transport.
+			// Git expands insteadOf first. Its four bundled curl helpers also accept
+			// forced-helper URLs: classify their inner HTTP URL without changing fetch.
+			const url = stdout.trim().replace(/^(?:http|https|ftp|ftps)::(?=https?:\/\/)/i, "");
 			const fetch = async (env: NodeJS.ProcessEnv = {}) => {
 				// Use --prune to remove dead refs and reduce later scans.
 				await this.execGit(["fetch", remote, "--prune", "--quiet"], {
