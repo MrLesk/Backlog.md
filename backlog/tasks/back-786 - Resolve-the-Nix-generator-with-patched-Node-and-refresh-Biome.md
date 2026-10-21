@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-10-21T14:26:00Z'
-updated_date: '2026-10-21T15:24:00Z'
+updated_date: '2026-10-21T15:57:00Z'
 labels: []
 dependencies: []
 references:
@@ -38,6 +38,9 @@ modified_files:
   - src/test/git.test.ts
   - src/test/fixtures/certificate-trust/unsupported-key-ca.pem
   - src/test/fixtures/certificate-trust/unsupported-key-server.pem
+  - .github/workflows/release.yml
+  - .github/workflows/architecture.yml
+  - scripts/ci-trust.test.cjs
 priority: high
 type: bug
 ordinal: 396000
@@ -89,4 +92,12 @@ Fail-closed review distinguished absent from explicitly empty Git CA configurati
 Windows child-environment follow-up: read only Git CAINFO/CAPATH/CONFIG_COUNT case-insensitively on Windows; delete inherited case variants only for keys explicitly replaced or omitted by execGit options.env. Unrelated environment and untouched indexed authentication retain their original spelling. Windows native TLS fixture now runs canonical and lower-case-only CAfile/CApath/count/indexed auth/bypass inputs; lower-case env CA must override a deliberately different configured CA. Private-positive/auth and both incident completed-rejection/zeroHTTP assertions remain required. Unix case semantics are unchanged. Local31Git tests/types/lint pass; actual Windows variant awaits hosted final head.
 
 Codex review follow-up: inherited GIT_CONFIG_PARAMETERS can outrank indexed TLS flags; native Git control returned false before the fix and true after appending separately quoted exact URL key/value pairs. Preserve opaque inherited command-scope auth/proxy entries and raw username spelling (Git distinguishes raw reserved = from %3D, unlike WHATWG href). Credential-safe CA lookup reads only ordered CA entries with native --path, pseudonymizes equivalent usernames, then delegates matching to isolated Git --file - stdin; passwords and token-as-username never enter the new lookup argv. Native controls cover encoded unreserved names, reserved =, token usernames, wildcard paths, insteadOf, and exclusive private CA selection; malformed scopes fail generically. Every Git TLS chain now first proves unfiltered native acceptance at the mock404, and Git/npm fixtures explicitly require current leaf validity so expiry cannot silently satisfy negatives.32focused Git tests134assertions, types550files, Biome473files and4native updater tests pass. A preload mutation omitting the new PARAMETERS override reproduces1HTTP through the incident emudhra chain and fails the regression; unchanged fixed source passes. Previous a01 hosted matrix was fully green including full Linux and Nix; latest preceding cfd Windows/mac/all6compiles are green. Exact new-head3-platform/Nix and final action/Groma architecture pins still gate release.
+
+Final bounded follow-through prepared while Action/Groma release pins are pending: all3public CI bootstrap copies now reject inherited Git TLS bypasses and append exact GitHub repo URL verification/Schannel policy above inherited PARAMETERS, preserving prior indexed/command auth.3persistent nativeNode regressions execute the actual YAML bootstrap programs and native Git matching/auth controls. Nix shellTrust remains the deliberately reproducible public CA selection already designed; it intentionally overrides host Git/npm CA policy. DEVELOPMENT now gives concrete post-nix-develop filtering and SSL_CERT_FILE/GIT_SSL_CAINFO/NPM_CONFIG_CAFILE export commands for required private roots, with empty CApath. No shell wrapper or hidden host trust union added. Runtime private Git policy outside explicit shell overrides remains preserved. Final architecture pins, hosted gates and task completion still pending.
+
+Native match-then-path ordering follow-up: enumerating all CA entries with --path can reject an unrelated ~nonexistentuser value even when native URL matching would ignore it. Projection now enumerates raw CA values and applies native --path only after isolated --get-urlmatch selects the applicable value. Actual controls preserve a current-user ~/ private CA fixture, ignore unrelated unusable tilde paths, and reject a selected invalid path.32focusedGit tests146assertions, types551files and Biome474files pass; a preload mutation restoring early expansion reproduces the unrelated-entry exit128 and fails the regression. This bounded fix is held with final bootstrap/docs/pin changes; all3OS/all6build gates for preceding e0f are green, exact final head still required.
+
+Public CI bootstrap guards also export NODE_TLS_REJECT_UNAUTHORIZED=1, matching Action/Groma. The existing3actual-YAML regressions inject inherited0 and run real native HTTPS server/client controls: beforebootstrap each private untrusted peer reaches1HTTP; afterexport it completes certificate rejection with0HTTP. No OS trust mutation or new framework; all3cases pass. Shell trust selection remains unchanged. Preceding e0f hosted matrix is now fullygreen including Nix,3OS suites,6binarycompiles and fullLinuxDOM/TUI. Final approvedsource/pins head remains pending exactAction/Groma release commits.
+
+Final source integration now pins the exact planned Action version tag v1.2.2 and Groma0.7.4 (AGENTS has no fullSHA requirement). The specific Action release tag and CLI publication remain external gates: no moving v1 pin, bypass or fallback is allowed. Removed temporary Node24 prewarm/manualnpm because the new composite provisions patchedNode26/npm12; restored normal trusted-main architecture scanning, retaining committed-only PR comparisons and firstTLSbootstrap in everyjob. Publish this finalsourcehead now so full3OS/Nix/reviews run in parallel; architecture must be rerun unchanged after actual Action/Groma publication. Release-dependent acceptance remains pending and task stays InProgress.
 <!-- SECTION:NOTES:END -->

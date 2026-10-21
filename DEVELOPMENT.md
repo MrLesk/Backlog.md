@@ -109,6 +109,24 @@ The shell exports a current Node/NSS root bundle filtered for the incident as
 `SSL_CERT_FILE`, an empty `SSL_CERT_DIR`,
 and matching Git/curl/npm trust settings. Run `bun install --cafile "$SSL_CERT_FILE"`
 inside `nix develop`; `bun run update-nix` uses the same bundle automatically.
+
+This is an explicit, reproducible public CA selection: it overrides the host's
+Git and npm CA settings, including URL-specific Git settings. For private Git
+servers or registries, select an incident-filtered bundle containing their
+required private roots after entering the shell. Include the required public
+roots too if those services are also needed:
+
+```bash
+ca_directory=$(mktemp -d)
+node scripts/filter-trusted-cas.cjs /path/to/required-ca-bundle.pem "$ca_directory"
+export SSL_CERT_FILE="$ca_directory/ca-bundle.crt"
+export GIT_SSL_CAINFO="$SSL_CERT_FILE" NPM_CONFIG_CAFILE="$SSL_CERT_FILE"
+export SSL_CERT_DIR="$ca_directory/empty" GIT_SSL_CAPATH="$ca_directory/empty"
+```
+
+Outside an explicitly overridden shell, Backlog's native HTTPS fetch protection
+preserves the effective private Git CA policy automatically.
+
 The Nix install check executes the packaged CLI natively and under QEMU's Ivy
 Bridge CPU model. JSC's JIT is disabled only for the emulated check because it
 is not reliable under QEMU user mode; normal packaged execution keeps JIT

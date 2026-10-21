@@ -646,7 +646,7 @@ export class GitOperations {
 				const configuredCA = async (key: string) => {
 					if (projected === undefined) {
 						const { stdout } = await this.execGit(
-							["config", "--null", "--path", "--get-regexp", "^http\\.(.*\\.)?sslca(info|path)$"],
+							["config", "--null", "--get-regexp", "^http\\.(.*\\.)?sslca(info|path)$"],
 							{ readOnly: true, acceptedExitCodes: [0, 1] },
 						);
 						projected = "";
@@ -659,11 +659,14 @@ export class GitOperations {
 							projected += `[http${scope}]\n${match[2]} = ${quoted(entry.slice(separator + 1))}\n`;
 						}
 					}
-					const result = await this.execGit(["config", "--file", "-", "--null", "--get-urlmatch", key, queryURL(url)], {
-						readOnly: true,
-						acceptedExitCodes: [0, 1],
-						input: projected,
-					});
+					const result = await this.execGit(
+						["config", "--file", "-", "--null", "--path", "--get-urlmatch", key, queryURL(url)],
+						{
+							readOnly: true,
+							acceptedExitCodes: [0, 1],
+							input: projected,
+						},
+					);
 					// A missing key emits nothing; an explicitly empty value emits one NUL.
 					return result.stdout ? result.stdout.slice(0, -1) : undefined;
 				};

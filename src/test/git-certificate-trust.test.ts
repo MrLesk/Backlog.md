@@ -2,8 +2,8 @@ import { afterEach, expect, test } from "bun:test";
 import { X509Certificate } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:https";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { basename, join, resolve } from "node:path";
 import { trustedCertificates } from "../../scripts/filter-trusted-cas.cjs";
 import { withGitFetchTrust } from "../git/certificate-trust.ts";
 import { GitOperations } from "../git/operations.ts";
@@ -102,7 +102,7 @@ test("native CA lookup preserves username matching without putting HTTPS userinf
 		if (/^(git_config_(?:count|parameters|key_\d+|value_\d+)|git_ssl_ca(info|path))$/i.test(key))
 			delete process.env[key];
 	}
-	for (const [scope, remote] of [
+	const cases: Array<[string, string, boolean?]> = [
 		["https://test-user@example.invalid/repository", "https://test%2Duser:fixture-secret@example.invalid/repository"],
 		["https://test%2Duser@example.invalid/repository", "https://test-user:fixture-secret@example.invalid/repository"],
 		[
@@ -117,11 +117,34 @@ test("native CA lookup preserves username matching without putting HTTPS userinf
 			"https://token=abc@*.example.invalid/repository",
 			"https://token=abc:fixture-secret@sub.example.invalid/repository/nested",
 		],
-	]) {
+		[
+			"https://current-user@example.invalid/repository",
+			"https://current-user:fixture-secret@example.invalid/repository",
+			true,
+		],
+	];
+	for (const [scope, remote, tilde] of cases) {
 		const root = await temporary();
 		await git(root, "init", "--quiet");
 		await git(root, "config", "http.sslCAInfo", join(fixtures, "unsupported-key-ca.pem"));
-		await git(root, "config", `http.${scope}.sslCAInfo`, join(fixtures, "registry-ca.pem"));
+		let privateCA = join(fixtures, "registry-ca.pem");
+		let configuredCA = privateCA;
+		if (tilde) {
+			// Own and clean up this temporary fixture; never rewrite the user's config.
+			const userDirectory = await mkdtemp(join(homedir(), "backlog-git-ca-fixture-"));
+			roots.push(userDirectory);
+			privateCA = join(userDirectory, "private.pem");
+			await writeFile(privateCA, await readFile(join(fixtures, "registry-ca.pem")));
+			configuredCA = `~/${basename(userDirectory)}/private.pem`;
+		}
+		await git(root, "config", `http.${scope}.sslCAInfo`, configuredCA);
+		// Native Git ignores this unusable path when it does not match the remote.
+		await git(
+			root,
+			"config",
+			"http.https://unrelated.invalid/repository.sslCAInfo",
+			"~backlog-nonexistent-user-908134/ca.pem",
+		);
 		await git(root, "config", `url.${remote}.insteadOf`, "fixture:repository");
 		await git(root, "config", "remote.origin.url", "fixture:repository");
 		const expected = await git(
@@ -133,7 +156,8 @@ test("native CA lookup preserves username matching without putting HTTPS userinf
 			"http.sslCAInfo",
 			remote as string,
 		);
-		expect(expected).toBe(`${join(fixtures, "registry-ca.pem")}\0`);
+		expect(expected.endsWith("\0")).toBe(true);
+		expect(resolve(expected.slice(0, -1))).toBe(resolve(privateCA));
 		const operations = new GitOperations(root);
 		const internals = operations as unknown as {
 			execGit: (args: string[], options?: { env?: NodeJS.ProcessEnv }) => Promise<{ stdout: string; stderr: string }>;
@@ -161,6 +185,14 @@ test("native CA lookup preserves username matching without putting HTTPS userinf
 	await git(root, "config", "remote.origin.url", "https://fixture-token:fixture-secret@example.invalid/repository");
 	await git(root, "config", "http.not-a-url.sslCAInfo", join(fixtures, "registry-ca.pem"));
 	await expect(new GitOperations(root).fetch()).rejects.toThrow("Invalid URL in Git HTTPS CA configuration");
+	await git(root, "config", "--unset", "http.not-a-url.sslCAInfo");
+	await git(
+		root,
+		"config",
+		"http.https://fixture-token@example.invalid/repository.sslCAInfo",
+		"~backlog-nonexistent-user-908134/ca.pem",
+	);
+	await expect(new GitOperations(root).fetch()).rejects.toThrow("failed to expand user dir");
 });
 
 test.each(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonical"])(
