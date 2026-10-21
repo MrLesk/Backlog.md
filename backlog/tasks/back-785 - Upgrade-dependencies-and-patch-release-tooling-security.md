@@ -1,11 +1,11 @@
 ---
 id: BACK-785
 title: Upgrade dependencies and patch release tooling security
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-10-21T10:52:00Z'
-updated_date: '2026-10-21T11:53:00Z'
+updated_date: '2026-10-21T12:09:00Z'
 labels: []
 dependencies: []
 references:
@@ -42,8 +42,8 @@ The October 2026 certificate-authority incident and dependency advisories expose
 <!-- AC:BEGIN -->
 - [x] #1 All direct dependencies and CI actions are checked against their latest stable releases, upgraded where applicable, and remaining exceptions are documented.
 - [x] #2 Known dependency advisories are removed or have a verified explanation and scoped mitigation.
-- [ ] #3 CI, release, local runtime guidance, bun.lock, bun.nix, and flake inputs agree and have been validated.
-- [ ] #4 Required type, lint, test, compiled-binary, and Nix checks pass, with release-blocking upstream certificate fixes identified.
+- [x] #3 CI, release, local runtime guidance, bun.lock, bun.nix, and flake inputs agree and have been validated.
+- [x] #4 Required type, lint, test, compiled-binary, and Nix checks pass, with release-blocking upstream certificate fixes identified.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -93,14 +93,18 @@ Validated the new offline CA helper against current Node roots plus all20 incide
 Reproduced the official Node Nix crash with patchelf0.19.2 in anonymous memory files, avoiding disk allocation: raw binary exits0/v26.12.1; sequential interpreter then RPATH edits exitSIGSEGV; a single invocation with both edits also exitsSIGSEGV; the identical edits with --no-sort exit0/v26.12.1. dontStrip was already true. Replaced autoPatchelf with explicit --no-sort interpreter/RPATH updates and disabled generic ELF shrinking; all actual Node/npm/shebang/trust checks remain mandatory.
 
 The --no-sort patched Node also executes full JavaScript successfully: Node26.12.1, c-ares1.34.9, bundled Brotli error constant present, and118 current root certificates. Latest Windows suite passed on the same application code without changing behavior or timeout limits.
+
+Validated the exact release workflow prepare/jq transformation in an isolated directory using integrity-verified npm12.2.0 pack --dry-run. It includes exactly six launcher files (cli.js, resolveBinary.cjs, postuninstall.cjs, package.json, README.md, LICENSE), removes devDependencies/patchedDependencies/overrides/type, keeps only postuninstall, pins all platform packages to the release tag, and leaves source package.json1.55.0 unchanged. Npm12 JSON output is keyed by package name; no workflow consumes that JSON.
+
+Hosted CI39595399062 at d89c8116e955373d39cada6c8ecd05a229c72d52 passed all ten jobs. The bounded Nix development-tools derivation was realized, not merely evaluated: packaged Node v26.12.1 and npm12.2.0 install checks passed, npm/npx store-path shebang assertions passed, the trust derivation retained118 current roots, and the check verified c-ares1.34.9 plus the Brotli fix constant. Patched Brotli built/tested successfully; Git2.56.0's full package tests passed and the resulting Git/curl8.22.0 tools executed. Native Nix package/browser/QEMU checks also passed. Final launcher metadata cleanup and this task finalization will receive the final exact-head hosted CI gate before merge/release.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Refreshed direct and compatible transitive dependencies, patched gray-matter onto current compatible js-yaml4, updated CI/release actions and Node/npm, regenerated Bun/Nix artifacts and flake inputs, and documented GitHub Release as the publishing entry point. Added filtered CA trust for CI and the Nix shell, explicit Bun cafiles, verified Bun runtime downloads/cross-compilation, and bounded patched Nix development tools.
+Refreshed direct and compatible transitive dependencies, patched gray-matter onto current compatible js-yaml 4, updated CI/release actions and Node/npm, regenerated Bun/Nix artifacts and flake inputs, and documented GitHub Release as the publishing entry point. Added filtered CA trust for CI and the Nix shell, explicit Bun cafiles, verified Bun runtime downloads/cross-compilation, and bounded patched Nix development tools. Root package.json remains 1.55.0; the GitHub Release workflow performs the release bump.
 
-Verified locally: empty dependency audit, frozen install, types/Biome, full isolated behavioral3201pass/13skip and DOM399pass suites, native CLI/browser smoke, Nix package/native/browser/QEMU checks, twelve-key CA filtering and Git Schannel-config preservation. Hosted all six compilation targets and platform suites passed on the functional dependency update. Latest Node ELF diagnosis proved raw/sequential/single/no-sort outcomes; no-sort also runs full JavaScript with Node26.12.1, c-ares1.34.9, Brotli error constant, and118 roots.
+Verified: empty dependency audit, frozen install, types/Biome, full isolated behavioral suite (3,201 pass/13 skip) and DOM suite (399 pass), native CLI/browser smoke, Nix package/native/browser/QEMU checks, exact launcher npm-pack output, twelve-key CA filtering, and inherited Git Schannel-config preservation. Hosted CI 39595399062 passed all ten jobs, including all six compilation targets, three platform suites, and the actually realized bounded Nix tools check. Packaged Node 26.12.1/npm 12.2.0, current 118-root trust, c-ares/Brotli assertions, patched curl and Git all passed. The Node ELF reproducer established that preserving ELF header order with patchelf --no-sort fixes the crash without weakening checks.
 
-Release remains gated on hosted CI for the final bounded Nix check. Exceptions are installable Biome2.5.15 (new2.6.x native packages404), js-yaml4.3.2 (5.x breaks opaque metadata preservation), Bun lock format1 (current bun2nix requirement), and unpatched latest-stable Bun1.4.3 trust/Brotli internals with documented scoped mitigations. Coordinate merge and GitHub Release publication; do not manually bump package.json or push a release tag directly.
+Exceptions are installable Biome 2.5.15 (new 2.6.x native packages return 404), js-yaml 4.3.2 (5.x breaks opaque metadata preservation), Bun lock format 1 (current bun2nix requirement), and unpatched latest-stable Bun 1.4.3 trust/Brotli internals with documented scoped mitigations. The final task/launcher-cleanup commit still requires its exact-head hosted checks before coordinated merge and GitHub Release publication. Do not manually bump package.json or push a release tag directly.
 <!-- SECTION:FINAL_SUMMARY:END -->
