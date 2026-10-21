@@ -677,6 +677,10 @@ export class GitOperations {
 					gitTrustValue("GIT_SSL_CAPATH") ?? (await configuredCA("http.sslCAPath")),
 					fetch,
 				);
+			} else if (/^http:\/\//i.test(url)) {
+				// HTTP origins can also select an HTTPS proxy. Do not parse unused
+				// origin CA settings, but apply the same proxy transport restriction.
+				await withGitFetchTrust(url, this.projectRoot, undefined, undefined, fetch);
 			} else {
 				await fetch();
 			}

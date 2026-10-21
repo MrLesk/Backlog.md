@@ -62,10 +62,14 @@ jobs:
           const directory = path.join(process.env.RUNNER_TEMP, 'backlog-empty-ca-directory');
           fs.writeFileSync(file, [...certificates.values()].join('\n') + '\n');
           fs.mkdirSync(directory, { recursive: true });
+          // Git cannot isolate HTTPS-proxy CA directories; block that transport.
+          const proxyDirectory = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, 'backlog-proxy-trust-'));
+          const proxyCAFile = path.join(proxyDirectory, 'unsupported-https-proxy-ca.pem');
+          fs.writeFileSync(proxyCAFile, '', { mode: 0o600 });
           const settings = {
             SSL_CERT_FILE: file, SSL_CERT_DIR: directory, NODE_EXTRA_CA_CERTS: file,
             NODE_USE_SYSTEM_CA: '0', NODE_TLS_REJECT_UNAUTHORIZED: '1', GIT_SSL_CAINFO: file, GIT_SSL_CAPATH: directory, CURL_CA_BUNDLE: file,
-            CARGO_HTTP_CAINFO: file, NPM_CONFIG_CAFILE: file, NIX_SSL_CERT_FILE: file,
+            GIT_PROXY_SSL_CAINFO: proxyCAFile, CARGO_HTTP_CAINFO: file, NPM_CONFIG_CAFILE: file, NIX_SSL_CERT_FILE: file,
           };
           const repository = new URL(`${process.env.GITHUB_SERVER_URL.replace(/\/+$/, '')}/${process.env.GITHUB_REPOSITORY}`);
           if (repository.protocol !== 'https:' || repository.username || repository.password) throw new Error('Expected a credential-free HTTPS GitHub server.');

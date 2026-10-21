@@ -31,7 +31,7 @@ export function gitURLScope(value: string): string {
 	}
 }
 
-/** Isolate trust for one native Git HTTPS fetch without changing user configuration. */
+/** Isolate one Git HTTP fetch; HTTPS proxies are blocked until Git can isolate their CA path. */
 export async function withGitFetchTrust(
 	url: string,
 	projectRoot: string,
@@ -39,37 +39,46 @@ export async function withGitFetchTrust(
 	caDirectory: string | undefined,
 	fetch: (environment: NodeJS.ProcessEnv) => Promise<void>,
 ): Promise<void> {
-	if (caFile === "") throw new Error("Configured Git CA file is empty");
-	const bundles =
-		caFile || caDirectory
-			? []
-			: [
-					...rootCertificates,
-					...getCACertificates("default"),
-					...getCACertificates("system"),
-					...getCACertificates("extra"),
-				];
-	if (caFile) bundles.push(await readFile(resolve(projectRoot, caFile), "utf8"));
-	if (caDirectory) {
-		const directory = resolve(projectRoot, caDirectory);
-		for (const name of await readdir(directory)) {
-			// OpenSSL CA directories use hashed names; ignore unrelated files and CRLs.
-			if (/^[a-f0-9]{8}\.\d+$/i.test(name)) bundles.push(await readFile(join(directory, name), "utf8"));
-		}
-	}
-	const certificates = trustedCertificates(bundles);
 	const directory = await mkdtemp(join(tmpdir(), "backlog-git-trust-"));
+	const proxyCAFile = join(directory, "unsupported-https-proxy-ca.pem");
 	try {
-		const cafile = join(directory, "ca.pem");
-		const empty = join(directory, "empty");
-		await mkdir(empty);
-		await writeFile(cafile, `${certificates.join("\n")}\n`, { mode: 0o600 });
-		// Bun omits undefined environment values. Override every inherited spelling on Windows too.
+		// Git exposes proxy CAfile but no proxy CApath: a filtered file alone still
+		// admits affected host roots. An owned empty file fails before HTTPS-proxy
+		// HTTP/auth traffic, while direct connections and HTTP proxies ignore it.
+		await writeFile(proxyCAFile, "", { mode: 0o600 });
 		const bypass = Object.fromEntries(
 			Object.keys(process.env)
 				.filter((key) => key.toUpperCase() === "GIT_SSL_NO_VERIFY")
 				.map((key) => [key, undefined]),
 		);
+		const proxyTrust = { ...bypass, GIT_PROXY_SSL_CAINFO: proxyCAFile };
+		if (!/^https:\/\//i.test(url)) {
+			await fetch(proxyTrust);
+			return;
+		}
+		if (caFile === "") throw new Error("Configured Git CA file is empty");
+		const bundles =
+			caFile || caDirectory
+				? []
+				: [
+						...rootCertificates,
+						...getCACertificates("default"),
+						...getCACertificates("system"),
+						...getCACertificates("extra"),
+					];
+		if (caFile) bundles.push(await readFile(resolve(projectRoot, caFile), "utf8"));
+		if (caDirectory) {
+			const directory = resolve(projectRoot, caDirectory);
+			for (const name of await readdir(directory)) {
+				// OpenSSL CA directories use hashed names; ignore unrelated files and CRLs.
+				if (/^[a-f0-9]{8}\.\d+$/i.test(name)) bundles.push(await readFile(join(directory, name), "utf8"));
+			}
+		}
+		const certificates = trustedCertificates(bundles);
+		const cafile = join(directory, "ca.pem");
+		const empty = join(directory, "empty");
+		await mkdir(empty);
+		await writeFile(cafile, `${certificates.join("\n")}\n`, { mode: 0o600 });
 		const scope = gitURLScope(url);
 		const rawCount = gitTrustValue("GIT_CONFIG_COUNT") ?? "0";
 		const count = Number(rawCount);
@@ -87,7 +96,7 @@ export async function withGitFetchTrust(
 		// Username-specific configuration outranks username-less keys. Keep that
 		// specificity in the child environment without adding credentials to argv.
 		await fetch({
-			...bypass,
+			...proxyTrust,
 			GIT_SSL_CAINFO: cafile,
 			GIT_SSL_CAPATH: empty,
 			SSL_CERT_FILE: cafile,
@@ -100,6 +109,14 @@ export async function withGitFetchTrust(
 			[`GIT_CONFIG_KEY_${count + 1}`]: `http.${scope}.schannelUseSSLCAInfo`,
 			[`GIT_CONFIG_VALUE_${count + 1}`]: "true",
 		});
+	} catch (error) {
+		if (String(error).includes(proxyCAFile)) {
+			throw new Error(
+				"Git HTTPS proxies are unsupported because Git cannot isolate their CA directories. Use a direct connection or an HTTP proxy; disable remoteOperations for offline use.",
+				{ cause: error },
+			);
+		}
+		throw error;
 	} finally {
 		await rm(directory, { recursive: true, force: true });
 	}

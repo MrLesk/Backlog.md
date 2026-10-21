@@ -2,8 +2,10 @@ import { afterEach, expect, test } from "bun:test";
 import { X509Certificate } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:https";
+import { connect, createServer as createTCPServer, type Socket } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
+import { createServer as createTLSServer } from "node:tls";
 import { trustedCertificates } from "../../scripts/filter-trusted-cas.cjs";
 import { withGitFetchTrust } from "../git/certificate-trust.ts";
 import { GitOperations } from "../git/operations.ts";
@@ -215,7 +217,7 @@ test.each(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonica
 		// switch is Windows-only; production keeps the caller's revocation policy.
 		for (const key of Object.keys(process.env)) {
 			if (
-				/^(git_config_(?:count|parameters|key_\d+|value_\d+)|git_ssl_cainfo|git_ssl_capath|https?_proxy|all_proxy)$/i.test(
+				/^(git_config_(?:count|parameters|key_\d+|value_\d+)|git_ssl_cainfo|git_ssl_capath|git_proxy_ssl_cainfo|https?_proxy|all_proxy)$/i.test(
 					key,
 				)
 			)
@@ -223,7 +225,9 @@ test.each(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonica
 		}
 		const variant = (name: string) =>
 			style === "lowercase" &&
-			/^GIT_(?:SSL_CA(?:INFO|PATH)|SSL_NO_VERIFY|CONFIG_(?:COUNT|PARAMETERS|KEY_\d+|VALUE_\d+))$/.test(name)
+			/^GIT_(?:SSL_CA(?:INFO|PATH)|SSL_NO_VERIFY|PROXY_SSL_CAINFO|CONFIG_(?:COUNT|PARAMETERS|KEY_\d+|VALUE_\d+))$/.test(
+				name,
+			)
 				? name.toLowerCase()
 				: name;
 		const inherited: Record<string, string> = {
@@ -234,6 +238,8 @@ test.each(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonica
 			GIT_CONFIG_VALUE_0: "X-Backlog-Fixture: preserved",
 			GIT_CONFIG_PARAMETERS: "'http.extraHeader=X-Backlog-Command: preserved'",
 			GIT_SSL_NO_VERIFY: "false",
+			// An unused invalid proxy CA must not abort direct HTTPS.
+			GIT_PROXY_SSL_CAINFO: join(root, "missing-proxy-ca.pem"),
 			NO_PROXY: "localhost,127.0.0.1",
 			no_proxy: "localhost,127.0.0.1",
 		};
@@ -353,3 +359,206 @@ test.each(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonica
 	},
 	20000,
 );
+
+// Use native Git for both the unsafe baseline and guarded fetch: zero requests
+// must mean completed TLS/file rejection, never a timeout or failed spawn.
+async function proxyFixtureRoot() {
+	const root = await temporary();
+	for (const key of Object.keys(process.env)) {
+		if (
+			/^(git_(?:config_(?:count|parameters|key_\d+|value_\d+)|ssl_(?:no_verify|cainfo|capath)|proxy_ssl_cainfo)|https?_proxy|all_proxy|no_proxy)$/i.test(
+				key,
+			)
+		)
+			delete process.env[key];
+	}
+	process.env.GIT_CONFIG_NOSYSTEM = "1";
+	process.env.GIT_CONFIG_GLOBAL = join(root, "global-gitconfig");
+	await writeFile(process.env.GIT_CONFIG_GLOBAL, "");
+	await git(root, "init", "--quiet");
+	await git(root, "config", "http.proxyAuthMethod", "basic");
+	if (process.platform === "win32") {
+		await git(root, "config", "http.sslBackend", "schannel");
+		await git(root, "config", "http.schannelCheckRevoke", "false");
+	}
+	process.env.GIT_SSL_CAINFO = join(fixtures, "registry-ca.pem");
+	const emptyDirectory = join(root, "empty");
+	await mkdir(emptyDirectory);
+	process.env.GIT_SSL_CAPATH = emptyDirectory;
+	return root;
+}
+
+const proxyCases = ["registry-server.pem", "incident-server-emudhra.pem", "incident-server-aaa.pem"].flatMap((chain) =>
+	["http", "https"].flatMap((protocol) =>
+		(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonical"]).map((style) => ({
+			chain,
+			protocol,
+			style,
+		})),
+	),
+);
+test.each(proxyCases)(
+	"HTTPS proxy restriction blocks HTTP and auth before transmission ($chain, $protocol, $style)",
+	async ({ chain, protocol, style }) => {
+		const root = await proxyFixtureRoot();
+		const incidents = (await Bun.file(join(fixtures, "compromised-cas.json")).json()).certificates;
+		const selected = join(root, "selected-proxy-ca.pem");
+		await writeFile(
+			selected,
+			[
+				await readFile(join(fixtures, "registry-ca.pem"), "utf8"),
+				...incidents.map((certificate: { pem: string }) => certificate.pem),
+			].join("\n"),
+		);
+		process.env[style === "lowercase" ? "git_proxy_ssl_cainfo" : "GIT_PROXY_SSL_CAINFO"] = selected;
+		const cert = await readFile(join(fixtures, chain));
+		const leaf = new X509Certificate(cert);
+		expect(Date.parse(leaf.validFrom)).toBeLessThan(Date.now());
+		expect(Date.parse(leaf.validTo)).toBeGreaterThan(Date.now());
+		let requests = 0;
+		let authorization: string | undefined;
+		const sockets = new Set<Socket>();
+		const server = createTLSServer(
+			{ key: await readFile(join(fixtures, "registry-server-key.pem")), cert },
+			(socket) => {
+				socket.once("data", (data) => {
+					requests++;
+					authorization = /proxy-authorization: ([^\r\n]+)/i.exec(data.toString())?.[1];
+					socket.end("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n");
+				});
+			},
+		);
+		server.on("connection", (socket) => {
+			sockets.add(socket);
+			socket.on("close", () => sockets.delete(socket));
+		});
+		server.on("tlsClientError", () => {});
+		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+		try {
+			const address = server.address();
+			if (!address || typeof address === "string") throw new Error("Expected loopback proxy address");
+			await git(root, "config", "http.proxy", `https://fixture-user:fixture-password@localhost:${address.port}`);
+			await git(root, "config", "remote.origin.url", `${protocol}://fixture-origin.invalid/repository`);
+			const operations = new GitOperations(root);
+			const internals = operations as unknown as {
+				execGit: (
+					args: string[],
+					options?: { env?: NodeJS.ProcessEnv; timeoutMs?: number },
+				) => Promise<{ stdout: string; stderr: string }>;
+			};
+			const execute = internals.execGit.bind(operations);
+			let baselineError: unknown;
+			await execute(["fetch", "origin", "--quiet"], {
+				timeoutMs: 10000,
+				env: { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" },
+			}).catch((error) => {
+				baselineError = error;
+			});
+			if (requests !== 1 || !/502/.test(String(baselineError)))
+				throw new Error(
+					`Unfiltered ${protocol} HTTPS proxy ${chain} must reach fixture: requests=${requests}, ${String(baselineError)}`,
+				);
+			expect(authorization).toBe(`Basic ${Buffer.from("fixture-user:fixture-password").toString("base64")}`);
+			requests = 0;
+			authorization = undefined;
+			let nativeError: unknown;
+			let fetchError: unknown;
+			internals.execGit = async (args, options) => {
+				try {
+					return await execute(args, options);
+				} catch (error) {
+					if (args[0] === "fetch") nativeError = error;
+					throw error;
+				}
+			};
+			await operations.fetch().catch((error) => {
+				fetchError = error;
+			});
+			const diagnostic = `${protocol} proxy ${chain} (${style}): ${String(nativeError)}`;
+			if (
+				!(nativeError instanceof Error) ||
+				/timeout|could not spawn/i.test(diagnostic) ||
+				!/certificate|CAfile|schannel|SSL/i.test(diagnostic)
+			)
+				throw new Error(`Expected completed proxy TLS/file rejection: ${diagnostic}`);
+			if (requests !== 0 || authorization !== undefined)
+				throw new Error(`HTTPS proxy received HTTP/auth: requests=${requests}, ${diagnostic}`);
+			expect(String(fetchError)).toMatch(/HTTPS proxies are unsupported/);
+		} finally {
+			for (const socket of sockets) socket.destroy();
+			await new Promise<void>((resolve) => server.close(() => resolve()));
+		}
+	},
+	20000,
+);
+
+test("HTTP CONNECT proxies retain private origin trust and proxy authentication", async () => {
+	const root = await proxyFixtureRoot();
+	// The configured bad HTTPS-proxy CA is unused for an ordinary HTTP proxy.
+	process.env.GIT_PROXY_SSL_CAINFO = join(root, "missing-proxy-ca.pem");
+	let originRequests = 0;
+	let connects = 0;
+	let authorization: string | undefined;
+	const origin = createServer(
+		{
+			key: await readFile(join(fixtures, "registry-server-key.pem")),
+			cert: await readFile(join(fixtures, "registry-server.pem")),
+		},
+		(_request, response) => {
+			originRequests++;
+			response.writeHead(404);
+			response.end("fixture repository not found");
+		},
+	);
+	const sockets = new Set<Socket>();
+	await new Promise<void>((resolve) => origin.listen(0, "127.0.0.1", resolve));
+	const originAddress = origin.address();
+	if (!originAddress || typeof originAddress === "string") throw new Error("Expected loopback origin address");
+	const proxy = createTCPServer((socket) => {
+		sockets.add(socket);
+		socket.on("close", () => sockets.delete(socket));
+		let header = Buffer.alloc(0);
+		const receive = (data: Buffer) => {
+			header = Buffer.concat([header, data]);
+			const end = header.indexOf("\r\n\r\n");
+			if (end < 0) return;
+			socket.removeListener("data", receive);
+			connects++;
+			authorization = /proxy-authorization: ([^\r\n]+)/i.exec(header.toString())?.[1];
+			const upstream = connect(originAddress.port, "127.0.0.1", () => {
+				socket.write("HTTP/1.1 200 Connection established\r\n\r\n");
+				if (header.length > end + 4) upstream.write(header.subarray(end + 4));
+				socket.pipe(upstream);
+				upstream.pipe(socket);
+			});
+			sockets.add(upstream);
+			upstream.on("close", () => sockets.delete(upstream));
+			upstream.on("error", () => socket.destroy());
+			socket.on("error", () => upstream.destroy());
+		};
+		socket.on("data", receive);
+	});
+	await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
+	try {
+		const address = proxy.address();
+		if (!address || typeof address === "string") throw new Error("Expected loopback proxy address");
+		await git(root, "config", "http.proxy", `http://fixture-user:fixture-password@localhost:${address.port}`);
+		await git(root, "config", "remote.origin.url", `https://localhost:${originAddress.port}/repository`);
+		let failure: unknown;
+		await new GitOperations(root).fetch().catch((error) => {
+			failure = error;
+		});
+		if (connects !== 1 || originRequests !== 1 || !/404|not found/i.test(String(failure)))
+			throw new Error(
+				`HTTP proxy must reach private origin404: connects=${connects}, requests=${originRequests}, ${String(failure)}`,
+			);
+		expect(authorization).toBe(`Basic ${Buffer.from("fixture-user:fixture-password").toString("base64")}`);
+	} finally {
+		for (const socket of sockets) socket.destroy();
+		origin.closeAllConnections();
+		await Promise.all([
+			new Promise<void>((resolve) => proxy.close(() => resolve())),
+			new Promise<void>((resolve) => origin.close(() => resolve())),
+		]);
+	}
+}, 20000);

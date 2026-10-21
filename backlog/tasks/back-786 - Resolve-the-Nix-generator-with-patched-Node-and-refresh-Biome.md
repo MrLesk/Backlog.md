@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-10-21T14:26:00Z'
-updated_date: '2026-10-21T15:57:00Z'
+updated_date: '2026-10-21T16:17:00Z'
 labels: []
 dependencies: []
 references:
@@ -41,6 +41,7 @@ modified_files:
   - .github/workflows/release.yml
   - .github/workflows/architecture.yml
   - scripts/ci-trust.test.cjs
+  - flake.nix
 priority: high
 type: bug
 ordinal: 396000
@@ -100,4 +101,8 @@ Native match-then-path ordering follow-up: enumerating all CA entries with --pat
 Public CI bootstrap guards also export NODE_TLS_REJECT_UNAUTHORIZED=1, matching Action/Groma. The existing3actual-YAML regressions inject inherited0 and run real native HTTPS server/client controls: beforebootstrap each private untrusted peer reaches1HTTP; afterexport it completes certificate rejection with0HTTP. No OS trust mutation or new framework; all3cases pass. Shell trust selection remains unchanged. Preceding e0f hosted matrix is now fullygreen including Nix,3OS suites,6binarycompiles and fullLinuxDOM/TUI. Final approvedsource/pins head remains pending exactAction/Groma release commits.
 
 Final source integration now pins the exact planned Action version tag v1.2.2 and Groma0.7.4 (AGENTS has no fullSHA requirement). The specific Action release tag and CLI publication remain external gates: no moving v1 pin, bypass or fallback is allowed. Removed temporary Node24 prewarm/manualnpm because the new composite provisions patchedNode26/npm12; restored normal trusted-main architecture scanning, retaining committed-only PR comparisons and firstTLSbootstrap in everyjob. Publish this finalsourcehead now so full3OS/Nix/reviews run in parallel; architecture must be rerun unchanged after actual Action/Groma publication. Release-dependent acceptance remains pending and task stays InProgress.
+
+Final security review reproduced native Git HTTPS-proxy leakage: with explicit incident proxy CAs, raw Git sent one proxy HTTP request plus fake Proxy-Authorization for private, emudhra and AAA chains. A filtered proxy CAfile alone still accepted the emudhra chain through libcurl compiled proxy CApath; Git 2.51.1/2.56 expose proxySSLCAInfo but no proxy CApath setting. Do not rely on nonexistent proxySSLVerify/GIT_PROXY_SSL_NO_VERIFY controls. The bounded hotfix explicitly blocks native Git HTTPS proxies with an owned empty GIT_PROXY_SSL_CAINFO file for HTTP and HTTPS origins, CI and the Nix shell. Direct HTTPS and ordinary HTTP CONNECT proxies remain supported; SSH/local remotes are unchanged. This material HTTPS-proxy restriction is documented with direct/HTTP-proxy/offline alternatives. Real native controls prove all six private/incident and HTTP/HTTPS-origin raw proxy cases transmit one request with fake auth before the guard, then complete a certificate-file rejection with zero requests/auth after it; direct unused invalid proxy CA and HTTP CONNECT private-origin/auth positives pass. Windows canonical/lowercase proxy environment cases and hosted full matrix/Nix remain final gates. 9365 prior Nix and all six compiled smoke jobs passed; its unrelated Windows archived-ID test timed out and cascaded, with no timeout or assertion changes made.
+
+Final proxy source delta independently reviewed and approved by parent. Local validation after the exact runtime/workflow/Nix/doc/test delta: 39 focused native Git/operations tests pass with 171 assertions; 7 native Node updater/bootstrap tests pass; bun --check reports no type errors in 551 files; Biome checks 474 files clean; git diff --check clean. Full exact-head Linux/macOS/Windows, six binary builds, Nix realization and branch-source architecture integration remain pending. Release-dependent acceptance stays open until Action v1.2.2 and Groma 0.7.4 are actually published.
 <!-- SECTION:NOTES:END -->
