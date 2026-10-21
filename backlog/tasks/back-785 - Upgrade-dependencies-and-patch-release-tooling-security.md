@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-10-21T10:52:00Z'
-updated_date: '2026-10-21T11:21:00Z'
+updated_date: '2026-10-21T11:22:00Z'
 labels: []
 dependencies: []
 references:
@@ -75,4 +75,6 @@ Bun1.4.3 remains the latest stable but still has upstream CA trust and bundled B
 Final full isolated suite with TERM=xterm passed: behavioral3201 pass/13 skip/0 fail across283 files; DOM399 pass/0 fail across39 files. The final cross-target build using the helper-extracted runtime and complete native CLI/browser smoke also passed. Frozen install, types, regenerated bun.nix comparison and audit{} passed. Nix package was actually built with native/browser and QEMU checks; the Node26.12.1 development shell derivation/version was evaluated, not source-built.
 
 Hosted CI proved live verified runtime downloads on Linux/macOS and Windows host installation, with Linux compile/smoke/compiled-TUI passing. It exposed a broken upstream Biome2.6.x publication: wrapper2.6.1 exists but cli-linux-x642.6.1 and2.6.0 both return404 from registry.npmjs.org, while2.5.15 returns200. Local installation had reused the older native binary. Pinned the complete installable2.5.15 release, regenerated both lock artifacts, and reran actual native lint/types/audit successfully. This is an explicit availability exception to latest stable; final hosted matrix remains required.
+
+Extended the CI compile matrix to all six release targets so every verified archive digest and compile.executablePath target is exercised before publication; native binary smoke stays on the three matching runner targets. Final local Nix rebuild with the complete Biome2.5.15 locks passed all install and QEMU checks.
 <!-- SECTION:NOTES:END -->

@@ -133,10 +133,22 @@ jobs:
         include:
           - os: ubuntu-latest
             target: bun-linux-x64
+            smoke: true
+          - os: ubuntu-latest
+            target: bun-linux-arm64
+            smoke: false
           - os: macos-latest
             target: bun-darwin-x64
+            smoke: true
+          - os: macos-latest
+            target: bun-darwin-arm64
+            smoke: false
           - os: windows-latest
             target: bun-windows-x64
+            smoke: true
+          - os: ubuntu-latest
+            target: bun-windows-arm64
+            smoke: false
     runs-on: ${{ matrix.os }}
     steps:
       - *secure-tls
@@ -168,6 +180,7 @@ jobs:
             BACKLOG_BUILD_OUTFILE="$OUT" \
             bun scripts/build.ts
       - name: Smoke-test binary
+        if: matrix.smoke
         shell: bash
         run: |
           FILE="backlog-test${{ contains(matrix.target,'windows') && '.exe' || '' }}"
@@ -175,7 +188,7 @@ jobs:
           chmod +x "$FILE"
           bun scripts/smoke-compiled-build.ts "$FILE" "$VER"
       - name: Run interactive TUI tests against compiled binary
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.target == 'bun-linux-x64'
         shell: bash
         run: |
           RUN_INTERACTIVE_TUI_TESTS=1 \
@@ -183,7 +196,7 @@ jobs:
           TUI_TEST_CLI_PATH="$PWD/backlog-test" \
           bun test src/test/tui-interactive-editor-handoff.test.ts src/test/tui-ready-filter-pty.test.ts --timeout=30000
       - name: Upload compiled-binary interactive transcripts on failure
-        if: failure() && matrix.os == 'ubuntu-latest'
+        if: failure() && matrix.target == 'bun-linux-x64'
         uses: actions/upload-artifact@v7.0.2
         with:
           name: tui-interactive-transcripts-compiled-${{ matrix.os }}
