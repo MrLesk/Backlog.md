@@ -39,8 +39,9 @@
           bunDeps = pkgs.bun2nix.fetchBunDeps {
             bunNix = ./bun.nix;
           };
-          bunRuntime = pkgs.bun.overrideAttrs (bun: {
+          bunRuntime = pkgs.bun.overrideAttrs (final: bun: {
             version = "1.4.3";
+            src = final.passthru.sources.${system};
             passthru = bun.passthru // {
               sources = {
                 aarch64-darwin = pkgs.fetchurl {
@@ -58,6 +59,15 @@
               };
             };
           });
+          nodeRuntime = pkgs.nodejs_26.override {
+            nodejs-slim = pkgs.nodejs-slim_26.overrideAttrs {
+              version = "26.12.1";
+              src = pkgs.fetchurl {
+                url = "https://nodejs.org/dist/v26.12.1/node-v26.12.1.tar.xz";
+                hash = "sha256-BT47KWhZttjZP5nvl/qc7BxO4XHHKWgQDGSZeMHb04w=";
+              };
+            };
+          };
           backlog-md = pkgs.bun2nix.mkDerivation {
             pname = "backlog";
             inherit (packageJson) version;
@@ -159,9 +169,8 @@
             packages = [
               bunRuntime
               pkgs.bun2nix
-              pkgs.nodejs_24
+              nodeRuntime
               pkgs.git
-              pkgs.biome
             ];
           };
         }

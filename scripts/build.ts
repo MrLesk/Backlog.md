@@ -11,6 +11,10 @@ const outfile = process.env.BACKLOG_BUILD_OUTFILE ?? "dist/backlog";
 const outdir = process.env.BACKLOG_BUILD_OUTDIR;
 const version = process.env.BACKLOG_BUILD_VERSION ?? packageJson.version;
 const target = process.env.BACKLOG_BUILD_TARGET;
+const executablePath = process.env.BACKLOG_BUILD_EXECUTABLE_PATH;
+if (!outdir && target && !executablePath) {
+	throw new Error("Cross-target builds require a checksum-verified BACKLOG_BUILD_EXECUTABLE_PATH");
+}
 const outputDirectory = outdir ?? dirname(outfile);
 
 if (outputDirectory !== ".") {
@@ -33,6 +37,7 @@ const result = await Bun.build({
 				bytecode: true,
 				compile: {
 					outfile,
+					...(executablePath ? { executablePath } : {}),
 					...(target ? { target: target as Bun.Build.CompileTarget } : {}),
 				},
 			}),
