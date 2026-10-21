@@ -5,7 +5,7 @@ import { createServer } from "node:https";
 import { connect, createServer as createTCPServer, type Socket } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { createServer as createTLSServer } from "node:tls";
+import { createServer as createTLSServer, getCACertificates } from "node:tls";
 import { trustedCertificates } from "../../scripts/filter-trusted-cas.cjs";
 import { withGitFetchTrust } from "../git/certificate-trust.ts";
 import { GitOperations } from "../git/operations.ts";
@@ -81,6 +81,118 @@ test("default native Git trust remains nonempty after filtering", async () => {
 		expect(certificates.length).toBeGreaterThan(0);
 	});
 });
+
+test("native CA directories preserve ordinary files, hash gaps, and incident filtering without promoting directory trust", async () => {
+	for (const name of Object.keys(process.env)) {
+		if (/^(?:git_config(?:_.+)?|git_ssl_.+|git_proxy_ssl_.+|https?_proxy|all_proxy|no_proxy)$/i.test(name))
+			delete process.env[name];
+	}
+	const incidents = (await Bun.file(join(fixtures, "compromised-cas.json")).json()).certificates;
+	const privateCA = await readFile(join(fixtures, "registry-ca.pem"), "utf8");
+	const cases = [
+		{ name: "private.crt", chain: "registry-server.pem" },
+		// OpenSSL's subject hash for the fixture authority. GnuTLS also reads ordinary names.
+		{ name: "81ee7702.0", chain: "registry-server.pem" },
+		{ name: "81ee7702.1", chain: "registry-server.pem" },
+		{ name: "81ee7702.1", chain: "registry-server.pem", prefix: "blocked" },
+		{ name: "81ee7702.1", chain: "registry-server.pem", prefix: "non-pem" },
+		{ name: "81ee7702.2", chain: "registry-server.pem", prefix: "blocked" },
+		{ name: "81ee7702.2", chain: "registry-server.pem", prefix: "multiple" },
+		{ name: "00000000.0", chain: "registry-server.pem" },
+		{ name: "private.crt", chain: "registry-server.pem", defaultFile: true },
+		{ name: "private.crt", chain: "incident-server-emudhra.pem" },
+		{ name: "private.crt", chain: "incident-server-aaa.pem" },
+	];
+	for (const fixture of cases) {
+		const root = await temporary();
+		const selected = join(root, "selected-ca-directory");
+		await mkdir(selected);
+		await writeFile(join(selected, fixture.name), privateCA);
+		if (fixture.prefix) {
+			const contents =
+				fixture.prefix === "blocked"
+					? incidents[0].pem
+					: fixture.prefix === "multiple"
+						? `${await readFile(join(fixtures, "unsupported-key-ca.pem"), "utf8")}\n${trustedCertificates(getCACertificates("system"))[0]}`
+						: "not a PEM authority";
+			await writeFile(join(selected, "81ee7702.0"), contents);
+		}
+		await writeFile(join(selected, "incident-roots.pem"), incidents.map((ca: { pem: string }) => ca.pem).join("\n"));
+		await writeFile(join(selected, "unrelated.txt"), "not a PEM authority");
+		process.env.GIT_CONFIG_NOSYSTEM = "1";
+		process.env.GIT_CONFIG_GLOBAL = join(root, "global-gitconfig");
+		await writeFile(process.env.GIT_CONFIG_GLOBAL, "");
+		await git(root, "init", "--quiet");
+		if (process.platform === "win32") await git(root, "config", "http.sslBackend", "openssl");
+		if (!fixture.defaultFile) await git(root, "config", "http.sslCAInfo", join(fixtures, "unsupported-key-ca.pem"));
+		await git(root, "config", "http.sslCAPath", selected);
+		await git(root, "config", "http.extraHeader", "X-Backlog-Fixture: preserved");
+		let requests = 0;
+		let header: string | string[] | undefined;
+		const peer = await readFile(join(fixtures, fixture.chain));
+		const leaf = new X509Certificate(peer);
+		expect(Date.parse(leaf.validFrom)).toBeLessThan(Date.now());
+		expect(Date.parse(leaf.validTo)).toBeGreaterThan(Date.now());
+		const server = createServer(
+			{ key: await readFile(join(fixtures, "registry-server-key.pem")), cert: peer },
+			(request, response) => {
+				requests++;
+				header = request.headers["x-backlog-fixture"];
+				response.writeHead(404);
+				response.end("fixture repository not found");
+			},
+		);
+		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+		try {
+			const address = server.address();
+			if (!address || typeof address === "string") throw new Error("Expected loopback server address");
+			await git(root, "config", "remote.origin.url", `https://localhost:${address.port}/repository`);
+			const operations = new GitOperations(root);
+			const internals = operations as unknown as {
+				execGit: (args: string[], options?: { env?: NodeJS.ProcessEnv; timeoutMs?: number }) => Promise<unknown>;
+			};
+			const execute = internals.execGit.bind(operations);
+			const completed = (error: unknown, expectedRequests: number) => {
+				const diagnostic = `${fixture.name}/${fixture.chain}: ${String(error)}`;
+				if (!(error instanceof Error) || /timeout|could not spawn/i.test(diagnostic)) throw new Error(diagnostic);
+				expect(diagnostic).toMatch(expectedRequests ? /404|not found/i : /certificate|SSL|issuer|trust/i);
+			};
+			let baselineError: unknown;
+			await execute(["fetch", "origin", "--quiet"], { timeoutMs: 10000 }).catch((error) => {
+				baselineError = error;
+			});
+			const baselineRequests = requests;
+			expect([0, 1]).toContain(baselineRequests);
+			if (fixture.name === "81ee7702.0") expect(baselineRequests).toBe(1);
+			completed(baselineError, baselineRequests);
+			requests = 0;
+			header = undefined;
+			let fetchError: unknown;
+			internals.execGit = async (args, options) => {
+				if (args[0] === "fetch") {
+					const file = await readFile(options?.env?.GIT_SSL_CAINFO as string, "utf8");
+					expect(trustedCertificates([file])).not.toContain(privateCA.trim());
+				}
+				try {
+					return await execute(args, options);
+				} catch (error) {
+					if (args[0] === "fetch") fetchError = error;
+					throw error;
+				}
+			};
+			await operations.fetch().catch((error) => {
+				fetchError ??= error;
+			});
+			const expected = fixture.chain.startsWith("incident-") ? 0 : baselineRequests;
+			completed(fetchError, expected);
+			expect(requests).toBe(expected);
+			expect(header as string | string[] | undefined).toBe(expected ? "preserved" : undefined);
+		} finally {
+			server.closeAllConnections();
+			await new Promise<void>((resolve) => server.close(() => resolve()));
+		}
+	}
+}, 60000);
 
 test("Node-only extra CAs do not become default Git authorities in a fresh process", async () => {
 	const root = await temporary();

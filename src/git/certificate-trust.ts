@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { getCACertificates } from "node:tls";
@@ -58,8 +58,9 @@ export async function withGitFetchTrust(
 		if (/^https:\/\//i.test(url)) {
 			if (caFile === "") throw new Error("Configured Git CA file is empty");
 			const bundles: string[] = [];
-			if (!caFile && !caDirectory) {
+			if (!caFile) {
 				// Git's default trust must not gain Node-only bundled or extra roots.
+				// A CA directory supplements the default CA file; it does not replace it.
 				// Custom Git installations should select their CAfile/path explicitly.
 				try {
 					bundles.push(...getCACertificates("system"));
@@ -71,23 +72,56 @@ export async function withGitFetchTrust(
 				}
 			}
 			if (caFile) bundles.push(await readFile(resolve(projectRoot, caFile), "utf8"));
-			if (caDirectory) {
-				const directory = resolve(projectRoot, caDirectory);
-				for (const name of await readdir(directory)) {
-					// OpenSSL CA directories use hashed names; ignore unrelated files and CRLs.
-					if (/^[a-f0-9]{8}\.\d+$/i.test(name)) bundles.push(await readFile(join(directory, name), "utf8"));
-				}
-			}
 			const certificates = trustedCertificates(bundles);
 			const cafile = join(directory, "ca.pem");
-			const empty = join(directory, "empty");
-			await mkdir(empty);
+			const capath = join(directory, "certificates");
+			await mkdir(capath);
+			if (caDirectory) {
+				const original = resolve(projectRoot, caDirectory);
+				const files = new Map<string, string>();
+				const hashes = new Map<string, Set<number>>();
+				for (const name of await readdir(original)) {
+					const source = join(original, name);
+					if (!(await stat(source)).isFile()) continue;
+					const hashed = /^([a-f0-9]{8})\.(0|[1-9][0-9]*)$/i.exec(name);
+					if (hashed) {
+						const hash = hashed[1] as string;
+						if (!hashes.has(hash)) hashes.set(hash, new Set());
+						hashes.get(hash)?.add(Number(hashed[2]));
+					}
+					const contents = await readFile(source, "utf8");
+					const pems = contents.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) ?? [];
+					const unmatched = contents.replace(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g, "");
+					if (/-----BEGIN (?:TRUSTED |X509 )?CERTIFICATE-----/.test(unmatched)) {
+						throw new Error("Configured Git CA directory contains a malformed or unsupported PEM certificate");
+					}
+					const retained = pems.flatMap((pem) => trustedCertificates([pem], { allowEmpty: true }));
+					const crls = contents.match(/-----BEGIN X509 CRL-----[\s\S]+?-----END X509 CRL-----/g) ?? [];
+					if (pems.length || crls.length) files.set(name, [...retained, ...crls].join("\n"));
+				}
+				for (const [hash, indices] of hashes) {
+					let input = 0;
+					let output = 0;
+					// Compact only gaps created by filtering, stopping at every original gap.
+					while (indices.has(input) && files.has(`${hash}.${input}`)) {
+						const name = `${hash}.${input++}`;
+						const contents = files.get(name) as string;
+						files.delete(name);
+						if (contents) files.set(`${hash}.${output++}`, contents);
+					}
+				}
+				// GnuTLS also reads ordinary files and entries beyond a hash gap. Keep
+				// their names; promoting them into CAfile would broaden OpenSSL trust.
+				for (const [name, contents] of files) {
+					await writeFile(join(capath, name), contents, { mode: 0o600 });
+				}
+			}
 			await writeFile(cafile, `${certificates.join("\n")}\n`, { mode: 0o600 });
 			Object.assign(originTrust, {
 				GIT_SSL_CAINFO: cafile,
-				GIT_SSL_CAPATH: empty,
+				GIT_SSL_CAPATH: capath,
 				SSL_CERT_FILE: cafile,
-				SSL_CERT_DIR: empty,
+				SSL_CERT_DIR: capath,
 				CURL_CA_BUNDLE: cafile,
 			});
 		}

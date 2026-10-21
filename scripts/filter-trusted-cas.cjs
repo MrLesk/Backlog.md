@@ -65,7 +65,7 @@ function certificateSPKI(certificate) {
 }
 
 // Shared by the Nix bundle builder and native Git HTTPS fetches.
-function trustedCertificates(bundles) {
+function trustedCertificates(bundles, { allowEmpty = false } = {}) {
 	const retained = new Map();
 	for (const bundle of bundles) {
 		const certificates = String(bundle).match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g);
@@ -76,7 +76,7 @@ function trustedCertificates(bundles) {
 			if (!blocked.has(key)) retained.set(certificate.fingerprint256, pem);
 		}
 	}
-	if (!retained.size) throw new Error("Refusing an empty TLS trust bundle");
+	if (!retained.size && !allowEmpty) throw new Error("Refusing an empty TLS trust bundle");
 	return [...retained.values()];
 }
 
