@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
+import { parseFrontmatter } from "../markdown/frontmatter.ts";
 import type { Task, TaskCreateInput } from "../types/index.ts";
 import { getCreatedTaskBoardOutcome, renderBoardTui, upsertBoardTask } from "../ui/board.ts";
 import { openSingleSelectFilterPopup } from "../ui/components/filter-popup.ts";
@@ -495,9 +496,8 @@ describe("TUI task composer canonical persistence", () => {
 			expect((await withTimeout(resultPromise, "Unicode-safe composer persistence", 1000))?.id).toBe("TASK-1");
 
 			const persisted = await readFile(taskPath, "utf8");
-			// YAML escapes astral title characters, while Markdown keeps them literal. Both forms
-			// must represent the complete code point rather than separate surrogate halves.
-			expect(persisted).toContain("AX\\U00020BB7B");
+			// Both the YAML title and Markdown body must retain the complete code point.
+			expect(parseFrontmatter(persisted).data.title).toBe("AX𠮷B");
 			expect(persisted).toContain("left Y𠮷 right");
 			expect(persisted).not.toContain("�");
 			expect(persisted).not.toContain("\\uD842");

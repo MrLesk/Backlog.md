@@ -11,6 +11,8 @@ permissions:
   pull-requests: write
 
 env:
+  NODE_OPTIONS: --use-openssl-ca
+  NODE_USE_SYSTEM_CA: '0'
   BUN_VERSION: 1.4.3
 
 jobs:
@@ -31,12 +33,52 @@ jobs:
             test_workers: 4
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
+      - &secure-tls
+        name: Exclude compromised certificate trust before networking
+        shell: bash
+        run: |
+          node <<'NODE'
+          // Prepare filtered trust for subsequent network steps.
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const tls = require('node:tls');
+          const { X509Certificate, createHash } = require('node:crypto');
+          const blocked = new Set(["0a6c2b2ca5b364207954171987ac9d2178561569d8205457e77ca90c32ede282", "43bffa19d6ef651451f6841e019931e96f6f2eaeff28ab4b6f1ce4576de2717b", "49dd353dc2b919a3770645117d0e60c16115e7d1bc259eefe734b00ea434fe5f", "5c0660a2b164910d8ff589c18e14552e9e0ec237dcefe2cb736d41a4811f81a0", "63ecefee431d49523bc1136c4e72d0206a477086caf606cd5cf025686c109cf8", "8d417db2dd8bf5e3084d1e3f196d583849d81bdd4c00c70b9d39369e96b8c782", "92c063d67e8f14db71d288e11266ffdaf69cbf115f7bab14f3bc2f68d25e0e30", "bd153ed7b0434f6886b17bce8bbe84ed340c7132d702a8f4fa318f756ecbd6f3", "c619e4780ed8e0abeda24ad732567de4383a7ea941338f6d1a7d1b49ac792fe9", "e0254c7fcdc265e2f0f8a428dabb75ab4ae039b4872d62f5ee57f0877d5a8a41", "ebed6475c2c2d80fcb199f3fe8dd6e6b3ce60b77eb15d4e42c3dec0c6f5b5105", "ec4ffa1ad0ac88081314b7aaffef6a91f97cd57291bb5ba686c5415f5eb4f6b6"]);
+          const sources = [...tls.rootCertificates];
+          if (tls.getCACertificates) {
+            for (const source of ['default', 'system', 'extra']) sources.push(...tls.getCACertificates(source));
+          }
+          const certificates = new Map();
+          for (const pem of sources) {
+            const certificate = new X509Certificate(pem);
+            const key = createHash('sha256').update(certificate.publicKey.export({ type: 'spki', format: 'der' })).digest('hex');
+            if (!blocked.has(key)) certificates.set(certificate.fingerprint256, pem);
+          }
+          if (!certificates.size) throw new Error('Refusing an empty TLS trust bundle');
+          const file = path.join(process.env.RUNNER_TEMP, 'backlog-trusted-ca.pem');
+          const directory = path.join(process.env.RUNNER_TEMP, 'backlog-empty-ca-directory');
+          fs.writeFileSync(file, [...certificates.values()].join('\n') + '\n');
+          fs.mkdirSync(directory, { recursive: true });
+          const settings = {
+            SSL_CERT_FILE: file, SSL_CERT_DIR: directory, NODE_EXTRA_CA_CERTS: file,
+            NODE_USE_SYSTEM_CA: '0', GIT_SSL_CAINFO: file, GIT_SSL_CAPATH: directory, CURL_CA_BUNDLE: file,
+            CARGO_HTTP_CAINFO: file, NPM_CONFIG_CAFILE: file, NIX_SSL_CERT_FILE: file,
+          };
+          const gitCount = Number(process.env.GIT_CONFIG_COUNT ?? 0);
+          if (!Number.isSafeInteger(gitCount) || gitCount < 0) throw new Error('Invalid GIT_CONFIG_COUNT');
+          settings[`GIT_CONFIG_KEY_${gitCount}`] = 'http.schannelUseSSLCAInfo';
+          settings[`GIT_CONFIG_VALUE_${gitCount}`] = 'true';
+          settings.GIT_CONFIG_COUNT = String(gitCount + 1);
+          for (const [key, value] of Object.entries(settings)) fs.appendFileSync(process.env.GITHUB_ENV, `${key}=${value}\n`);
+          console.log(`Prepared ${certificates.size} trusted CAs with eMudhra incident keys excluded`);
+          NODE
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
         with:
-          # Bun >=1.3 includes stdin pause/subprocess handoff fixes used by TUI editor launch.
-          bun-version: ${{ env.BUN_VERSION }}
-      - uses: actions/cache@v6
+          node-version: 26.12.1
+      - name: Install checksum-verified Bun
+        run: node scripts/prepare-bun-runtime.cjs
+      - uses: actions/cache@v6.1.0
         if: matrix.test_profile == 'full'
         id: cache
         with:
@@ -44,12 +86,13 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.os }}-bun-${{ env.BUN_VERSION }}-${{ hashFiles('**/bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.os }}-bun-${{ env.BUN_VERSION }}-
-      - run: bun install --frozen-lockfile --linker=isolated
+      - shell: bash
+        run: bun install --cafile "$SSL_CERT_FILE" --frozen-lockfile --linker=isolated
       - parallel:
           - name: Verify bun2nix dependency lock
             if: matrix.os == 'ubuntu-latest'
             run: |
-              bun run update-nix
+              bun x --cafile="$SSL_CERT_FILE" bun2nix@2.1.2 -o bun.nix
               git diff --exit-code -- bun.nix
           - name: Check types
             run: bun run check:types
@@ -69,7 +112,7 @@ jobs:
         shell: bash
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: test-results-${{ matrix.os }}
           # The full profile writes a second JUnit file for the serial DOM pass.
@@ -81,7 +124,7 @@ jobs:
         run: bash scripts/run-tui-interactive-tests.sh
       - name: Upload interactive TUI transcripts on failure
         if: failure() && matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: tui-interactive-transcripts-${{ matrix.os }}
           path: tmp/tui-interactive-transcripts/*.log
@@ -95,38 +138,43 @@ jobs:
         include:
           - os: ubuntu-latest
             target: bun-linux-x64
+            smoke: true
+          - os: ubuntu-latest
+            target: bun-linux-arm64
+            smoke: false
           - os: macos-latest
             target: bun-darwin-x64
+            smoke: true
+          - os: macos-latest
+            target: bun-darwin-arm64
+            smoke: false
           - os: windows-latest
             target: bun-windows-x64
+            smoke: true
+          - os: ubuntu-latest
+            target: bun-windows-arm64
+            smoke: false
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
+      - *secure-tls
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
         with:
-          # Bun >=1.3 includes stdin pause/subprocess handoff fixes used by TUI editor launch.
-          bun-version: ${{ env.BUN_VERSION }}
-      - uses: actions/cache@v6
+          node-version: 26.12.1
+      - name: Install checksum-verified Bun
+        run: node scripts/prepare-bun-runtime.cjs
+      - uses: actions/cache@v6.1.0
         id: cache
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-${{ matrix.os }}-bun-${{ env.BUN_VERSION }}-${{ hashFiles('**/bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.os }}-bun-${{ env.BUN_VERSION }}-
-      - run: bun install --frozen-lockfile --linker=isolated
-      - name: Prime Bun cache for Windows x64 target
-        if: ${{ matrix.target == 'bun-windows-x64' && matrix.os == 'windows-latest' }}
+      - shell: bash
+        run: bun install --cafile "$SSL_CERT_FILE" --frozen-lockfile --linker=isolated
+      - name: Prepare checksum-verified target runtime
         shell: bash
-        run: |
-          # Pinned Bun 1.4.3 retains this per-target primer because the cross-drive Windows cache issue remains open.
-          # Upstream: https://github.com/oven-sh/bun/issues/13513 (open); proposed fix #13556 remains unmerged.
-          # Build a dummy project from C:\ to prime the x64 binary cache before compiling from the workspace drive.
-          cd /c
-          mkdir -p bun-cache-primer
-          cd bun-cache-primer
-          echo 'console.log("cache primer")' > index.js
-          bun build --compile --target=${{ matrix.target }} ./index.js --outfile primer.exe || true
-          cd $GITHUB_WORKSPACE
+        run: node scripts/prepare-bun-runtime.cjs "${{ matrix.target }}"
       - name: Build standalone binary
         shell: bash
         run: |
@@ -137,6 +185,7 @@ jobs:
             BACKLOG_BUILD_OUTFILE="$OUT" \
             bun scripts/build.ts
       - name: Smoke-test binary
+        if: matrix.smoke
         shell: bash
         run: |
           FILE="backlog-test${{ contains(matrix.target,'windows') && '.exe' || '' }}"
@@ -144,7 +193,7 @@ jobs:
           chmod +x "$FILE"
           bun scripts/smoke-compiled-build.ts "$FILE" "$VER"
       - name: Run interactive TUI tests against compiled binary
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.target == 'bun-linux-x64'
         shell: bash
         run: |
           RUN_INTERACTIVE_TUI_TESTS=1 \
@@ -152,8 +201,8 @@ jobs:
           TUI_TEST_CLI_PATH="$PWD/backlog-test" \
           bun test src/test/tui-interactive-editor-handoff.test.ts src/test/tui-ready-filter-pty.test.ts --timeout=30000
       - name: Upload compiled-binary interactive transcripts on failure
-        if: failure() && matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v7
+        if: failure() && matrix.target == 'bun-linux-x64'
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: tui-interactive-transcripts-compiled-${{ matrix.os }}
           path: tmp/tui-interactive-transcripts/*.log
@@ -163,8 +212,9 @@ jobs:
     name: nix-package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: DeterminateSystems/nix-installer-action@v22
+      - *secure-tls
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@v23
       - name: Build and smoke-test Nix package
         run: |
           nix build .#backlog-md --print-build-logs
@@ -172,3 +222,4 @@ jobs:
           actual_version="$(./result/bin/backlog --version)"
           test "$actual_version" = "$expected_version"
           ./result/bin/backlog --help >/dev/null
+          nix build .#checks.x86_64-linux.development-tools --no-link --print-build-logs

@@ -93,7 +93,7 @@ describe("stored UTC timestamps", () => {
 			await cli("task", "edit", String(id), "--notes", "Reviewed");
 			const raw = await Bun.file(path).text();
 			expect(parseTask(raw).createdDate).toBe(created);
-			expect(raw).toContain(`created_date: '${created}'`);
+			expect(parseFrontmatter(raw).data.created_date).toBe(created);
 			expect(parseTask(raw).updatedDate).toMatch(UTC_TIMESTAMP);
 			expect(parseTask(raw).dueDate).toBe("2026-10-20");
 		}

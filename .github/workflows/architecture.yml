@@ -27,6 +27,8 @@ permissions:
   pages: read
 
 env:
+  NODE_OPTIONS: --use-openssl-ca
+  NODE_USE_SYSTEM_CA: '0'
   GROMA_THEME: auto
 
 concurrency:
@@ -43,6 +45,45 @@ jobs:
     outputs:
       open: ${{ steps.open.outputs.pulls }}
     steps:
+      - &secure-tls
+        name: Exclude compromised certificate trust before networking
+        shell: bash
+        run: |
+          node <<'NODE'
+          // Prepare filtered trust for subsequent network steps.
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const tls = require('node:tls');
+          const { X509Certificate, createHash } = require('node:crypto');
+          const blocked = new Set(["0a6c2b2ca5b364207954171987ac9d2178561569d8205457e77ca90c32ede282", "43bffa19d6ef651451f6841e019931e96f6f2eaeff28ab4b6f1ce4576de2717b", "49dd353dc2b919a3770645117d0e60c16115e7d1bc259eefe734b00ea434fe5f", "5c0660a2b164910d8ff589c18e14552e9e0ec237dcefe2cb736d41a4811f81a0", "63ecefee431d49523bc1136c4e72d0206a477086caf606cd5cf025686c109cf8", "8d417db2dd8bf5e3084d1e3f196d583849d81bdd4c00c70b9d39369e96b8c782", "92c063d67e8f14db71d288e11266ffdaf69cbf115f7bab14f3bc2f68d25e0e30", "bd153ed7b0434f6886b17bce8bbe84ed340c7132d702a8f4fa318f756ecbd6f3", "c619e4780ed8e0abeda24ad732567de4383a7ea941338f6d1a7d1b49ac792fe9", "e0254c7fcdc265e2f0f8a428dabb75ab4ae039b4872d62f5ee57f0877d5a8a41", "ebed6475c2c2d80fcb199f3fe8dd6e6b3ce60b77eb15d4e42c3dec0c6f5b5105", "ec4ffa1ad0ac88081314b7aaffef6a91f97cd57291bb5ba686c5415f5eb4f6b6"]);
+          const sources = [...tls.rootCertificates];
+          if (tls.getCACertificates) {
+            for (const source of ['default', 'system', 'extra']) sources.push(...tls.getCACertificates(source));
+          }
+          const certificates = new Map();
+          for (const pem of sources) {
+            const certificate = new X509Certificate(pem);
+            const key = createHash('sha256').update(certificate.publicKey.export({ type: 'spki', format: 'der' })).digest('hex');
+            if (!blocked.has(key)) certificates.set(certificate.fingerprint256, pem);
+          }
+          if (!certificates.size) throw new Error('Refusing an empty TLS trust bundle');
+          const file = path.join(process.env.RUNNER_TEMP, 'backlog-trusted-ca.pem');
+          const directory = path.join(process.env.RUNNER_TEMP, 'backlog-empty-ca-directory');
+          fs.writeFileSync(file, [...certificates.values()].join('\n') + '\n');
+          fs.mkdirSync(directory, { recursive: true });
+          const settings = {
+            SSL_CERT_FILE: file, SSL_CERT_DIR: directory, NODE_EXTRA_CA_CERTS: file,
+            NODE_USE_SYSTEM_CA: '0', GIT_SSL_CAINFO: file, GIT_SSL_CAPATH: directory, CURL_CA_BUNDLE: file,
+            CARGO_HTTP_CAINFO: file, NPM_CONFIG_CAFILE: file, NIX_SSL_CERT_FILE: file,
+          };
+          const gitCount = Number(process.env.GIT_CONFIG_COUNT ?? 0);
+          if (!Number.isSafeInteger(gitCount) || gitCount < 0) throw new Error('Invalid GIT_CONFIG_COUNT');
+          settings[`GIT_CONFIG_KEY_${gitCount}`] = 'http.schannelUseSSLCAInfo';
+          settings[`GIT_CONFIG_VALUE_${gitCount}`] = 'true';
+          settings.GIT_CONFIG_COUNT = String(gitCount + 1);
+          for (const [key, value] of Object.entries(settings)) fs.appendFileSync(process.env.GITHUB_ENV, `${key}=${value}\n`);
+          console.log(`Prepared ${certificates.size} trusted CAs with eMudhra incident keys excluded`);
+          NODE
       - name: List open pull requests
         id: open
         env:
@@ -68,6 +109,7 @@ jobs:
       matrix:
         pull: ${{ fromJSON(needs.pulls.outputs.open) }}
     steps:
+      - *secure-tls
       - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ matrix.pull.base }}
@@ -84,10 +126,16 @@ jobs:
           git fetch --no-tags origin "$HEAD"
           echo "from=$(git merge-base "$BASE" "$HEAD")" >> "$GITHUB_OUTPUT"
 
-      - uses: MrLesk/groma.md-action@v1
+      # The published Action requests Node 24; prewarm its patched cached match.
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24.22.1
+      - name: Use current npm
+        run: npm install --global npm@12.2.0
+      - uses: MrLesk/groma.md-action@ea7042367a573e3b07ae00437767df04bcf284f2 # v1.2.1
         id: map
         with:
-          groma-version: '0.7.0'
+          groma-version: '0.7.2'
           output: groma-comparison
           theme: ${{ env.GROMA_THEME }}
           from: ${{ steps.commits.outputs.from }}
@@ -101,7 +149,7 @@ jobs:
           mkdir -p "preview/comparison/pr-$NUMBER"
           mv "$MAP" "preview/comparison/pr-$NUMBER/$GROMA_THEME"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: groma-comparison-${{ matrix.pull.number }}
           path: preview
@@ -113,20 +161,29 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
+      - *secure-tls
       - uses: actions/checkout@v7.0.1
 
-      # Keep generated HTML outside the source scan; each step writes its own subtree.
+      # The published Action requests Node 24; prewarm its patched cached match.
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24.22.1
+      - name: Use current npm
+        run: npm install --global npm@12.2.0
+      # Export only committed architecture while the scanner hotfix is pending.
       - parallel:
           - name: Build the current architecture map
-            uses: MrLesk/groma.md-action@v1
+            uses: MrLesk/groma.md-action@ea7042367a573e3b07ae00437767df04bcf284f2 # v1.2.1
             with:
-              groma-version: '0.7.0'
+              groma-version: '0.7.2'
               output: ${{ runner.temp }}/groma-site
               theme: ${{ env.GROMA_THEME }}
+              from: ${{ github.sha }}
+              revision: ${{ github.sha }}
 
           - name: Add the pull request comparisons
             if: needs.compare.result == 'success' || needs.compare.result == 'failure'
-            uses: actions/download-artifact@v4
+            uses: actions/download-artifact@v8.0.2
             with:
               pattern: groma-comparison-*
               merge-multiple: true
@@ -149,6 +206,7 @@ jobs:
       name: github-pages
       url: ${{ steps.map-url.outputs.url }}
     steps:
+      - *secure-tls
       - name: Publish architecture website
         id: deployment
         uses: actions/deploy-pages@v5.0.1
@@ -167,7 +225,8 @@ jobs:
     permissions:
       pull-requests: write
     steps:
-      - uses: actions/download-artifact@v4
+      - *secure-tls
+      - uses: actions/download-artifact@v8.0.2
         with:
           pattern: groma-comparison-*
           merge-multiple: true

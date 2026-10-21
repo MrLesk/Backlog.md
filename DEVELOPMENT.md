@@ -1,12 +1,22 @@
 ## Local Development
 
-> **Runtime requirement:** Use Bun 1.4.3, matching CI, release builds, and the Nix runtime.
+> **Runtime requirements:** Use Bun 1.4.3 and Node.js 26.12.1 or later, matching CI and the Nix development shell.
 
 Run these commands to bootstrap the project:
 
 ```bash
-bun install
+bun install --cafile /path/to/incident-filtered-ca-bundle.pem
 ```
+
+Bun 1.4.3 still contains the compromised eMudhra trust paths. Until a patched
+Bun release is available, use an incident-filtered CA bundle explicitly for Bun
+package-manager requests. Updating the OS or setting `SSL_CERT_FILE` alone does
+not replace Bun's built-in trust. CI constructs this bundle offline before its
+network steps and passes it to every Bun install and `bun x` invocation. Hosted
+runner trust during initial action preparation remains the runner vendor's
+responsibility. Bun's bundled Brotli security fix is also pending upstream; the
+package manager retains that runtime risk even with filtered certificate trust.
+The shipped Backlog CLI does not make external HTTPS requests.
 
 Run tests:
 
@@ -38,6 +48,12 @@ For contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
 reduces parsing work at startup, at the cost of a larger executable. Release
 builds use the same settings for every supported target.
 
+For cross compilation, run `node scripts/prepare-bun-runtime.cjs <target>` with
+patched Node first, then set `BACKLOG_BUILD_EXECUTABLE_PATH` to its printed
+executable path. The helper verifies the official release SHA-256 before
+extracting the target runtime. CI exports this path automatically, so Bun's
+unpatched native target downloader is never used in release builds.
+
 Set `BACKLOG_BUILD_OUTDIR` to emit JavaScript and browser assets instead. Nix
 and integration tests use this bundle path without bytecode compilation.
 
@@ -47,15 +63,19 @@ The flake uses bun2nix v2 to turn the repository's `bun.lock` into an offline
 dependency cache. Regenerate `bun.nix` whenever `bun.lock` changes:
 
 ```bash
-bun run update-nix
+SSL_CERT_FILE=/path/to/incident-filtered-ca-bundle.pem bun run update-nix
 ```
 
 The command pins the bun2nix generator version, so commit the resulting
-`bun.nix` change together with the lockfile change. Validate the package with:
+`bun.nix` change together with the lockfile change. bun2nix 2.1.2 requires
+Bun lock format 1; update the existing lock instead of regenerating format 2.
+Use `bun x --cafile=/path/to/incident-filtered-ca-bundle.pem bun2nix@2.1.2 -o bun.nix`
+when the generator must be downloaded. Validate the package with:
 
 ```bash
 nix build .#backlog-md
 ./result/bin/backlog --version
+nix flake check
 ```
 
 The package build also runs the installed CLI and browser smoke checks. Lock
@@ -67,7 +87,17 @@ The flake is intentionally limited to `x86_64-linux`, `aarch64-linux`, and
 package. On x86_64 Linux, the application runs with the official Bun 1.4.3
 unified x64 runtime. It requires SSE4.2 and selects CPU-specific paths at
 runtime. Dependency installation, the non-compile bundle build, the development
-shell, and the installed application all use that runtime.
+shell, and the installed application all use that runtime. Project format and
+lint commands use the Biome version pinned in `bun.lock` rather than a second
+Nix-provided version. The development shell's Node uses official 26.12.1
+archives with published SHA-256 digests, preserving the release's bundled
+security fixes, and npm 12.2.0 from its integrity-pinned registry archive; Linux binaries are adapted with header order preserved by `patchelf --no-sort`. The flake also
+applies upstream Brotli commit `0ed4268a4401abcb4472096340477cf4af7d1a2b`
+for CVE-2026-111497 to the shell's curl and Git, avoiding a full Nixpkgs rebuild.
+The shell exports a current Node/NSS root bundle filtered for the incident as
+`SSL_CERT_FILE`, an empty `SSL_CERT_DIR`,
+and matching Git/curl/npm trust settings. Run `bun install --cafile "$SSL_CERT_FILE"`
+inside `nix develop`; `bun run update-nix` uses the same bundle automatically.
 The Nix install check executes the packaged CLI natively and under QEMU's Ivy
 Bridge CPU model. JSC's JIT is disabled only for the emulated check because it
 is not reliable under QEMU user mode; normal packaged execution keeps JIT
@@ -228,10 +258,8 @@ provenance automatically. Follow the steps below to keep the setup healthy.
   `backlog.md-windows-x64`.
 - Remove the legacy `NODE_AUTH_TOKEN` repository secret. Publishing now uses
   the GitHub-issued OIDC token, so no long-lived npm tokens should remain.
-- The workflow activates `npm@latest` (currently 11.6.0 as of 2025-09-18) via
-  Corepack to satisfy npm's trusted publishing requirement of version 11.5.1 or
-  newer. If npm raises the minimum version again, the latest tag will pick it
-  up automatically.
+- The workflow pins Node.js 26.12.1 and npm 12.2.0 for trusted publishing.
+  Review both pins together when updating release tooling.
 
 ### Publishing steps
 
