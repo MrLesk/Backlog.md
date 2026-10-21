@@ -146,6 +146,8 @@ test("native CA directories preserve ordinary files, hash gaps, and incident fil
 				: privateCA;
 		if (fixture.secondAuthority) authority += `\n${await readFile(join(fixtures, fixture.secondAuthority), "utf8")}`;
 		await writeFile(join(selected, fixture.name), authority);
+		const malformed = "-----BEGIN CERTIFICATE-----\ninvalid\n-----END CERTIFICATE-----";
+		if (fixture.name === "81ee7702.0") await writeFile(join(selected, "malformed.pem"), malformed);
 		if (process.platform !== "win32" && fixture.name === "81ee7702.0") {
 			await symlink(join(root, "missing-ca.pem"), join(selected, "missing-ca.pem"));
 		}
@@ -227,6 +229,11 @@ test("native CA directories preserve ordinary files, hash gaps, and incident fil
 			internals.execGit = async (args, options) => {
 				if (args[0] === "fetch") {
 					const file = await readFile(options?.env?.GIT_SSL_CAINFO as string, "utf8");
+					if (fixture.name === "81ee7702.0") {
+						await expect(readFile(join(options?.env?.GIT_SSL_CAPATH as string, "malformed.pem"))).rejects.toMatchObject(
+							{ code: "ENOENT" },
+						);
+					}
 					if (fixture.file) {
 						expect(trustedCertificates([file])).toEqual(trustedCertificates([authority]));
 					} else {

@@ -99,11 +99,21 @@ export async function withGitFetchTrust(
 					const pattern = /-----BEGIN (TRUSTED )?CERTIFICATE-----[\s\S]+?-----END \1CERTIFICATE-----/g;
 					const pems = contents.match(pattern) ?? [];
 					const unmatched = contents.replace(pattern, "");
-					if (/-----BEGIN (?:TRUSTED |X509 )?CERTIFICATE-----/.test(unmatched)) {
-						throw new Error("Configured Git CA directory contains a malformed or unsupported PEM certificate");
-					}
-					const retained = pems.flatMap((pem) => trustedCertificates([pem], { allowEmpty: true }));
 					const crls = contents.match(/-----BEGIN X509 CRL-----[\s\S]+?-----END X509 CRL-----/g) ?? [];
+					let retained: string[] | undefined;
+					if (!/-----BEGIN (?:TRUSTED |X509 )?CERTIFICATE-----/.test(unmatched)) {
+						try {
+							retained = pems.flatMap((pem) => trustedCertificates([pem], { allowEmpty: true }));
+						} catch {
+							// A malformed ordinary sidecar must not prevent native CA-directory lookup.
+						}
+					}
+					if (!retained) {
+						if (hashed)
+							throw new Error("Configured Git CA directory contains a malformed or unsupported PEM certificate");
+						if (crls.length) await writeFile(join(capath, name), crls.join("\n"), { mode: 0o600 });
+						continue;
+					}
 					// Some OpenSSL builds continue past an existing empty/non-PEM slot,
 					// but stop at a missing one. Preserve that boundary without copying
 					// unknown formats or filtered authorities into native trust.
