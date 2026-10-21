@@ -38,7 +38,7 @@ jobs:
         shell: bash
         run: |
           node <<'NODE'
-          // No network requests before removing the compromised eMudhra paths.
+          // Prepare filtered trust for subsequent network steps.
           const fs = require('node:fs');
           const path = require('node:path');
           const tls = require('node:tls');

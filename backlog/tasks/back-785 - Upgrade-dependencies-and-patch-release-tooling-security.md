@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-10-21T10:52:00Z'
-updated_date: '2026-10-21T11:17:00Z'
+updated_date: '2026-10-21T11:21:00Z'
 labels: []
 dependencies: []
 references:
@@ -38,17 +38,17 @@ The October 2026 certificate-authority incident and dependency advisories expose
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 All direct dependencies and CI actions are checked against their latest stable releases, upgraded where applicable, and remaining exceptions are documented.
-- [ ] #2 Known dependency advisories are removed or have a verified explanation and scoped mitigation.
+- [x] #1 All direct dependencies and CI actions are checked against their latest stable releases, upgraded where applicable, and remaining exceptions are documented.
+- [x] #2 Known dependency advisories are removed or have a verified explanation and scoped mitigation.
 - [ ] #3 CI, release, local runtime guidance, bun.lock, bun.nix, and flake inputs agree and have been validated.
 - [ ] #4 Required type, lint, test, compiled-binary, and Nix checks pass, with release-blocking upstream certificate fixes identified.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bun run check:types passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bun run check:types passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -71,4 +71,8 @@ All workflow action refs use current stable releases. Every job starts with offl
 Verified: type/lint checks, frozen install, native compile and complete binary/browser smoke, Nix package build with native/browser smoke and QEMU IvyBridge positive and AVX2 negative controls. Exact bootstrap rejects all12 public incident chains under OpenSSL. Downloader accepts the official verified ZIP and rejects single-byte corruption before extraction. The sandbox proxy times out on its real HTTPS tunnel, so hosted CI must verify live asset downloads. Initial full suite had one harmless YAML escape-spelling expectation (now asserts the same parsed scalar) and one environment-only PTY failure under TERM=dumb; that unchanged test passes under TERM=xterm, and final full suite is rerunning with that terminal setting.
 
 Bun1.4.3 remains the latest stable but still has upstream CA trust and bundled Brotli exposure. The explicit CA mitigation covers package requests; checksum verification and patched Node cover runtime downloads. It does not claim Bun itself is patched. Backlog has no external HTTPS requests, while package installation retains the upstream Brotli risk. Initial hosted-runner action preparation trust remains the runner vendor responsibility.
+
+Final full isolated suite with TERM=xterm passed: behavioral3201 pass/13 skip/0 fail across283 files; DOM399 pass/0 fail across39 files. The final cross-target build using the helper-extracted runtime and complete native CLI/browser smoke also passed. Frozen install, types, regenerated bun.nix comparison and audit{} passed. Nix package was actually built with native/browser and QEMU checks; the Node26.12.1 development shell derivation/version was evaluated, not source-built.
+
+Hosted CI proved live verified runtime downloads on Linux/macOS and Windows host installation, with Linux compile/smoke/compiled-TUI passing. It exposed a broken upstream Biome2.6.x publication: wrapper2.6.1 exists but cli-linux-x642.6.1 and2.6.0 both return404 from registry.npmjs.org, while2.5.15 returns200. Local installation had reused the older native binary. Pinned the complete installable2.5.15 release, regenerated both lock artifacts, and reran actual native lint/types/audit successfully. This is an explicit availability exception to latest stable; final hosted matrix remains required.
 <!-- SECTION:NOTES:END -->
