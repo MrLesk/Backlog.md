@@ -340,6 +340,7 @@ wait "$child_pid"
 				return true;
 			};
 			internals.execGit = async (args, options) => {
+				if (args[0] === "remote") return { stdout: "/local-fixture", stderr: "" };
 				fetchCalls += 1;
 				captured = { args, options };
 				fetchStarted.release();
@@ -408,10 +409,11 @@ wait "$child_pid"
 			});
 			const internals = git as unknown as {
 				hasRemote: (remote?: string) => Promise<boolean>;
-				execGit: () => Promise<{ stdout: string; stderr: string }>;
+				execGit: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
 			};
 			internals.hasRemote = async () => true;
-			internals.execGit = async () => {
+			internals.execGit = async (args) => {
+				if (args[0] === "remote") return { stdout: "/local-fixture", stderr: "" };
 				fetchCalls += 1;
 				return { stdout: "", stderr: "" };
 			};
@@ -433,10 +435,11 @@ wait "$child_pid"
 			});
 			const internals = git as unknown as {
 				hasRemote: (remote?: string) => Promise<boolean>;
-				execGit: () => Promise<{ stdout: string; stderr: string }>;
+				execGit: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
 			};
 			internals.hasRemote = async () => true;
-			internals.execGit = async () => {
+			internals.execGit = async (args) => {
+				if (args[0] === "remote") return { stdout: "/local-fixture", stderr: "" };
 				throw new Error("Git command timeout after 10000ms");
 			};
 

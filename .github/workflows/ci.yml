@@ -92,7 +92,9 @@ jobs:
           - name: Verify bun2nix dependency lock
             if: matrix.os == 'ubuntu-latest'
             run: |
-              bun x --cafile="$SSL_CERT_FILE" bun2nix@2.1.2 -o bun.nix
+              npm install --global --strict-ssl=true --cafile="$SSL_CERT_FILE" npm@12.2.0
+              node --test scripts/update-nix.test.cjs
+              node scripts/update-nix.cjs
               git diff --exit-code -- bun.nix
           - name: Check types
             run: bun run check:types

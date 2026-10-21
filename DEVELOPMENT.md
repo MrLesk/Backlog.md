@@ -12,11 +12,17 @@ Bun 1.4.3 still contains the compromised eMudhra trust paths. Until a patched
 Bun release is available, use an incident-filtered CA bundle explicitly for Bun
 package-manager requests. Updating the OS or setting `SSL_CERT_FILE` alone does
 not replace Bun's built-in trust. CI constructs this bundle offline before its
-network steps and passes it to every Bun install and `bun x` invocation. Hosted
+network steps and passes it to every Bun install. Do not use `bun x`/`bunx` to
+download the Nix generator: Bun 1.4.3 can ignore its explicit CA file when
+resolving packages under inherited/custom trust. The updater uses patched Node
+and native npm for downloads instead. Hosted
 runner trust during initial action preparation remains the runner vendor's
 responsibility. Bun's bundled Brotli security fix is also pending upstream; the
 package manager retains that runtime risk even with filtered certificate trust.
-The shipped Backlog CLI does not make external HTTPS requests.
+The shipped Backlog CLI does not use Bun for outbound HTTPS. Task reads and ID
+allocation can fetch HTTPS remotes through native Git; Backlog gives those fetch
+children filtered trust while preserving private CAs and existing authentication
+and proxy settings. SSH and local remotes use their normal Git behavior.
 
 Run tests:
 
@@ -37,7 +43,7 @@ TypeScript stays installed for editor support.
 Format and lint:
 
 ```bash
-npx biome check .
+bun run check
 ```
 
 For contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -66,11 +72,16 @@ dependency cache. Regenerate `bun.nix` whenever `bun.lock` changes:
 SSL_CERT_FILE=/path/to/incident-filtered-ca-bundle.pem bun run update-nix
 ```
 
-The command pins the bun2nix generator version, so commit the resulting
+The command requires patched Node 26.12.1 or later and a readable, nonempty
+filtered CA bundle before resolving the generator. Inside `nix develop`, it uses
+the local bun2nix only after verifying version 2.1.2. Otherwise it requires npm
+12.2.0 or later and downloads the exact bun2nix 2.1.2 package through native npm
+under that same Node, with explicit `--cafile` and `--strict-ssl=true`. npm retains
+its normal authentication, registry and proxy configuration. The generator then
+runs locally; it does not download packages through Bun. Commit the resulting
 `bun.nix` change together with the lockfile change. bun2nix 2.1.2 requires
 Bun lock format 1; update the existing lock instead of regenerating format 2.
-Use `bun x --cafile=/path/to/incident-filtered-ca-bundle.pem bun2nix@2.1.2 -o bun.nix`
-when the generator must be downloaded. Validate the package with:
+Validate the package with:
 
 ```bash
 nix build .#backlog-md

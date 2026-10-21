@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { $ } from "bun";
 import type { BacklogConfig } from "../types/index.ts";
+import { withGitFetchTrust } from "./certificate-trust.ts";
 
 type GitPathContext = {
 	repoRoot: string;
@@ -613,14 +614,33 @@ export class GitOperations {
 		}
 
 		try {
-			// Use --prune to remove dead refs and reduce later scans
-			await this.execGit(["fetch", remote, "--prune", "--quiet"], {
-				timeoutMs: FETCH_TIMEOUT_MS,
-				env: {
-					GIT_TERMINAL_PROMPT: "0",
-					GCM_INTERACTIVE: "Never",
-				},
-			});
+			const { stdout } = await this.execGit(["remote", "get-url", remote], { readOnly: true });
+			const url = stdout.trim(); // Git expands insteadOf rules before deciding the transport.
+			const fetch = async (env: NodeJS.ProcessEnv = {}) => {
+				// Use --prune to remove dead refs and reduce later scans.
+				await this.execGit(["fetch", remote, "--prune", "--quiet"], {
+					timeoutMs: FETCH_TIMEOUT_MS,
+					env: { ...env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" },
+				});
+			};
+			if (/^https:\/\//i.test(url)) {
+				const configuredCA = async (key: string) => {
+					const result = await this.execGit(["config", "--path", "--get-urlmatch", key, url], {
+						readOnly: true,
+						acceptedExitCodes: [0, 1],
+					});
+					return result.stdout.trim() || undefined;
+				};
+				await withGitFetchTrust(
+					url,
+					this.projectRoot,
+					process.env.GIT_SSL_CAINFO ?? (await configuredCA("http.sslCAInfo")),
+					process.env.GIT_SSL_CAPATH ?? (await configuredCA("http.sslCAPath")),
+					fetch,
+				);
+			} else {
+				await fetch();
+			}
 		} catch (error) {
 			// Check if this is a network-related error
 			if (this.isNetworkError(error)) {
@@ -1092,7 +1112,7 @@ export class GitOperations {
 			readOnly?: boolean;
 			cwd?: string;
 			input?: string;
-			env?: Record<string, string>;
+			env?: NodeJS.ProcessEnv;
 			acceptedExitCodes?: readonly number[];
 			timeoutMs?: number;
 		},
