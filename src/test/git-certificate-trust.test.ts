@@ -96,7 +96,9 @@ test("native CA directories preserve ordinary files, hash gaps, and incident fil
 		{ name: "81ee7702.1", chain: "registry-server.pem" },
 		{ name: "81ee7702.1", chain: "registry-server.pem", prefix: "blocked" },
 		{ name: "81ee7702.1", chain: "registry-server.pem", prefix: "non-pem" },
+		{ name: "81ee7702.1", chain: "registry-server.pem", prefix: "empty" },
 		{ name: "81ee7702.2", chain: "registry-server.pem", prefix: "blocked" },
+		{ name: "81ee7702.2", chain: "registry-server.pem", prefix: "blocked-non-pem" },
 		{ name: "81ee7702.2", chain: "registry-server.pem", prefix: "multiple" },
 		{ name: "00000000.0", chain: "registry-server.pem" },
 		{ name: "private.crt", chain: "registry-server.pem", defaultFile: true },
@@ -110,12 +112,17 @@ test("native CA directories preserve ordinary files, hash gaps, and incident fil
 		await writeFile(join(selected, fixture.name), privateCA);
 		if (fixture.prefix) {
 			const contents =
-				fixture.prefix === "blocked"
+				fixture.prefix === "blocked" || fixture.prefix === "blocked-non-pem"
 					? incidents[0].pem
 					: fixture.prefix === "multiple"
 						? `${await readFile(join(fixtures, "unsupported-key-ca.pem"), "utf8")}\n${trustedCertificates(getCACertificates("system"))[0]}`
-						: "not a PEM authority";
+						: fixture.prefix === "empty"
+							? ""
+							: "not a PEM authority";
 			await writeFile(join(selected, "81ee7702.0"), contents);
+			if (fixture.prefix === "blocked-non-pem") {
+				await writeFile(join(selected, "81ee7702.1"), "not a PEM authority");
+			}
 		}
 		await writeFile(join(selected, "incident-roots.pem"), incidents.map((ca: { pem: string }) => ca.pem).join("\n"));
 		await writeFile(join(selected, "unrelated.txt"), "not a PEM authority");
@@ -153,7 +160,7 @@ test("native CA directories preserve ordinary files, hash gaps, and incident fil
 			};
 			const execute = internals.execGit.bind(operations);
 			const completed = (error: unknown, expectedRequests: number) => {
-				const diagnostic = `${fixture.name}/${fixture.chain}: ${String(error)}`;
+				const diagnostic = `${fixture.name}/${fixture.prefix ?? "no-prefix"}/${fixture.chain}: ${String(error)}`;
 				if (!(error instanceof Error) || /timeout|could not spawn/i.test(diagnostic)) throw new Error(diagnostic);
 				expect(diagnostic).toMatch(expectedRequests ? /404|not found/i : /certificate|SSL|issuer|trust/i);
 			};
@@ -172,6 +179,10 @@ test("native CA directories preserve ordinary files, hash gaps, and incident fil
 				if (args[0] === "fetch") {
 					const file = await readFile(options?.env?.GIT_SSL_CAINFO as string, "utf8");
 					expect(trustedCertificates([file])).not.toContain(privateCA.trim());
+					if (fixture.prefix === "non-pem" || fixture.prefix === "empty" || fixture.prefix === "blocked-non-pem") {
+						const prefix = fixture.prefix === "blocked-non-pem" ? "81ee7702.1" : "81ee7702.0";
+						expect(await readFile(join(options?.env?.GIT_SSL_CAPATH as string, prefix), "utf8")).toBe("");
+					}
 				}
 				try {
 					return await execute(args, options);

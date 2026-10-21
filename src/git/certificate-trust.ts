@@ -97,6 +97,12 @@ export async function withGitFetchTrust(
 					}
 					const retained = pems.flatMap((pem) => trustedCertificates([pem], { allowEmpty: true }));
 					const crls = contents.match(/-----BEGIN X509 CRL-----[\s\S]+?-----END X509 CRL-----/g) ?? [];
+					// Some OpenSSL builds continue past an existing empty/non-PEM slot,
+					// but stop at a missing one. Preserve that boundary without copying
+					// unknown formats or filtered authorities into native trust.
+					if (hashed && !retained.length && !crls.length) {
+						await writeFile(join(capath, name), "", { mode: 0o600 });
+					}
 					if (pems.length || crls.length) files.set(name, [...retained, ...crls].join("\n"));
 				}
 				for (const [hash, indices] of hashes) {
