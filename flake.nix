@@ -30,6 +30,18 @@
             inherit system;
             overlays = [ bun2nix.overlays.default ];
           };
+          # Scope the Brotli fix to developer network tools, avoiding a Nixpkgs-wide rebuild.
+          brotliRuntime = pkgs.brotli.overrideAttrs (old: {
+            patches = (old.patches or [ ]) ++ [
+              (pkgs.fetchurl {
+                # CVE-2026-111497; the same upstream fix shipped in Node 26.12.1.
+                url = "https://github.com/google/brotli/commit/0ed4268a4401abcb4472096340477cf4af7d1a2b.patch";
+                hash = "sha256-gzyh1x7thb3jwhxjpu4xATh3Qbiqi5qCJRNAlKZ3thk=";
+              })
+            ];
+          });
+          curlRuntime = pkgs.curl.override { brotli = brotliRuntime; };
+          gitRuntime = pkgs.git.override { curl = curlRuntime; };
           avx2BunArchive = pkgs.fetchurl {
             # Pin an AVX2-only control independently of the packaged Bun runtime.
             url = "https://github.com/oven-sh/bun/releases/download/bun-v1.3.13/bun-linux-x64.zip";
@@ -59,14 +71,57 @@
               };
             };
           });
-          nodeRuntime = pkgs.nodejs_26.override {
-            nodejs-slim = pkgs.nodejs-slim_26.overrideAttrs {
-              version = "26.12.1";
-              src = pkgs.fetchurl {
-                url = "https://nodejs.org/dist/v26.12.1/node-v26.12.1.tar.xz";
-                hash = "sha256-BT47KWhZttjZP5nvl/qc7BxO4XHHKWgQDGSZeMHb04w=";
-              };
+          nodeSource = {
+            x86_64-linux = {
+              platform = "linux-x64";
+              hash = "sha256-YXCy1HThxib0PP863BGN+f47VzJYpPw9hQyNvGsHm70=";
             };
+            aarch64-linux = {
+              platform = "linux-arm64";
+              hash = "sha256-QqoEkiWR7l1NvHdA1FJiGs8oUII52qUS9e6MR+4iT9s=";
+            };
+            aarch64-darwin = {
+              platform = "darwin-arm64";
+              hash = "sha256-GIML9Ej+GHxlDcKMmKqMlo7R1Att0DLAgecKOEob9mA=";
+            };
+          }.${system};
+          npmSource = pkgs.fetchurl {
+            url = "https://registry.npmjs.org/npm/-/npm-12.2.0.tgz";
+            hash = "sha512-ZsJjKpTnlmSXOLLXiU1xDCzC4Wlok4IwZmh/aw2KUuXytU7q6qMv/cUT7MoeSf95Slwuw/lRXYefGzGCspHPNQ==";
+          };
+          # Preserve the release's security fixes instead of relinking older Nixpkgs libraries.
+          nodeRuntime = pkgs.stdenvNoCC.mkDerivation rec {
+            pname = "nodejs";
+            version = "26.12.1";
+            src = pkgs.fetchurl {
+              url = "https://nodejs.org/dist/v${version}/node-v${version}-${nodeSource.platform}.tar.xz";
+              inherit (nodeSource) hash;
+            };
+            nativeBuildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+              pkgs.autoPatchelfHook
+            ];
+            buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+              pkgs.stdenv.cc.cc.lib
+            ];
+            dontConfigure = true;
+            dontBuild = true;
+            dontStrip = true;
+            installPhase = ''
+              runHook preInstall
+              mkdir -p "$out"
+              cp -R bin include lib share "$out/"
+              rm -rf "$out/lib/node_modules/npm"
+              mkdir -p "$out/lib/node_modules/npm"
+              tar -xzf ${npmSource} --strip-components=1 -C "$out/lib/node_modules/npm"
+              runHook postInstall
+            '';
+            doInstallCheck = true;
+            installCheckPhase = ''
+              runHook preInstallCheck
+              test "$("$out/bin/node" --version)" = "v${version}"
+              test "$("$out/bin/node" "$out/lib/node_modules/npm/bin/npm-cli.js" --version)" = "12.2.0"
+              runHook postInstallCheck
+            '';
           };
           backlog-md = pkgs.bun2nix.mkDerivation {
             pname = "backlog";
@@ -160,6 +215,16 @@
             backlog-md = backlog-md;
           };
 
+          checks.development-tools = pkgs.runCommand "backlog-development-tools" {
+            nativeBuildInputs = [ nodeRuntime curlRuntime gitRuntime ];
+          } ''
+            node -e 'const assert = require("node:assert/strict"); assert.equal(process.version, "v26.12.1"); assert.equal(process.versions.ares, "1.34.9"); assert.equal(typeof require("node:zlib").constants.BROTLI_DECODER_ERROR_FORMAT_BLOCK_SWITCH, "number");'
+            test "$(npm --version)" = "12.2.0"
+            git --version
+            curl --version
+            touch "$out"
+          '';
+
           apps.default = flake-utils.lib.mkApp {
             drv = backlog-md;
             name = "backlog";
@@ -170,7 +235,8 @@
               bunRuntime
               pkgs.bun2nix
               nodeRuntime
-              pkgs.git
+              gitRuntime
+              curlRuntime
             ];
           };
         }

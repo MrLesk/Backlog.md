@@ -217,3 +217,4 @@ jobs:
           actual_version="$(./result/bin/backlog --version)"
           test "$actual_version" = "$expected_version"
           ./result/bin/backlog --help >/dev/null
+          nix build .#checks.x86_64-linux.development-tools --no-link --print-build-logs

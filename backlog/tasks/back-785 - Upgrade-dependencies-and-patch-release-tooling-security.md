@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-10-21T10:52:00Z'
-updated_date: '2026-10-21T11:22:00Z'
+updated_date: '2026-10-21T11:34:00Z'
 labels: []
 dependencies: []
 references:
@@ -77,4 +77,6 @@ Final full isolated suite with TERM=xterm passed: behavioral3201 pass/13 skip/0 
 Hosted CI proved live verified runtime downloads on Linux/macOS and Windows host installation, with Linux compile/smoke/compiled-TUI passing. It exposed a broken upstream Biome2.6.x publication: wrapper2.6.1 exists but cli-linux-x642.6.1 and2.6.0 both return404 from registry.npmjs.org, while2.5.15 returns200. Local installation had reused the older native binary. Pinned the complete installable2.5.15 release, regenerated both lock artifacts, and reran actual native lint/types/audit successfully. This is an explicit availability exception to latest stable; final hosted matrix remains required.
 
 Extended the CI compile matrix to all six release targets so every verified archive digest and compile.executablePath target is exercised before publication; native binary smoke stays on the three matching runner targets. Final local Nix rebuild with the complete Biome2.5.15 locks passed all install and QEMU checks.
+
+Replaced source-only Nix Node override after inspecting Nixpkgs shared-library linkage: it would retain older system Brotli/c-ares instead of the Node release fixes. The shell now packages the three official Node26.12.1 archives with published SHA256 digests and npm12.2.0 with official registry integrity, using autoPatchelf on Linux. Patched shell curl/Git use the authoritative Brotli CVE-2026-111497 commit through a bounded override, avoiding a940-derivation global overlay. Added a flake development-tools check to realize/test these actual runtimes independently of bun2nix. Local complete shell realization hit disk capacity while fetching unrelated Rust dependencies; hosted CI must prove this bounded check. No further global rebuild or manual Nix database edits were attempted.
 <!-- SECTION:NOTES:END -->
