@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-10-21T10:52:00Z'
-updated_date: '2026-10-21T11:45:00Z'
+updated_date: '2026-10-21T11:53:00Z'
 labels: []
 dependencies: []
 references:
@@ -89,4 +89,18 @@ Inspected the actual selected Nixpkgs CA bundle (NSS3.126):121 certificates, inc
 Hosted Nix successfully applied/compiled the upstream Brotli patch and autoPatchelf resolved all official Node runtime dependencies, but a silent Node/npm install-check assertion failed; explicit version diagnostics and store-path npm/npx shebangs were added before retry. A later unchanged Windows id-generation case exceeded its10s timeout while neighboring Git-heavy tests took9s; the earlier same-code Windows run passed, so rerun the failed job once its run finishes before altering behavior or test limits.
 
 Validated the new offline CA helper against current Node roots plus all20 incident certificates representing the12 blocked keys: it removes the incident material and preserves the exact current-root fingerprint set. Validated the actual CI bootstrap with an inherited Git config entry: it preserves that entry and appends Schannel CA-file opt-in at the next index. Official npm12.2.0 archive SHA512 integrity and internal package version were verified independently. New helper passes Biome and complete type checking; final hosted Nix runtime diagnostics/checks remain the gate.
+
+Reproduced the official Node Nix crash with patchelf0.19.2 in anonymous memory files, avoiding disk allocation: raw binary exits0/v26.12.1; sequential interpreter then RPATH edits exitSIGSEGV; a single invocation with both edits also exitsSIGSEGV; the identical edits with --no-sort exit0/v26.12.1. dontStrip was already true. Replaced autoPatchelf with explicit --no-sort interpreter/RPATH updates and disabled generic ELF shrinking; all actual Node/npm/shebang/trust checks remain mandatory.
+
+The --no-sort patched Node also executes full JavaScript successfully: Node26.12.1, c-ares1.34.9, bundled Brotli error constant present, and118 current root certificates. Latest Windows suite passed on the same application code without changing behavior or timeout limits.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Refreshed direct and compatible transitive dependencies, patched gray-matter onto current compatible js-yaml4, updated CI/release actions and Node/npm, regenerated Bun/Nix artifacts and flake inputs, and documented GitHub Release as the publishing entry point. Added filtered CA trust for CI and the Nix shell, explicit Bun cafiles, verified Bun runtime downloads/cross-compilation, and bounded patched Nix development tools.
+
+Verified locally: empty dependency audit, frozen install, types/Biome, full isolated behavioral3201pass/13skip and DOM399pass suites, native CLI/browser smoke, Nix package/native/browser/QEMU checks, twelve-key CA filtering and Git Schannel-config preservation. Hosted all six compilation targets and platform suites passed on the functional dependency update. Latest Node ELF diagnosis proved raw/sequential/single/no-sort outcomes; no-sort also runs full JavaScript with Node26.12.1, c-ares1.34.9, Brotli error constant, and118 roots.
+
+Release remains gated on hosted CI for the final bounded Nix check. Exceptions are installable Biome2.5.15 (new2.6.x native packages404), js-yaml4.3.2 (5.x breaks opaque metadata preservation), Bun lock format1 (current bun2nix requirement), and unpatched latest-stable Bun1.4.3 trust/Brotli internals with documented scoped mitigations. Coordinate merge and GitHub Release publication; do not manually bump package.json or push a release tag directly.
+<!-- SECTION:FINAL_SUMMARY:END -->

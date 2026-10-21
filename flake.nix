@@ -98,7 +98,7 @@
               inherit (nodeSource) hash;
             };
             nativeBuildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
-              pkgs.autoPatchelfHook
+              pkgs.patchelf
             ];
             buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
               pkgs.stdenv.cc.cc.lib
@@ -106,6 +106,14 @@
             dontConfigure = true;
             dontBuild = true;
             dontStrip = true;
+            dontPatchELF = true;
+            # Header sorting in patchelf 0.19.2 makes the official Node executable segfault.
+            postFixup = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+              patchelf --no-sort \
+                --set-interpreter ${pkgs.stdenv.cc.bintools.dynamicLinker} \
+                --set-rpath ${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib pkgs.stdenv.cc.cc.libgcc ]} \
+                "$out/bin/node"
+            '';
             installPhase = ''
               runHook preInstall
               mkdir -p "$out"

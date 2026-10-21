@@ -91,7 +91,7 @@ shell, and the installed application all use that runtime. Project format and
 lint commands use the Biome version pinned in `bun.lock` rather than a second
 Nix-provided version. The development shell's Node uses official 26.12.1
 archives with published SHA-256 digests, preserving the release's bundled
-security fixes, and npm 12.2.0 from its integrity-pinned registry archive; Linux binaries are adapted with autoPatchelf. The flake also
+security fixes, and npm 12.2.0 from its integrity-pinned registry archive; Linux binaries are adapted with header order preserved by `patchelf --no-sort`. The flake also
 applies upstream Brotli commit `0ed4268a4401abcb4472096340477cf4af7d1a2b`
 for CVE-2026-111497 to the shell's curl and Git, avoiding a full Nixpkgs rebuild.
 The shell exports a current Node/NSS root bundle filtered for the incident as
