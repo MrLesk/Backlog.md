@@ -1,9 +1,10 @@
+import { createHash } from "node:crypto";
 import { lstat, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { $ } from "bun";
 import type { BacklogConfig } from "../types/index.ts";
-import { gitTrustValue, withGitFetchTrust } from "./certificate-trust.ts";
+import { gitTrustValue, gitURLScope, withGitFetchTrust } from "./certificate-trust.ts";
 
 type GitPathContext = {
 	repoRoot: string;
@@ -624,10 +625,44 @@ export class GitOperations {
 				});
 			};
 			if (/^https:\/\//i.test(url)) {
+				// Let Git match URL-scoped CA policy without putting HTTPS userinfo in
+				// child argv. Read only CA entries, pseudonymize usernames consistently,
+				// and retain Git's ordering, URL matching and native path expansion.
+				const queryURL = (value: string) =>
+					gitURLScope(value).replace(/^([a-z][a-z0-9+.-]*:\/\/)([^/?#]*)@/i, (_, prefix: string, username: string) => {
+						// Git decodes unreserved escapes, but distinguishes reserved raw
+						// characters such as '=' from their percent-encoded spelling.
+						const normalized = username
+							.replace(/[^\x21-\x7e]/gu, (character) => encodeURIComponent(character))
+							.replace(/%([0-9a-f]{2})/gi, (encoded: string, byte: string) => {
+								const character = String.fromCharCode(Number.parseInt(byte, 16));
+								return /[a-z0-9._~-]/i.test(character) ? character : encoded.toUpperCase();
+							});
+						return `${prefix}backlog-${createHash("sha256").update(normalized).digest("hex")}@`;
+					});
+				const quoted = (value: string) =>
+					`"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\n").replaceAll("\t", "\\t").replaceAll("\b", "\\b")}"`;
+				let projected: string | undefined;
 				const configuredCA = async (key: string) => {
-					const result = await this.execGit(["config", "--null", "--path", "--get-urlmatch", key, url], {
+					if (projected === undefined) {
+						const { stdout } = await this.execGit(
+							["config", "--null", "--path", "--get-regexp", "^http\\.(.*\\.)?sslca(info|path)$"],
+							{ readOnly: true, acceptedExitCodes: [0, 1] },
+						);
+						projected = "";
+						for (const entry of stdout.split("\0").filter(Boolean)) {
+							const separator = entry.indexOf("\n");
+							const name = entry.slice(0, separator);
+							const match = /^http\.(?:(.*)\.)?(sslca(?:info|path))$/.exec(name);
+							if (separator < 0 || !match) throw new Error("Invalid Git HTTPS CA configuration");
+							const scope = match[1] === undefined ? "" : ` ${quoted(queryURL(match[1]))}`;
+							projected += `[http${scope}]\n${match[2]} = ${quoted(entry.slice(separator + 1))}\n`;
+						}
+					}
+					const result = await this.execGit(["config", "--file", "-", "--null", "--get-urlmatch", key, queryURL(url)], {
 						readOnly: true,
 						acceptedExitCodes: [0, 1],
+						input: projected,
 					});
 					// A missing key emits nothing; an explicitly empty value emits one NUL.
 					return result.stdout ? result.stdout.slice(0, -1) : undefined;

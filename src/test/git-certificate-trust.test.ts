@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
+import { X509Certificate } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:https";
 import { tmpdir } from "node:os";
@@ -96,12 +97,80 @@ test("explicit empty Git CA files fail closed rather than gaining default trust"
 	await expect(new GitOperations(root).fetch()).rejects.toThrow("Configured Git CA file is empty");
 });
 
+test("native CA lookup preserves username matching without putting HTTPS userinfo in child arguments", async () => {
+	for (const key of Object.keys(process.env)) {
+		if (/^(git_config_(?:count|parameters|key_\d+|value_\d+)|git_ssl_ca(info|path))$/i.test(key))
+			delete process.env[key];
+	}
+	for (const [scope, remote] of [
+		["https://test-user@example.invalid/repository", "https://test%2Duser:fixture-secret@example.invalid/repository"],
+		["https://test%2Duser@example.invalid/repository", "https://test-user:fixture-secret@example.invalid/repository"],
+		[
+			"https://test%40user@example.invalid/repository",
+			"https://%74est%40user:fixture-secret@example.invalid/repository",
+		],
+		[
+			"https://fixture-token@example.invalid/repository",
+			"https://fixture-token:fixture-secret@example.invalid/repository",
+		],
+		[
+			"https://token=abc@*.example.invalid/repository",
+			"https://token=abc:fixture-secret@sub.example.invalid/repository/nested",
+		],
+	]) {
+		const root = await temporary();
+		await git(root, "init", "--quiet");
+		await git(root, "config", "http.sslCAInfo", join(fixtures, "unsupported-key-ca.pem"));
+		await git(root, "config", `http.${scope}.sslCAInfo`, join(fixtures, "registry-ca.pem"));
+		await git(root, "config", `url.${remote}.insteadOf`, "fixture:repository");
+		await git(root, "config", "remote.origin.url", "fixture:repository");
+		const expected = await git(
+			root,
+			"config",
+			"--null",
+			"--path",
+			"--get-urlmatch",
+			"http.sslCAInfo",
+			remote as string,
+		);
+		expect(expected).toBe(`${join(fixtures, "registry-ca.pem")}\0`);
+		const operations = new GitOperations(root);
+		const internals = operations as unknown as {
+			execGit: (args: string[], options?: { env?: NodeJS.ProcessEnv }) => Promise<{ stdout: string; stderr: string }>;
+		};
+		const execute = internals.execGit.bind(operations);
+		const argumentsSeen: string[][] = [];
+		let fetched = false;
+		internals.execGit = async (args, options) => {
+			argumentsSeen.push(args);
+			if (args[0] !== "fetch") return execute(args, options);
+			fetched = true;
+			expect(trustedCertificates([await readFile(options?.env?.GIT_SSL_CAINFO as string, "utf8")])).toEqual([
+				(await readFile(join(fixtures, "registry-ca.pem"), "utf8")).trim(),
+			]);
+			return { stdout: "", stderr: "" };
+		};
+		await operations.fetch();
+		expect(fetched).toBe(true);
+		const serialized = JSON.stringify(argumentsSeen);
+		expect(serialized).not.toContain("fixture-secret");
+		expect(serialized).not.toContain(new URL(remote as string).username);
+	}
+	const root = await temporary();
+	await git(root, "init", "--quiet");
+	await git(root, "config", "remote.origin.url", "https://fixture-token:fixture-secret@example.invalid/repository");
+	await git(root, "config", "http.not-a-url.sslCAInfo", join(fixtures, "registry-ca.pem"));
+	await expect(new GitOperations(root).fetch()).rejects.toThrow("Invalid URL in Git HTTPS CA configuration");
+});
+
 test.each(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonical"])(
 	"native Git HTTPS fetch preserves private trust and auth but rejects both incident paths (%s)",
 	async (style) => {
 		const root = await temporary();
 		const incidents = (await Bun.file(join(fixtures, "compromised-cas.json")).json()).certificates;
 		const selected = join(root, "selected-ca.pem");
+		const selectedDirectory = join(root, "selected-ca-directory");
+		await mkdir(selectedDirectory);
 		await writeFile(
 			selected,
 			[
@@ -113,12 +182,16 @@ test.each(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonica
 		// Isolate the same Git configuration for every chain. Schannel's fixture revocation
 		// switch is Windows-only; production keeps the caller's revocation policy.
 		for (const key of Object.keys(process.env)) {
-			if (/^(git_config_(?:count|key_\d+|value_\d+)|git_ssl_cainfo|git_ssl_capath|https?_proxy|all_proxy)$/i.test(key))
+			if (
+				/^(git_config_(?:count|parameters|key_\d+|value_\d+)|git_ssl_cainfo|git_ssl_capath|https?_proxy|all_proxy)$/i.test(
+					key,
+				)
+			)
 				delete process.env[key];
 		}
 		const variant = (name: string) =>
 			style === "lowercase" &&
-			/^GIT_(?:SSL_CA(?:INFO|PATH)|SSL_NO_VERIFY|CONFIG_(?:COUNT|KEY_\d+|VALUE_\d+))$/.test(name)
+			/^GIT_(?:SSL_CA(?:INFO|PATH)|SSL_NO_VERIFY|CONFIG_(?:COUNT|PARAMETERS|KEY_\d+|VALUE_\d+))$/.test(name)
 				? name.toLowerCase()
 				: name;
 		const inherited: Record<string, string> = {
@@ -127,14 +200,14 @@ test.each(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonica
 			GIT_CONFIG_COUNT: "1",
 			GIT_CONFIG_KEY_0: "http.extraHeader",
 			GIT_CONFIG_VALUE_0: "X-Backlog-Fixture: preserved",
+			GIT_CONFIG_PARAMETERS: "'http.extraHeader=X-Backlog-Command: preserved'",
 			GIT_SSL_NO_VERIFY: "false",
 			NO_PROXY: "localhost,127.0.0.1",
 			no_proxy: "localhost,127.0.0.1",
 		};
 		if (style === "lowercase") {
 			inherited.GIT_SSL_CAINFO = selected;
-			inherited.GIT_SSL_CAPATH = join(root, "selected-ca-directory");
-			await mkdir(inherited.GIT_SSL_CAPATH);
+			inherited.GIT_SSL_CAPATH = selectedDirectory;
 		}
 		Object.assign(
 			process.env,
@@ -154,11 +227,17 @@ test.each(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonica
 		]) {
 			let requests = 0;
 			let header: string | string[] | undefined;
+			let commandHeader: string | string[] | undefined;
+			const peer = await readFile(join(fixtures, chain));
+			const leaf = new X509Certificate(peer);
+			expect(Date.parse(leaf.validFrom)).toBeLessThan(Date.now());
+			expect(Date.parse(leaf.validTo)).toBeGreaterThan(Date.now());
 			const server = createServer(
-				{ key: await readFile(join(fixtures, "registry-server-key.pem")), cert: await readFile(join(fixtures, chain)) },
+				{ key: await readFile(join(fixtures, "registry-server-key.pem")), cert: peer },
 				(request, response) => {
 					requests++;
 					header = request.headers["x-backlog-fixture"];
+					commandHeader = request.headers["x-backlog-command"];
 					response.writeHead(404);
 					response.end("fixture repository not found");
 				},
@@ -167,8 +246,8 @@ test.each(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonica
 			try {
 				const address = server.address();
 				if (!address || typeof address === "string") throw new Error("Expected loopback server address");
-				const url = `https://test-user:test-secret@localhost:${address.port}/repository`;
-				const configuredURL = `https://test-user@localhost:${address.port}/repository`;
+				const url = `https://test=user:test-secret@localhost:${address.port}/repository`;
+				const configuredURL = `https://test=user@localhost:${address.port}/repository`;
 				await git(root, "config", "remote.origin.url", url);
 				await git(
 					root,
@@ -177,11 +256,35 @@ test.each(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonica
 					style === "lowercase" ? join(fixtures, "unsupported-key-ca.pem") : selected,
 				);
 				await git(root, "config", `http.${configuredURL}.sslVerify`, "false");
+				const parameters = `${inherited.GIT_CONFIG_PARAMETERS} 'http.${configuredURL}.sslVerify'='false' 'http.${configuredURL}.schannelUseSSLCAInfo'='false'`;
+				process.env[variant("GIT_CONFIG_PARAMETERS")] = parameters;
 				const operations = new GitOperations(root);
 				const internals = operations as unknown as {
 					execGit: (args: string[], options?: unknown) => Promise<{ stdout: string; stderr: string }>;
 				};
 				const execute = internals.execGit.bind(operations);
+				// An unfiltered native verifier must accept this currently valid chain.
+				// This control fails after expiry instead of silently accepting any TLS error.
+				let baselineError: unknown;
+				await execute(["fetch", "origin", "--quiet"], {
+					timeoutMs: 10000,
+					env: {
+						GIT_SSL_CAINFO: selected,
+						GIT_SSL_CAPATH: selectedDirectory,
+						GIT_CONFIG_PARAMETERS: `${parameters} 'http.${configuredURL}.sslVerify'='true' 'http.${configuredURL}.schannelUseSSLCAInfo'='true'`,
+						[variant("GIT_SSL_NO_VERIFY")]: undefined,
+						GIT_TERMINAL_PROMPT: "0",
+						GCM_INTERACTIVE: "Never",
+					},
+				}).catch((error) => {
+					baselineError = error;
+				});
+				if (requests !== 1 || !/404|not found/i.test(String(baselineError))) {
+					throw new Error(
+						`Unfiltered Git must reach the fixture 404 for ${chain}: requests=${requests}, ${String(baselineError)}`,
+					);
+				}
+				requests = 0;
 				let fetchError: unknown;
 				internals.execGit = async (args, options) => {
 					try {
@@ -205,8 +308,10 @@ test.each(process.platform === "win32" ? ["canonical", "lowercase"] : ["canonica
 				else {
 					expect(diagnostic).toMatch(/not found|404/i);
 					expect(header).toBe("preserved");
+					expect(commandHeader).toBe("preserved");
 				}
 				expect(process.env[variant("GIT_CONFIG_COUNT")]).toBe("1");
+				expect(process.env[variant("GIT_CONFIG_PARAMETERS")]).toBe(parameters);
 				expect(process.env[variant("GIT_SSL_NO_VERIFY")]).toBe("false");
 			} finally {
 				server.closeAllConnections();

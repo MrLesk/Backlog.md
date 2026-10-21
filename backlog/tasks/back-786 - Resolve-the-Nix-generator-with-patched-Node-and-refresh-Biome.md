@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-10-21T14:26:00Z'
-updated_date: '2026-10-21T15:09:00Z'
+updated_date: '2026-10-21T15:24:00Z'
 labels: []
 dependencies: []
 references:
@@ -87,4 +87,6 @@ Action Windows diagnostics isolated incomplete incident peer chains as a native 
 Fail-closed review distinguished absent from explicitly empty Git CA configuration: --null --get-urlmatch emits no bytes for absence and one NUL for an empty value. Runtime now retains that distinction and rejects empty CAfile selections (including GIT_SSL_CAINFO=empty) instead of inheriting public defaults. Real native Git valid empty config/environment regression passes before any fetch, and all31focused Git tests/types550files/Biome473files pass. Empty CApath remains an empty fallback directory; explicit updater SSL_CERT_FILE selection remains its documented intentional trust policy, without a new npm-policy layer.
 
 Windows child-environment follow-up: read only Git CAINFO/CAPATH/CONFIG_COUNT case-insensitively on Windows; delete inherited case variants only for keys explicitly replaced or omitted by execGit options.env. Unrelated environment and untouched indexed authentication retain their original spelling. Windows native TLS fixture now runs canonical and lower-case-only CAfile/CApath/count/indexed auth/bypass inputs; lower-case env CA must override a deliberately different configured CA. Private-positive/auth and both incident completed-rejection/zeroHTTP assertions remain required. Unix case semantics are unchanged. Local31Git tests/types/lint pass; actual Windows variant awaits hosted final head.
+
+Codex review follow-up: inherited GIT_CONFIG_PARAMETERS can outrank indexed TLS flags; native Git control returned false before the fix and true after appending separately quoted exact URL key/value pairs. Preserve opaque inherited command-scope auth/proxy entries and raw username spelling (Git distinguishes raw reserved = from %3D, unlike WHATWG href). Credential-safe CA lookup reads only ordered CA entries with native --path, pseudonymizes equivalent usernames, then delegates matching to isolated Git --file - stdin; passwords and token-as-username never enter the new lookup argv. Native controls cover encoded unreserved names, reserved =, token usernames, wildcard paths, insteadOf, and exclusive private CA selection; malformed scopes fail generically. Every Git TLS chain now first proves unfiltered native acceptance at the mock404, and Git/npm fixtures explicitly require current leaf validity so expiry cannot silently satisfy negatives.32focused Git tests134assertions, types550files, Biome473files and4native updater tests pass. A preload mutation omitting the new PARAMETERS override reproduces1HTTP through the incident emudhra chain and fails the regression; unchanged fixed source passes. Previous a01 hosted matrix was fully green including full Linux and Nix; latest preceding cfd Windows/mac/all6compiles are green. Exact new-head3-platform/Nix and final action/Groma architecture pins still gate release.
 <!-- SECTION:NOTES:END -->

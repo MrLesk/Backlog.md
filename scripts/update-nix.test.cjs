@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const { execFile } = require("node:child_process");
+const { X509Certificate } = require("node:crypto");
 const { mkdtemp, mkdir, readFile, writeFile, rm } = require("node:fs/promises");
 const https = require("node:https");
 const os = require("node:os");
@@ -109,10 +110,17 @@ it("native npm reaches a private registry but sends no HTTP request through eith
 	await writeFile(extra, incidents.map((certificate) => certificate.pem).join("\n"));
 	for (const chain of ["registry-server.pem", "incident-server-emudhra.pem", "incident-server-aaa.pem"]) {
 		let requests = 0;
+		const peer = await readFile(path.join(fixture, chain));
+		const leaf = new X509Certificate(peer);
+		assert.ok(Date.parse(leaf.validFrom) < Date.now(), `${chain}: fixture is not yet valid`);
+		assert.ok(
+			Date.parse(leaf.validTo) > Date.now(),
+			`${chain}: renew the expired incident fixture before trusting this rejection`,
+		);
 		const server = https.createServer(
 			{
 				key: await readFile(path.join(fixture, "registry-server-key.pem")),
-				cert: await readFile(path.join(fixture, chain)),
+				cert: peer,
 			},
 			(_request, response) => {
 				requests++;
