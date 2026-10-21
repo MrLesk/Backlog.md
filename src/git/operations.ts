@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { $ } from "bun";
 import type { BacklogConfig } from "../types/index.ts";
-import { withGitFetchTrust } from "./certificate-trust.ts";
+import { gitTrustValue, withGitFetchTrust } from "./certificate-trust.ts";
 
 type GitPathContext = {
 	repoRoot: string;
@@ -625,17 +625,18 @@ export class GitOperations {
 			};
 			if (/^https:\/\//i.test(url)) {
 				const configuredCA = async (key: string) => {
-					const result = await this.execGit(["config", "--path", "--get-urlmatch", key, url], {
+					const result = await this.execGit(["config", "--null", "--path", "--get-urlmatch", key, url], {
 						readOnly: true,
 						acceptedExitCodes: [0, 1],
 					});
-					return result.stdout.trim() || undefined;
+					// A missing key emits nothing; an explicitly empty value emits one NUL.
+					return result.stdout ? result.stdout.slice(0, -1) : undefined;
 				};
 				await withGitFetchTrust(
 					url,
 					this.projectRoot,
-					process.env.GIT_SSL_CAINFO ?? (await configuredCA("http.sslCAInfo")),
-					process.env.GIT_SSL_CAPATH ?? (await configuredCA("http.sslCAPath")),
+					gitTrustValue("GIT_SSL_CAINFO") ?? (await configuredCA("http.sslCAInfo")),
+					gitTrustValue("GIT_SSL_CAPATH") ?? (await configuredCA("http.sslCAPath")),
 					fetch,
 				);
 			} else {
@@ -1122,8 +1123,17 @@ export class GitOperations {
 		const env = {
 			...process.env,
 			...(options?.readOnly ? { GIT_OPTIONAL_LOCKS: "0" } : {}),
-			...options?.env,
 		} as Record<string, string>;
+		for (const [key, value] of Object.entries(options?.env ?? {})) {
+			// Replace only explicitly overridden names; preserve unrelated environment
+			// and inherited indexed authentication settings with their original spelling.
+			for (const inherited of Object.keys(env)) {
+				if (process.platform === "win32" ? inherited.toUpperCase() === key.toUpperCase() : inherited === key) {
+					delete env[inherited];
+				}
+			}
+			if (value !== undefined) env[key] = value;
+		}
 
 		const useProcessGroup = options?.timeoutMs !== undefined && process.platform !== "win32";
 		const subprocess = Bun.spawn(["git", ...args], {

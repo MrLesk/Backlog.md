@@ -4,6 +4,12 @@ import { join, resolve } from "node:path";
 import { getCACertificates, rootCertificates } from "node:tls";
 import { trustedCertificates } from "../../scripts/filter-trusted-cas.cjs";
 
+/** Windows environment names are case-insensitive even when Bun's JS lookup is not. */
+export function gitTrustValue(name: "GIT_SSL_CAINFO" | "GIT_SSL_CAPATH" | "GIT_CONFIG_COUNT"): string | undefined {
+	if (process.platform !== "win32") return process.env[name];
+	return Object.entries(process.env).find(([key]) => key.toUpperCase() === name)?.[1];
+}
+
 /** Isolate trust for one native Git HTTPS fetch without changing user configuration. */
 export async function withGitFetchTrust(
 	url: string,
@@ -12,6 +18,7 @@ export async function withGitFetchTrust(
 	caDirectory: string | undefined,
 	fetch: (environment: NodeJS.ProcessEnv) => Promise<void>,
 ): Promise<void> {
+	if (caFile === "") throw new Error("Configured Git CA file is empty");
 	const bundles =
 		caFile || caDirectory
 			? []
@@ -44,7 +51,7 @@ export async function withGitFetchTrust(
 		);
 		const scope = new URL(url);
 		scope.password = "";
-		const rawCount = process.env.GIT_CONFIG_COUNT ?? "0";
+		const rawCount = gitTrustValue("GIT_CONFIG_COUNT") ?? "0";
 		const count = Number(rawCount);
 		if (!/^(0|[1-9][0-9]*)$/.test(rawCount) || !Number.isSafeInteger(count + 2)) {
 			throw new Error("Invalid GIT_CONFIG_COUNT");

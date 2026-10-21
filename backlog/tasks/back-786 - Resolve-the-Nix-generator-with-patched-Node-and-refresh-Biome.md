@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-10-21T14:26:00Z'
-updated_date: '2026-10-21T14:55:00Z'
+updated_date: '2026-10-21T15:09:00Z'
 labels: []
 dependencies: []
 references:
@@ -83,4 +83,8 @@ Final pre-PR validation:30focused Git tests pass, including native private RSA a
 Native Git negative fixtures also capture the real fetch child error through the existing private execGit seam: require a completed certificate rejection and zeroHTTP, reject timeouts/spawn failures, and print chain/error on failure. Private cases require a completed fixture404 plus expected preserved fake auth. No request-count-only pass is treated as rejection.
 
 Action Windows diagnostics isolated incomplete incident peer chains as a native verifier stall after handshake/privateCA import. Applied the same fixture-only completion here by appending the existing public terminal ECC-G3/AAA roots served by the mock TLS peer; client CA trust is unchanged. Actual certificate rejection/zeroHTTP and existing timeouts stay required. AIA lookup remains an inference until Windows evidence confirms completed rejection.
+
+Fail-closed review distinguished absent from explicitly empty Git CA configuration: --null --get-urlmatch emits no bytes for absence and one NUL for an empty value. Runtime now retains that distinction and rejects empty CAfile selections (including GIT_SSL_CAINFO=empty) instead of inheriting public defaults. Real native Git valid empty config/environment regression passes before any fetch, and all31focused Git tests/types550files/Biome473files pass. Empty CApath remains an empty fallback directory; explicit updater SSL_CERT_FILE selection remains its documented intentional trust policy, without a new npm-policy layer.
+
+Windows child-environment follow-up: read only Git CAINFO/CAPATH/CONFIG_COUNT case-insensitively on Windows; delete inherited case variants only for keys explicitly replaced or omitted by execGit options.env. Unrelated environment and untouched indexed authentication retain their original spelling. Windows native TLS fixture now runs canonical and lower-case-only CAfile/CApath/count/indexed auth/bypass inputs; lower-case env CA must override a deliberately different configured CA. Private-positive/auth and both incident completed-rejection/zeroHTTP assertions remain required. Unix case semantics are unchanged. Local31Git tests/types/lint pass; actual Windows variant awaits hosted final head.
 <!-- SECTION:NOTES:END -->
