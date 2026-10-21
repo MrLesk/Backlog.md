@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { getCACertificates, rootCertificates } from "node:tls";
+import { getCACertificates } from "node:tls";
 import { trustedCertificates } from "../../scripts/filter-trusted-cas.cjs";
 
 /** Windows environment names are case-insensitive even when Bun's JS lookup is not. */
@@ -57,15 +57,19 @@ export async function withGitFetchTrust(
 		const originTrust: NodeJS.ProcessEnv = {};
 		if (/^https:\/\//i.test(url)) {
 			if (caFile === "") throw new Error("Configured Git CA file is empty");
-			const bundles =
-				caFile || caDirectory
-					? []
-					: [
-							...rootCertificates,
-							...getCACertificates("default"),
-							...getCACertificates("system"),
-							...getCACertificates("extra"),
-						];
+			const bundles: string[] = [];
+			if (!caFile && !caDirectory) {
+				// Git's default trust must not gain Node-only bundled or extra roots.
+				// Custom Git installations should select their CAfile/path explicitly.
+				try {
+					bundles.push(...getCACertificates("system"));
+				} catch {
+					throw new Error("Cannot read system CAs for Git. Configure GIT_SSL_CAINFO with the required CA bundle.");
+				}
+				if (!bundles.length) {
+					throw new Error("No system CAs available for Git. Configure GIT_SSL_CAINFO with the required CA bundle.");
+				}
+			}
 			if (caFile) bundles.push(await readFile(resolve(projectRoot, caFile), "utf8"));
 			if (caDirectory) {
 				const directory = resolve(projectRoot, caDirectory);

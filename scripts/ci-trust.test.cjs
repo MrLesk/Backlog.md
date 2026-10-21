@@ -11,6 +11,7 @@ const yaml = createRequire(require.resolve("gray-matter"))("js-yaml");
 for (const workflow of ["ci.yml", "release.yml", "architecture.yml"]) {
 	it(`${workflow} prepares strict Git trust before network steps and preserves inherited authentication`, () => {
 		const document = yaml.load(readFileSync(path.join(__dirname, "../.github/workflows", workflow), "utf8"));
+		assert.equal(document.env.NODE_OPTIONS, "--use-openssl-ca");
 		const jobs = Object.values(document.jobs);
 		const bootstrap = jobs[0].steps[0].run;
 		for (const job of jobs) assert.equal(job.steps[0].run, bootstrap, "every job must bootstrap before network steps");
@@ -26,6 +27,7 @@ for (const workflow of ["ci.yml", "release.yml", "architecture.yml"]) {
 			);
 			const env = {
 				...inherited,
+				...document.env,
 				RUNNER_TEMP: directory,
 				GITHUB_ENV: path.join(directory, "environment"),
 				GITHUB_SERVER_URL: "https://github.com",

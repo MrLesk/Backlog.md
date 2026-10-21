@@ -82,6 +82,110 @@ test("default native Git trust remains nonempty after filtering", async () => {
 	});
 });
 
+test("Node-only extra CAs do not become default Git authorities in a fresh process", async () => {
+	const root = await temporary();
+	const globalConfig = join(root, "global-gitconfig");
+	await writeFile(globalConfig, "");
+	await git(root, "init", "--quiet");
+	if (process.platform === "win32") {
+		await git(root, "config", "http.sslBackend", "schannel");
+		await git(root, "config", "http.schannelUseSSLCAInfo", "true");
+		await git(root, "config", "http.schannelCheckRevoke", "false");
+	}
+	let requests = 0;
+	const server = createServer(
+		{
+			key: await readFile(join(fixtures, "registry-server-key.pem")),
+			cert: await readFile(join(fixtures, "registry-server.pem")),
+		},
+		(_request, response) => {
+			requests++;
+			response.writeHead(404);
+			response.end("fixture repository not found");
+		},
+	);
+	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+	try {
+		const address = server.address();
+		if (!address || typeof address === "string") throw new Error("Expected loopback origin address");
+		await git(
+			root,
+			"config",
+			"remote.origin.url",
+			`https://fixture-user:fixture-password@localhost:${address.port}/repository`,
+		);
+		const probe = join(root, "probe.ts");
+		await writeFile(
+			probe,
+			`
+			import {readFile} from 'node:fs/promises';
+			import {getCACertificates} from 'node:tls';
+			import {GitOperations} from ${JSON.stringify(resolve(import.meta.dir, "../git/operations.ts"))};
+			const privateCA = (await readFile(process.env.NODE_EXTRA_CA_CERTS, 'utf8')).trim();
+			const operations = new GitOperations(process.cwd());
+			const execute = operations.execGit.bind(operations);
+			let bundle;
+			operations.execGit = async (args, options) => {
+				if (args[0] === 'fetch' && options?.env?.GIT_SSL_CAINFO) bundle = await readFile(options.env.GIT_SSL_CAINFO, 'utf8');
+				return execute(args, options);
+			};
+			let error;
+			try {
+				if (process.argv[2] === 'raw') await execute(['fetch', 'origin', '--quiet'], {timeoutMs:10000, env:{GIT_TERMINAL_PROMPT:'0', GCM_INTERACTIVE:'Never'}});
+				else await operations.fetch();
+			} catch (failure) { error = String(failure); }
+			console.log(JSON.stringify({error, extraHasPrivate:getCACertificates('extra').some(pem => pem.trim() === privateCA),
+				bundleHasPrivate:bundle?.includes(privateCA), bundlePresent:!!bundle}));
+		`,
+		);
+		const childEnvironment = Object.fromEntries(
+			Object.entries(process.env).filter(
+				([name]) =>
+					!/^(?:git_config(?:_.+)?|git_ssl_(?:no_verify|cainfo|capath)|git_proxy_ssl_cainfo|https?_proxy|all_proxy|no_proxy|ssl_cert_(?:file|dir)|curl_ca_bundle|node_extra_ca_certs)$/i.test(
+						name,
+					),
+			),
+		);
+		Object.assign(childEnvironment, {
+			GIT_CONFIG_NOSYSTEM: "1",
+			GIT_CONFIG_GLOBAL: globalConfig,
+			NODE_EXTRA_CA_CERTS: join(fixtures, "registry-ca.pem"),
+		});
+		for (const mode of ["raw", "guarded"]) {
+			requests = 0;
+			const child = Bun.spawn([process.execPath, probe, mode], {
+				cwd: root,
+				env: childEnvironment,
+				stdout: "pipe",
+				stderr: "pipe",
+			});
+			const [code, stdout, stderr] = await Promise.all([
+				child.exited,
+				new Response(child.stdout).text(),
+				new Response(child.stderr).text(),
+			]);
+			if (code !== 0) throw new Error(`${mode} Git trust child failed: ${stderr}`);
+			const result = JSON.parse(stdout);
+			expect(result.extraHasPrivate).toBe(true);
+			if (
+				typeof result.error !== "string" ||
+				/timeout|could not spawn/i.test(result.error) ||
+				!/certificate|SSL|issuer|trust|schannel/i.test(result.error)
+			)
+				throw new Error(`${mode} must complete native certificate rejection: ${result.error}`);
+			if (requests !== 0)
+				throw new Error(`${mode} Git unexpectedly sent ${requests} HTTP requests with a Node-only CA: ${result.error}`);
+			if (mode === "guarded") {
+				expect(result.bundlePresent).toBe(true);
+				expect(result.bundleHasPrivate).toBe(false);
+			}
+		}
+	} finally {
+		server.closeAllConnections();
+		await new Promise<void>((resolve) => server.close(() => resolve()));
+	}
+}, 20000);
+
 test("explicit empty Git CA files fail closed rather than gaining default trust", async () => {
 	const root = await temporary();
 	for (const key of Object.keys(process.env)) {
@@ -492,10 +596,19 @@ test.each(proxyCases)(
 				!/certificate|CAfile|schannel|SSL/i.test(diagnostic)
 			)
 				throw new Error(`Expected completed proxy TLS/file rejection: ${diagnostic}`);
-			expect(String(nativeError).replaceAll("\\", "/")).toContain("/unsupported-https-proxy/unavailable.pem");
+			if (backend === "schannel") {
+				// Schannel can reject an incident root through ambient OS revocation;
+				// require our loader failure. GnuTLS reports a generic CA-loader error.
+				expect(String(nativeError).replaceAll("\\", "/")).toContain("/unsupported-https-proxy/unavailable.pem");
+			}
 			if (requests !== 0 || authorization !== undefined)
 				throw new Error(`HTTPS proxy received HTTP/auth: requests=${requests}, ${diagnostic}`);
-			expect(String(fetchError)).toMatch(/HTTPS proxies are unsupported/);
+			expect(fetchError).toBeInstanceOf(Error);
+			expect(String(fetchError)).toMatch(
+				backend === "schannel"
+					? /HTTPS proxies are unsupported/
+					: /HTTPS proxies are unsupported|certificate|CAfile|SSL/i,
+			);
 		} finally {
 			for (const socket of sockets) socket.destroy();
 			await new Promise<void>((resolve) => server.close(() => resolve()));

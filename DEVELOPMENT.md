@@ -32,6 +32,13 @@ because some libcurl versions fall back to their proxy CA directory.
 Use a direct connection, an HTTP proxy, or disable `remoteOperations` for offline
 use. SSH and local remotes use their normal Git behavior.
 
+Without an explicit Git CA file or directory, fetches filter the operating
+system's CA pool. Node-only bundled or `NODE_EXTRA_CA_CERTS` authorities do not
+become Git authorities. Custom Git installations with a different trust source
+must select it through `GIT_SSL_CAINFO` or Git's CA file/directory configuration.
+If the system pool is empty or unavailable, fetches fail closed with instructions
+to configure the CA file; Backlog does not discover backend-specific stores.
+
 Run tests:
 
 ```bash
