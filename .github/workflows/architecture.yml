@@ -76,6 +76,11 @@ jobs:
             NODE_USE_SYSTEM_CA: '0', GIT_SSL_CAINFO: file, GIT_SSL_CAPATH: directory, CURL_CA_BUNDLE: file,
             CARGO_HTTP_CAINFO: file, NPM_CONFIG_CAFILE: file, NIX_SSL_CERT_FILE: file,
           };
+          const gitCount = Number(process.env.GIT_CONFIG_COUNT ?? 0);
+          if (!Number.isSafeInteger(gitCount) || gitCount < 0) throw new Error('Invalid GIT_CONFIG_COUNT');
+          settings[`GIT_CONFIG_KEY_${gitCount}`] = 'http.schannelUseSSLCAInfo';
+          settings[`GIT_CONFIG_VALUE_${gitCount}`] = 'true';
+          settings.GIT_CONFIG_COUNT = String(gitCount + 1);
           for (const [key, value] of Object.entries(settings)) fs.appendFileSync(process.env.GITHUB_ENV, `${key}=${value}\n`);
           console.log(`Prepared ${certificates.size} trusted CAs with eMudhra incident keys excluded`);
           NODE

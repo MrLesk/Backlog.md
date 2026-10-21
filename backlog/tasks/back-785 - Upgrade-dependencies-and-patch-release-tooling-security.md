@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-10-21T10:52:00Z'
-updated_date: '2026-10-21T11:35:00Z'
+updated_date: '2026-10-21T11:45:00Z'
 labels: []
 dependencies: []
 references:
@@ -26,6 +26,7 @@ modified_files:
   - flake.nix
   - src/test/tui-task-composer.test.ts
   - AGENTS.md
+  - scripts/filter-trusted-cas.cjs
 priority: high
 type: chore
 ordinal: 395000
@@ -82,4 +83,10 @@ Extended the CI compile matrix to all six release targets so every verified arch
 Replaced source-only Nix Node override after inspecting Nixpkgs shared-library linkage: it would retain older system Brotli/c-ares instead of the Node release fixes. The shell now packages the three official Node26.12.1 archives with published SHA256 digests and npm12.2.0 with official registry integrity, using autoPatchelf on Linux. Patched shell curl/Git use the authoritative Brotli CVE-2026-111497 commit through a bounded override, avoiding a940-derivation global overlay. Added a flake development-tools check to realize/test these actual runtimes independently of bun2nix. Local complete shell realization hit disk capacity while fetching unrelated Rust dependencies; hosted CI must prove this bounded check. No further global rebuild or manual Nix database edits were attempted.
 
 Recorded the maintainer release sequence in AGENTS.md per explicit user direction: after reviewed merge and passing checks, publish a GitHub Release with vMAJOR.MINOR.PATCH; its workflow automatically prepares tagged source and bumps package.json. Do not manually bump the root version or initiate release via a raw tag push.
+
+Inspected the actual selected Nixpkgs CA bundle (NSS3.126):121 certificates, including incident emSign ECCRootG3 SPKI8d417d.... Verified the shared12-key filter removes it (120 retained). The shell trust derivation instead seeds from the verified Node26.12.1/NSS3.131.1 roots and applies that same filter, exporting SSL_CERT_FILE, empty SSL_CERT_DIR, and matching Git/curl/npm/Nix/Node settings. Bun install and update-nix can consume it directly. CI bootstraps now append http.schannelUseSSLCAInfo=true after any existing Git configuration environment entries so Windows Schannel honors GIT_SSL_CAINFO.
+
+Hosted Nix successfully applied/compiled the upstream Brotli patch and autoPatchelf resolved all official Node runtime dependencies, but a silent Node/npm install-check assertion failed; explicit version diagnostics and store-path npm/npx shebangs were added before retry. A later unchanged Windows id-generation case exceeded its10s timeout while neighboring Git-heavy tests took9s; the earlier same-code Windows run passed, so rerun the failed job once its run finishes before altering behavior or test limits.
+
+Validated the new offline CA helper against current Node roots plus all20 incident certificates representing the12 blocked keys: it removes the incident material and preserves the exact current-root fingerprint set. Validated the actual CI bootstrap with an inherited Git config entry: it preserves that entry and appends Schannel CA-file opt-in at the next index. Official npm12.2.0 archive SHA512 integrity and internal package version were verified independently. New helper passes Biome and complete type checking; final hosted Nix runtime diagnostics/checks remain the gate.
 <!-- SECTION:NOTES:END -->

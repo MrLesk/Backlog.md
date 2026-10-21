@@ -94,6 +94,10 @@ archives with published SHA-256 digests, preserving the release's bundled
 security fixes, and npm 12.2.0 from its integrity-pinned registry archive; Linux binaries are adapted with autoPatchelf. The flake also
 applies upstream Brotli commit `0ed4268a4401abcb4472096340477cf4af7d1a2b`
 for CVE-2026-111497 to the shell's curl and Git, avoiding a full Nixpkgs rebuild.
+The shell exports a current Node/NSS root bundle filtered for the incident as
+`SSL_CERT_FILE`, an empty `SSL_CERT_DIR`,
+and matching Git/curl/npm trust settings. Run `bun install --cafile "$SSL_CERT_FILE"`
+inside `nix develop`; `bun run update-nix` uses the same bundle automatically.
 The Nix install check executes the packaged CLI natively and under QEMU's Ivy
 Bridge CPU model. JSC's JIT is disabled only for the emulated check because it
 is not reliable under QEMU user mode; normal packaged execution keeps JIT

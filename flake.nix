@@ -113,15 +113,42 @@
               rm -rf "$out/lib/node_modules/npm"
               mkdir -p "$out/lib/node_modules/npm"
               tar -xzf ${npmSource} --strip-components=1 -C "$out/lib/node_modules/npm"
+              for script in npm-cli.js npx-cli.js; do
+                substituteInPlace "$out/lib/node_modules/npm/bin/$script" \
+                  --replace-fail '#!/usr/bin/env node' "#!$out/bin/node"
+              done
               runHook postInstall
             '';
             doInstallCheck = true;
             installCheckPhase = ''
               runHook preInstallCheck
-              test "$("$out/bin/node" --version)" = "v${version}"
-              test "$("$out/bin/node" "$out/lib/node_modules/npm/bin/npm-cli.js" --version)" = "12.2.0"
+              node_version="$("$out/bin/node" --version)"
+              npm_version="$("$out/bin/node" "$out/lib/node_modules/npm/bin/npm-cli.js" --version)"
+              echo "Packaged Node: $node_version; npm: $npm_version"
+              test "$node_version" = "v${version}"
+              test "$npm_version" = "12.2.0"
+              test "$(head -n 1 "$out/lib/node_modules/npm/bin/npm-cli.js")" = "#!$out/bin/node"
+              test "$(head -n 1 "$out/lib/node_modules/npm/bin/npx-cli.js")" = "#!$out/bin/node"
               runHook postInstallCheck
             '';
+          };
+          trustedCA = pkgs.runCommand "backlog-trusted-ca" {
+            nativeBuildInputs = [ nodeRuntime ];
+          } ''
+            node -e 'require("node:fs").writeFileSync("node-roots.pem", require("node:tls").rootCertificates.join("\n"))'
+            node ${./scripts/filter-trusted-cas.cjs} node-roots.pem "$out"
+          '';
+          shellTrust = {
+            SSL_CERT_FILE = "${trustedCA}/ca-bundle.crt";
+            SSL_CERT_DIR = "${trustedCA}/empty";
+            NODE_EXTRA_CA_CERTS = "${trustedCA}/ca-bundle.crt";
+            NODE_OPTIONS = "--use-openssl-ca";
+            NODE_USE_SYSTEM_CA = "0";
+            GIT_SSL_CAINFO = "${trustedCA}/ca-bundle.crt";
+            GIT_SSL_CAPATH = "${trustedCA}/empty";
+            CURL_CA_BUNDLE = "${trustedCA}/ca-bundle.crt";
+            NPM_CONFIG_CAFILE = "${trustedCA}/ca-bundle.crt";
+            NIX_SSL_CERT_FILE = "${trustedCA}/ca-bundle.crt";
           };
           backlog-md = pkgs.bun2nix.mkDerivation {
             pname = "backlog";
@@ -215,11 +242,13 @@
             backlog-md = backlog-md;
           };
 
-          checks.development-tools = pkgs.runCommand "backlog-development-tools" {
+          checks.development-tools = pkgs.runCommand "backlog-development-tools" (shellTrust // {
             nativeBuildInputs = [ nodeRuntime curlRuntime gitRuntime ];
-          } ''
+          }) ''
             node -e 'const assert = require("node:assert/strict"); assert.equal(process.version, "v26.12.1"); assert.equal(process.versions.ares, "1.34.9"); assert.equal(typeof require("node:zlib").constants.BROTLI_DECODER_ERROR_FORMAT_BLOCK_SWITCH, "number");'
             test "$(npm --version)" = "12.2.0"
+            test -s "$SSL_CERT_FILE"
+            test -d "$SSL_CERT_DIR"
             git --version
             curl --version
             touch "$out"
@@ -230,7 +259,7 @@
             name = "backlog";
           };
 
-          devShells.default = pkgs.mkShell {
+          devShells.default = pkgs.mkShell (shellTrust // {
             packages = [
               bunRuntime
               pkgs.bun2nix
@@ -238,7 +267,7 @@
               gitRuntime
               curlRuntime
             ];
-          };
+          });
         }
       );
 }
