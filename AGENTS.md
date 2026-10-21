@@ -101,6 +101,14 @@ are found, the commit will be blocked until fixed.
 - **PR titles**: Use `{taskId} - {taskTitle}` (e.g. `BACK-123 - Title of the task`)
 - **Github CLI**: Use `gh` whenever possible for PRs and issues
 
+### Releases
+
+1. Merge the reviewed changes after required CI checks pass.
+2. Create and publish a GitHub Release from the merged commit with a new `vMAJOR.MINOR.PATCH` tag.
+3. Monitor the Release workflow until platform packages, the npm launcher, and release assets are published. The workflow prepares the tagged source and bumps `package.json` automatically.
+
+Do not manually bump the root `package.json` version or start a release with a raw tag push.
+
 <!-- BACKLOG.MD GUIDELINES START -->
 <CRITICAL_INSTRUCTION>
 

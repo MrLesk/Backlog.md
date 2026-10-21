@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-10-21T10:52:00Z'
-updated_date: '2026-10-21T11:34:00Z'
+updated_date: '2026-10-21T11:35:00Z'
 labels: []
 dependencies: []
 references:
@@ -25,6 +25,7 @@ modified_files:
   - bun.nix
   - flake.nix
   - src/test/tui-task-composer.test.ts
+  - AGENTS.md
 priority: high
 type: chore
 ordinal: 395000
@@ -79,4 +80,6 @@ Hosted CI proved live verified runtime downloads on Linux/macOS and Windows host
 Extended the CI compile matrix to all six release targets so every verified archive digest and compile.executablePath target is exercised before publication; native binary smoke stays on the three matching runner targets. Final local Nix rebuild with the complete Biome2.5.15 locks passed all install and QEMU checks.
 
 Replaced source-only Nix Node override after inspecting Nixpkgs shared-library linkage: it would retain older system Brotli/c-ares instead of the Node release fixes. The shell now packages the three official Node26.12.1 archives with published SHA256 digests and npm12.2.0 with official registry integrity, using autoPatchelf on Linux. Patched shell curl/Git use the authoritative Brotli CVE-2026-111497 commit through a bounded override, avoiding a940-derivation global overlay. Added a flake development-tools check to realize/test these actual runtimes independently of bun2nix. Local complete shell realization hit disk capacity while fetching unrelated Rust dependencies; hosted CI must prove this bounded check. No further global rebuild or manual Nix database edits were attempted.
+
+Recorded the maintainer release sequence in AGENTS.md per explicit user direction: after reviewed merge and passing checks, publish a GitHub Release with vMAJOR.MINOR.PATCH; its workflow automatically prepares tagged source and bumps package.json. Do not manually bump the root version or initiate release via a raw tag push.
 <!-- SECTION:NOTES:END -->
