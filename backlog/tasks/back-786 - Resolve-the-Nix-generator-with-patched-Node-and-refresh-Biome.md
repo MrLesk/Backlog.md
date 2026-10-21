@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-10-21T14:26:00Z'
-updated_date: '2026-10-21T17:51:00Z'
+updated_date: '2026-10-21T18:15:00Z'
 labels: []
 dependencies: []
 references:
@@ -43,6 +43,9 @@ modified_files:
   - scripts/ci-trust.test.cjs
   - flake.nix
   - src/test/offline-mode.test.ts
+  - src/test/fixtures/certificate-trust/trusted-registry-ca.pem
+  - src/test/fixtures/certificate-trust/rejected-registry-ca.pem
+  - src/test/fixtures/certificate-trust/trusted-compromised-cas.pem
 priority: high
 type: bug
 ordinal: 396000

@@ -82,7 +82,13 @@ export async function withGitFetchTrust(
 				const hashes = new Map<string, Set<number>>();
 				for (const name of await readdir(original)) {
 					const source = join(original, name);
-					if (!(await stat(source)).isFile()) continue;
+					try {
+						if (!(await stat(source)).isFile()) continue;
+					} catch (error) {
+						// Native CA directories ignore dangling links and entries removed during lookup.
+						if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+						throw error;
+					}
 					const hashed = /^([a-f0-9]{8})\.(0|[1-9][0-9]*)$/i.exec(name);
 					if (hashed) {
 						const hash = hashed[1] as string;
@@ -90,8 +96,9 @@ export async function withGitFetchTrust(
 						hashes.get(hash)?.add(Number(hashed[2]));
 					}
 					const contents = await readFile(source, "utf8");
-					const pems = contents.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) ?? [];
-					const unmatched = contents.replace(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g, "");
+					const pattern = /-----BEGIN (TRUSTED )?CERTIFICATE-----[\s\S]+?-----END \1CERTIFICATE-----/g;
+					const pems = contents.match(pattern) ?? [];
+					const unmatched = contents.replace(pattern, "");
 					if (/-----BEGIN (?:TRUSTED |X509 )?CERTIFICATE-----/.test(unmatched)) {
 						throw new Error("Configured Git CA directory contains a malformed or unsupported PEM certificate");
 					}

@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { X509Certificate } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:https";
 import { connect, createServer as createTCPServer, type Socket } from "node:net";
 import { homedir, tmpdir } from "node:os";
@@ -43,6 +43,15 @@ test("the shared filter removes all incident variants and preserves private cert
 	expect(() => trustedCertificates(incidents.map((certificate: { pem: string }) => certificate.pem))).toThrow(
 		"empty TLS trust",
 	);
+});
+
+test("trusted PEM certificates retain distinct auxiliary trust policy and exclude incident keys", async () => {
+	const trusted = (await readFile(join(fixtures, "trusted-registry-ca.pem"), "utf8")).trim();
+	const rejected = (await readFile(join(fixtures, "rejected-registry-ca.pem"), "utf8")).trim();
+	const ordinary = (await readFile(join(fixtures, "registry-ca.pem"), "utf8")).trim();
+	expect(trustedCertificates([trusted, rejected, ordinary, trusted])).toEqual([trusted, rejected, ordinary]);
+	const incidents = await readFile(join(fixtures, "trusted-compromised-cas.pem"), "utf8");
+	expect(trustedCertificates([trusted, incidents])).toEqual([trusted]);
 });
 
 test("native-supported Ed448 authorities survive Bun's unsupported-key decoder without relaxing malformed input", async () => {
@@ -102,14 +111,44 @@ test("native CA directories preserve ordinary files, hash gaps, and incident fil
 		{ name: "81ee7702.2", chain: "registry-server.pem", prefix: "multiple" },
 		{ name: "00000000.0", chain: "registry-server.pem" },
 		{ name: "private.crt", chain: "registry-server.pem", defaultFile: true },
+		{ name: "81ee7702.0", chain: "registry-server.pem", authority: "trusted-registry-ca.pem" },
+		{ name: "81ee7702.0", chain: "registry-server.pem", authority: "rejected-registry-ca.pem" },
+		{ name: "private.crt", chain: "registry-server.pem", authority: "trusted-registry-ca.pem", file: true },
+		{ name: "private.crt", chain: "registry-server.pem", authority: "rejected-registry-ca.pem", file: true },
+		{
+			name: "private.crt",
+			chain: "registry-server.pem",
+			authority: "trusted-registry-ca.pem",
+			secondAuthority: "rejected-registry-ca.pem",
+			file: true,
+		},
+		{
+			name: "private.crt",
+			chain: "registry-server.pem",
+			authority: "rejected-registry-ca.pem",
+			secondAuthority: "trusted-registry-ca.pem",
+			file: true,
+		},
+		{ name: "private.crt", chain: "incident-server-emudhra.pem", incident: true, file: true },
+		{ name: "private.crt", chain: "incident-server-aaa.pem", incident: true, file: true },
 		{ name: "private.crt", chain: "incident-server-emudhra.pem" },
 		{ name: "private.crt", chain: "incident-server-aaa.pem" },
 	];
+	let trustedFileAccepted = false;
 	for (const fixture of cases) {
 		const root = await temporary();
 		const selected = join(root, "selected-ca-directory");
 		await mkdir(selected);
-		await writeFile(join(selected, fixture.name), privateCA);
+		let authority = fixture.incident
+			? await readFile(join(fixtures, "trusted-compromised-cas.pem"), "utf8")
+			: fixture.authority
+				? await readFile(join(fixtures, fixture.authority), "utf8")
+				: privateCA;
+		if (fixture.secondAuthority) authority += `\n${await readFile(join(fixtures, fixture.secondAuthority), "utf8")}`;
+		await writeFile(join(selected, fixture.name), authority);
+		if (process.platform !== "win32" && fixture.name === "81ee7702.0") {
+			await symlink(join(root, "missing-ca.pem"), join(selected, "missing-ca.pem"));
+		}
 		if (fixture.prefix) {
 			const contents =
 				fixture.prefix === "blocked" || fixture.prefix === "blocked-non-pem"
@@ -131,8 +170,12 @@ test("native CA directories preserve ordinary files, hash gaps, and incident fil
 		await writeFile(process.env.GIT_CONFIG_GLOBAL, "");
 		await git(root, "init", "--quiet");
 		if (process.platform === "win32") await git(root, "config", "http.sslBackend", "openssl");
-		if (!fixture.defaultFile) await git(root, "config", "http.sslCAInfo", join(fixtures, "unsupported-key-ca.pem"));
-		await git(root, "config", "http.sslCAPath", selected);
+		if (fixture.file) {
+			await git(root, "config", "http.sslCAInfo", join(selected, fixture.name));
+		} else {
+			if (!fixture.defaultFile) await git(root, "config", "http.sslCAInfo", join(fixtures, "unsupported-key-ca.pem"));
+			await git(root, "config", "http.sslCAPath", selected);
+		}
 		await git(root, "config", "http.extraHeader", "X-Backlog-Fixture: preserved");
 		let requests = 0;
 		let header: string | string[] | undefined;
@@ -160,7 +203,7 @@ test("native CA directories preserve ordinary files, hash gaps, and incident fil
 			};
 			const execute = internals.execGit.bind(operations);
 			const completed = (error: unknown, expectedRequests: number) => {
-				const diagnostic = `${fixture.name}/${fixture.prefix ?? "no-prefix"}/${fixture.chain}: ${String(error)}`;
+				const diagnostic = `${fixture.name}/${fixture.prefix ?? fixture.authority ?? "no-prefix"}/${fixture.file ? "file" : "directory"}/${fixture.chain}: ${String(error)}`;
 				if (!(error instanceof Error) || /timeout|could not spawn/i.test(diagnostic)) throw new Error(diagnostic);
 				expect(diagnostic).toMatch(expectedRequests ? /404|not found/i : /certificate|SSL|issuer|trust/i);
 			};
@@ -170,7 +213,13 @@ test("native CA directories preserve ordinary files, hash gaps, and incident fil
 			});
 			const baselineRequests = requests;
 			expect([0, 1]).toContain(baselineRequests);
-			if (fixture.name === "81ee7702.0") expect(baselineRequests).toBe(1);
+			if (fixture.file && fixture.authority === "trusted-registry-ca.pem" && !fixture.secondAuthority) {
+				trustedFileAccepted = baselineRequests === 1;
+			}
+			if (fixture.incident && trustedFileAccepted) expect(baselineRequests).toBe(1);
+			if (fixture.name === "81ee7702.0" && !fixture.authority) expect(baselineRequests).toBe(1);
+			if (fixture.authority === "rejected-registry-ca.pem" && !fixture.secondAuthority)
+				expect(baselineRequests).toBe(0);
 			completed(baselineError, baselineRequests);
 			requests = 0;
 			header = undefined;
@@ -178,7 +227,11 @@ test("native CA directories preserve ordinary files, hash gaps, and incident fil
 			internals.execGit = async (args, options) => {
 				if (args[0] === "fetch") {
 					const file = await readFile(options?.env?.GIT_SSL_CAINFO as string, "utf8");
-					expect(trustedCertificates([file])).not.toContain(privateCA.trim());
+					if (fixture.file) {
+						expect(trustedCertificates([file])).toEqual(trustedCertificates([authority]));
+					} else {
+						expect(trustedCertificates([file])).not.toContain(privateCA.trim());
+					}
 					if (fixture.prefix === "non-pem" || fixture.prefix === "empty" || fixture.prefix === "blocked-non-pem") {
 						const prefix = fixture.prefix === "blocked-non-pem" ? "81ee7702.1" : "81ee7702.0";
 						expect(await readFile(join(options?.env?.GIT_SSL_CAPATH as string, prefix), "utf8")).toBe("");

@@ -12,7 +12,7 @@ function main() {
 	const cafile = process.env.SSL_CERT_FILE;
 	if (!cafile) throw new Error("SSL_CERT_FILE must name a readable, nonempty filtered CA bundle");
 	const certificates = readFileSync(cafile, "utf8").match(
-		/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g,
+		/-----BEGIN (TRUSTED )?CERTIFICATE-----[\s\S]+?-----END \1CERTIFICATE-----/g,
 	);
 	if (!certificates?.length) throw new Error("SSL_CERT_FILE contains no PEM certificates");
 	for (const certificate of certificates) new X509Certificate(certificate);

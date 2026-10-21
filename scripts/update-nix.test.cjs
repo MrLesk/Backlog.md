@@ -59,6 +59,10 @@ it("uses only the exact local generator version and omits the inherited Git TLS 
 	await assert.rejects(readFile(path.join(root, "generated.json")), { code: "ENOENT" });
 	await localGenerator(root, "bun2nix, 2.1.2");
 	assert.equal((await run(root, env)).code, 0);
+	for (const file of ["trusted-registry-ca.pem", "rejected-registry-ca.pem"]) {
+		const result = await run(root, { ...env, SSL_CERT_FILE: path.join(fixture, file) });
+		assert.equal(result.code, 0, result.stderr);
+	}
 	assert.deepEqual(JSON.parse(await readFile(path.join(root, "generated.json"), "utf8")), { args: ["-o", "bun.nix"] });
 });
 

@@ -68,12 +68,17 @@ function certificateSPKI(certificate) {
 function trustedCertificates(bundles, { allowEmpty = false } = {}) {
 	const retained = new Map();
 	for (const bundle of bundles) {
-		const certificates = String(bundle).match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g);
+		const certificates = String(bundle).match(
+			/-----BEGIN (TRUSTED )?CERTIFICATE-----[\s\S]+?-----END \1CERTIFICATE-----/g,
+		);
 		if (!certificates?.length) throw new Error("Configured CA input contains no PEM certificates");
 		for (const pem of certificates) {
 			const certificate = new X509Certificate(pem);
 			const key = createHash("sha256").update(certificateSPKI(certificate)).digest("hex");
-			if (!blocked.has(key)) retained.set(certificate.fingerprint256, pem);
+			// Trusted PEM carries auxiliary trust/reject policy outside the X.509 DER.
+			// Keep its original bytes and identity distinct from every other policy.
+			const identity = pem.startsWith("-----BEGIN TRUSTED CERTIFICATE-----") ? pem : certificate.fingerprint256;
+			if (!blocked.has(key)) retained.set(identity, pem);
 		}
 	}
 	if (!retained.size && !allowEmpty) throw new Error("Refusing an empty TLS trust bundle");
