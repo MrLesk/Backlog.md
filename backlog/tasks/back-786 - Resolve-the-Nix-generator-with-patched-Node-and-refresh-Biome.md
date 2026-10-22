@@ -1,15 +1,15 @@
 ---
 id: BACK-786
 title: Protect native Git HTTPS fetches and Nix generator resolution
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-10-21T14:26:00Z'
-updated_date: '2026-10-21T18:15:00Z'
+updated_date: '2026-10-22T19:55:00Z'
 labels: []
 dependencies: []
 references:
-  - https://github.com/MrLesk/Backlog.md/issues/1131
+  - 'https://github.com/MrLesk/Backlog.md/issues/1131'
   - package.json
   - .github/workflows/ci.yml
   - DEVELOPMENT.md
@@ -61,8 +61,8 @@ Protect native Git HTTP(S) fetches and Nix generator resolution from compromised
 <!-- AC:BEGIN -->
 - [x] #1 The updater rejects unpatched Node and missing, unreadable, or empty CA files before package resolution; local bun2nix is used only after verifying version 2.1.2.
 - [x] #2 Fallback resolution uses native npm under the same patched Node with explicit cafile and strict SSL, preserves native auth/proxy configuration, and no Nix generator path invokes bunx.
-- [ ] #3 CI and developer commands share the strict updater, Biome 2.6.2, and reproducible Bun/Nix dependency artifacts.
-- [ ] #4 Root package version changes remain controlled by the GitHub Release workflow.
+- [x] #3 CI and developer commands share the strict updater, Biome 2.6.2, and reproducible Bun/Nix dependency artifacts.
+- [x] #4 Root package version changes remain controlled by the GitHub Release workflow.
 - [x] #5 Supported HTTPS remote fetches preserve private Git trust while rejecting both incident certificate paths without changing SSH/local operations, timeout, or fetch coalescing.
 <!-- AC:END -->
 
@@ -85,4 +85,12 @@ Protect native Git HTTP(S) fetches and Nix generator resolution from compromised
 
 <!-- SECTION:NOTES:BEGIN -->
 Native Git fetches use filtered system CAs by default and preserve explicit CA files and native CA-directory layouts. Background synchronization fetches parent repository refs without recursing into submodules. HTTPS proxies are unsupported; direct connections and ordinary HTTP proxies remain supported. Nix generator downloads use patched Node/npm, an explicit CA bundle, and a pinned generator version.
+
+Validation: Linux, macOS and Windows tests, six binary builds and the Nix build passed on main. The architecture comparison passed before merge, and the main architecture deployment succeeded. Release v1.55.2 published all six platform packages and the main npm package; installation checks passed on Linux, macOS and Windows. The release workflow prepared and synced the root package version.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Released v1.55.2 with protected native Git HTTPS fetches, strict Nix generator resolution and refreshed build dependencies. Supported private CA settings and authentication are preserved. PR #1132 is merged and issue #1131 is closed. CI, architecture deployment and release installation checks passed.
+<!-- SECTION:FINAL_SUMMARY:END -->
