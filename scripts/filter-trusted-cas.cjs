@@ -16,20 +16,82 @@ const blocked = new Set([
 	"ebed6475c2c2d80fcb199f3fe8dd6e6b3ce60b77eb15d4e42c3dec0c6f5b5105",
 	"ec4ffa1ad0ac88081314b7aaffef6a91f97cd57291bb5ba686c5415f5eb4f6b6",
 ]);
-const [input, output] = process.argv.slice(2);
-if (!input || !output) throw new Error("Usage: filter-trusted-cas.cjs <input.pem> <output-directory>");
-const certificates =
-	readFileSync(input, "utf8").match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) ?? [];
-const retained = certificates.filter((pem) => {
-	const certificate = new X509Certificate(pem);
-	const key = createHash("sha256")
-		.update(certificate.publicKey.export({ type: "spki", format: "der" }))
-		.digest("hex");
-	return !blocked.has(key);
-});
-if (!retained.length) throw new Error("Refusing an empty TLS trust bundle");
-mkdirSync(path.join(output, "empty"), { recursive: true });
-writeFileSync(path.join(output, "ca-bundle.crt"), `${retained.join("\n")}\n`);
-console.log(
-	`Prepared ${retained.length} trusted CAs; removed ${certificates.length - retained.length} incident certificates`,
-);
+// Bun cannot decode some native-supported public keys (notably Ed448). Their
+// certificate still exposes valid DER: locate SubjectPublicKeyInfo without asking
+// Bun to instantiate that key. Supported algorithms keep canonical crypto export.
+function certificateSPKI(certificate) {
+	try {
+		return certificate.publicKey.export({ type: "spki", format: "der" });
+	} catch (error) {
+		if (error.code !== "ERR_OSSL_X509_PUBLIC_KEY_DECODE_ERROR") throw error;
+	}
+	const der = certificate.raw;
+	function field(start) {
+		let offset = start;
+		const tag = der[offset++];
+		let length = der[offset++];
+		if (length & 0x80) {
+			const count = length & 0x7f;
+			if (!count || count > 4 || offset + count > der.length) throw new Error("Invalid certificate DER length");
+			length = 0;
+			for (let index = 0; index < count; index++) length = length * 256 + der[offset++];
+		}
+		const end = offset + length;
+		if (!Number.isSafeInteger(end) || end > der.length || end <= start)
+			throw new Error("Invalid certificate DER field");
+		return { tag, content: offset, end };
+	}
+	const certificateSequence = field(0);
+	const tbs = field(certificateSequence.content);
+	if (certificateSequence.tag !== 0x30 || tbs.tag !== 0x30) throw new Error("Invalid certificate sequence");
+	let offset = tbs.content;
+	if (der[offset] === 0xa0) offset = field(offset).end; // Optional explicit version.
+	for (let index = 0; index < 5; index++) offset = field(offset).end; // serial, signature, issuer, validity, subject.
+	const spki = field(offset);
+	const algorithm = field(spki.content);
+	const publicKey = field(algorithm.end);
+	if (
+		spki.tag !== 0x30 ||
+		algorithm.tag !== 0x30 ||
+		publicKey.tag !== 0x03 ||
+		publicKey.end !== spki.end ||
+		spki.end > tbs.end ||
+		der[publicKey.content] !== 0 ||
+		publicKey.end <= publicKey.content + 1
+	) {
+		throw new Error("Invalid certificate SubjectPublicKeyInfo");
+	}
+	return der.subarray(offset, spki.end);
+}
+
+// Shared by the Nix bundle builder and native Git HTTPS fetches.
+function trustedCertificates(bundles, { allowEmpty = false } = {}) {
+	const retained = new Map();
+	for (const bundle of bundles) {
+		const certificates = String(bundle).match(
+			/-----BEGIN (TRUSTED )?CERTIFICATE-----[\s\S]+?-----END \1CERTIFICATE-----/g,
+		);
+		if (!certificates?.length) throw new Error("Configured CA input contains no PEM certificates");
+		for (const pem of certificates) {
+			const certificate = new X509Certificate(pem);
+			const key = createHash("sha256").update(certificateSPKI(certificate)).digest("hex");
+			// Trusted PEM carries auxiliary trust/reject policy outside the X.509 DER.
+			// Keep its original bytes and identity distinct from every other policy.
+			const identity = pem.startsWith("-----BEGIN TRUSTED CERTIFICATE-----") ? pem : certificate.fingerprint256;
+			if (!blocked.has(key)) retained.set(identity, pem);
+		}
+	}
+	if (!retained.size && !allowEmpty) throw new Error("Refusing an empty TLS trust bundle");
+	return [...retained.values()];
+}
+
+module.exports = { trustedCertificates };
+
+if (require.main === module) {
+	const [input, output] = process.argv.slice(2);
+	if (!input || !output) throw new Error("Usage: filter-trusted-cas.cjs <input.pem> <output-directory>");
+	const retained = trustedCertificates([readFileSync(input, "utf8")]);
+	mkdirSync(path.join(output, "empty"), { recursive: true });
+	writeFileSync(path.join(output, "ca-bundle.crt"), `${retained.join("\n")}\n`);
+	console.log(`Prepared ${retained.length} trusted CAs with incident keys excluded`);
+}

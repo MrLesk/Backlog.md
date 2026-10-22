@@ -10,6 +10,7 @@ const PLATFORM_CONTRACT_FILES = [
 	"src/test/filesystem.test.ts",
 	"src/test/find-backlog-root.test.ts",
 	"src/test/git.test.ts",
+	"src/test/git-certificate-trust.test.ts",
 	"src/test/id-generation.test.ts",
 	"src/test/markdown.test.ts",
 	"src/test/task-id-resolution.test.ts",

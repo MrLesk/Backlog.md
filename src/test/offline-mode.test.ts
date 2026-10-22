@@ -82,7 +82,7 @@ describe("Offline Mode Configuration", () => {
 
 			try {
 				await gitOps.fetch();
-				expect(capturedArgs).toEqual(["fetch", "origin", "--prune", "--quiet"]);
+				expect(capturedArgs).toEqual(["fetch", "origin", "--prune", "--quiet", "--no-recurse-submodules"]);
 			} finally {
 				internals.hasRemote = originalHasRemote;
 				internals.execGit = originalExecGit;

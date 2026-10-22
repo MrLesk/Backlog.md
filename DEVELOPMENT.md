@@ -12,11 +12,32 @@ Bun 1.4.3 still contains the compromised eMudhra trust paths. Until a patched
 Bun release is available, use an incident-filtered CA bundle explicitly for Bun
 package-manager requests. Updating the OS or setting `SSL_CERT_FILE` alone does
 not replace Bun's built-in trust. CI constructs this bundle offline before its
-network steps and passes it to every Bun install and `bun x` invocation. Hosted
+network steps and passes it to every Bun install. Do not use `bun x`/`bunx` to
+download the Nix generator: Bun 1.4.3 can ignore its explicit CA file when
+resolving packages under inherited/custom trust. The updater uses patched Node
+and native npm for downloads instead. Hosted
 runner trust during initial action preparation remains the runner vendor's
 responsibility. Bun's bundled Brotli security fix is also pending upstream; the
 package manager retains that runtime risk even with filtered certificate trust.
-The shipped Backlog CLI does not make external HTTPS requests.
+The shipped Backlog CLI does not use Bun for outbound HTTPS. Task reads and ID
+allocation can fetch HTTPS remotes through native Git; Backlog gives those fetch
+children filtered trust while preserving private CAs and authentication. Direct
+HTTP/HTTPS and ordinary HTTP proxies remain supported. Git HTTPS proxies are
+blocked for both HTTP and HTTPS origins, including proxies with valid private
+certificates: Git cannot isolate their CA directory, so a filtered proxy CA file
+alone still admits compromised host roots. Fetch children set
+`GIT_PROXY_SSL_CAINFO` to an impossible path beneath an owned regular file to fail
+before proxy HTTP or authentication is sent. An empty CA file is insufficient
+because some libcurl versions fall back to their proxy CA directory.
+Use a direct connection, an HTTP proxy, or disable `remoteOperations` for offline
+use. SSH and local remotes use their normal Git behavior.
+
+Without an explicit Git CA file or directory, fetches filter the operating
+system's CA pool. Node-only bundled or `NODE_EXTRA_CA_CERTS` authorities do not
+become Git authorities. Custom Git installations with a different trust source
+must select it through `GIT_SSL_CAINFO` or Git's CA file/directory configuration.
+If the system pool is empty or unavailable, fetches fail closed with instructions
+to configure the CA file; Backlog does not discover backend-specific stores.
 
 Run tests:
 
@@ -37,7 +58,7 @@ TypeScript stays installed for editor support.
 Format and lint:
 
 ```bash
-npx biome check .
+bun run check
 ```
 
 For contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -66,11 +87,16 @@ dependency cache. Regenerate `bun.nix` whenever `bun.lock` changes:
 SSL_CERT_FILE=/path/to/incident-filtered-ca-bundle.pem bun run update-nix
 ```
 
-The command pins the bun2nix generator version, so commit the resulting
+The command requires patched Node 26.12.1 or later and a readable, nonempty
+filtered CA bundle before resolving the generator. Inside `nix develop`, it uses
+the local bun2nix only after verifying version 2.1.2. Otherwise it requires npm
+12.2.0 or later and downloads the exact bun2nix 2.1.2 package through native npm
+under that same Node, with explicit `--cafile` and `--strict-ssl=true`. npm retains
+its normal authentication, registry and proxy configuration. The generator then
+runs locally; it does not download packages through Bun. Commit the resulting
 `bun.nix` change together with the lockfile change. bun2nix 2.1.2 requires
 Bun lock format 1; update the existing lock instead of regenerating format 2.
-Use `bun x --cafile=/path/to/incident-filtered-ca-bundle.pem bun2nix@2.1.2 -o bun.nix`
-when the generator must be downloaded. Validate the package with:
+Validate the package with:
 
 ```bash
 nix build .#backlog-md
@@ -98,6 +124,29 @@ The shell exports a current Node/NSS root bundle filtered for the incident as
 `SSL_CERT_FILE`, an empty `SSL_CERT_DIR`,
 and matching Git/curl/npm trust settings. Run `bun install --cafile "$SSL_CERT_FILE"`
 inside `nix develop`; `bun run update-nix` uses the same bundle automatically.
+The shell also selects an impossible `GIT_PROXY_SSL_CAINFO` path beneath an
+owned regular file: native Git HTTPS proxies are unsupported for the same reason
+as runtime fetches. Keep that
+restriction when selecting private origin roots below; a real proxy CA file
+would not isolate the host's proxy CA directory.
+
+This is an explicit, reproducible public CA selection: it overrides the host's
+Git and npm CA settings, including URL-specific Git settings. For private Git
+servers or registries, select an incident-filtered bundle containing their
+required private roots after entering the shell. Include the required public
+roots too if those services are also needed:
+
+```bash
+ca_directory=$(mktemp -d)
+node scripts/filter-trusted-cas.cjs /path/to/required-ca-bundle.pem "$ca_directory"
+export SSL_CERT_FILE="$ca_directory/ca-bundle.crt"
+export GIT_SSL_CAINFO="$SSL_CERT_FILE" NPM_CONFIG_CAFILE="$SSL_CERT_FILE"
+export SSL_CERT_DIR="$ca_directory/empty" GIT_SSL_CAPATH="$ca_directory/empty"
+```
+
+Outside an explicitly overridden shell, Backlog's native HTTPS fetch protection
+preserves the effective private Git CA policy automatically.
+
 The Nix install check executes the packaged CLI natively and under QEMU's Ivy
 Bridge CPU model. JSC's JIT is disabled only for the emulated check because it
 is not reliable under QEMU user mode; normal packaged execution keeps JIT

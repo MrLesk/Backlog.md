@@ -340,6 +340,7 @@ wait "$child_pid"
 				return true;
 			};
 			internals.execGit = async (args, options) => {
+				if (args[0] === "remote") return { stdout: "/local-fixture", stderr: "" };
 				fetchCalls += 1;
 				captured = { args, options };
 				fetchStarted.release();
@@ -356,7 +357,7 @@ wait "$child_pid"
 			fetchGate.release();
 			await Promise.all([first, second]);
 			expect(captured).toEqual({
-				args: ["fetch", "origin", "--prune", "--quiet"],
+				args: ["fetch", "origin", "--prune", "--quiet", "--no-recurse-submodules"],
 				options: {
 					env: {
 						GIT_TERMINAL_PROMPT: "0",
@@ -369,6 +370,50 @@ wait "$child_pid"
 			await git.fetch();
 			expect(remoteChecks).toBe(2);
 			expect(fetchCalls).toBe(2);
+		});
+
+		it("fetches parent refs without applying its policy to populated submodules", async () => {
+			const directory = await mkdtemp(join(tmpdir(), "backlog-git-no-recursion-"));
+			const component = join(directory, "component-source");
+			const parent = join(directory, "parent-source");
+			const checkout = join(directory, "checkout");
+			const runGit = (cwd: string, ...args: string[]) => {
+				const child = Bun.spawnSync(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" });
+				if (child.exitCode !== 0) throw new Error(child.stderr.toString());
+				return child.stdout.toString().trim();
+			};
+			try {
+				for (const repository of [component, parent]) {
+					await mkdir(repository);
+					runGit(repository, "init", "-b", "main");
+					runGit(repository, "config", "user.name", "Fixture User");
+					runGit(repository, "config", "user.email", "fixture@example.invalid");
+					runGit(repository, "commit", "--allow-empty", "-m", "Initial fixture");
+				}
+				runGit(parent, "-c", "protocol.file.allow=always", "submodule", "add", component, "modules/component");
+				runGit(parent, "commit", "-m", "Add component fixture");
+				runGit(directory, "-c", "protocol.file.allow=always", "clone", "--recurse-submodules", parent, checkout);
+				const populated = join(checkout, "modules/component");
+				// Enable local fixture transport and require the parent fetch to recurse.
+				runGit(populated, "config", "protocol.file.allow", "always");
+				runGit(checkout, "config", "fetch.recurseSubmodules", "true");
+				const componentBefore = runGit(component, "rev-parse", "HEAD");
+				const parentBefore = runGit(parent, "rev-parse", "HEAD");
+				runGit(component, "commit", "--allow-empty", "-m", "New component ref");
+				runGit(parent, "commit", "--allow-empty", "-m", "New parent ref");
+				const componentAfter = runGit(component, "rev-parse", "HEAD");
+				const parentAfter = runGit(parent, "rev-parse", "HEAD");
+				// Native baseline proves the configured fetch really updates the submodule.
+				runGit(checkout, "fetch", "origin", "--prune", "--quiet");
+				expect(runGit(populated, "rev-parse", "refs/remotes/origin/main")).toBe(componentAfter);
+				runGit(populated, "update-ref", "refs/remotes/origin/main", componentBefore);
+				runGit(checkout, "update-ref", "refs/remotes/origin/main", parentBefore);
+				await new GitOperations(checkout, { ...TEST_CONFIG, remoteOperations: true }).fetch();
+				expect(runGit(checkout, "rev-parse", "refs/remotes/origin/main")).toBe(parentAfter);
+				expect(runGit(populated, "rev-parse", "refs/remotes/origin/main")).toBe(componentBefore);
+			} finally {
+				await rm(directory, { recursive: true, force: true });
+			}
 		});
 
 		it("loads configuration before deciding whether remote work is disabled", async () => {
@@ -408,10 +453,11 @@ wait "$child_pid"
 			});
 			const internals = git as unknown as {
 				hasRemote: (remote?: string) => Promise<boolean>;
-				execGit: () => Promise<{ stdout: string; stderr: string }>;
+				execGit: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
 			};
 			internals.hasRemote = async () => true;
-			internals.execGit = async () => {
+			internals.execGit = async (args) => {
+				if (args[0] === "remote") return { stdout: "/local-fixture", stderr: "" };
 				fetchCalls += 1;
 				return { stdout: "", stderr: "" };
 			};
@@ -433,10 +479,11 @@ wait "$child_pid"
 			});
 			const internals = git as unknown as {
 				hasRemote: (remote?: string) => Promise<boolean>;
-				execGit: () => Promise<{ stdout: string; stderr: string }>;
+				execGit: (args: string[]) => Promise<{ stdout: string; stderr: string }>;
 			};
 			internals.hasRemote = async () => true;
-			internals.execGit = async () => {
+			internals.execGit = async (args) => {
+				if (args[0] === "remote") return { stdout: "/local-fixture", stderr: "" };
 				throw new Error("Git command timeout after 10000ms");
 			};
 
