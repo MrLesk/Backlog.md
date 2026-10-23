@@ -64,7 +64,7 @@ function certificateSPKI(certificate) {
 	return der.subarray(offset, spki.end);
 }
 
-// Shared by the Nix bundle builder and native Git HTTPS fetches.
+// Build the certificate bundle used by project-controlled network tools.
 function trustedCertificates(bundles, { allowEmpty = false } = {}) {
 	const retained = new Map();
 	for (const bundle of bundles) {
