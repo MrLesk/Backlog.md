@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { appendFile, mkdtemp, readFile, rm } from "node:fs/promises";
 import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -48,9 +48,10 @@ test.concurrent("native fetch preserves a configured private HTTPS proxy", async
 		const address = server.address();
 		if (!address || typeof address === "string") throw new Error("Expected proxy port");
 		await git("init", "--quiet");
-		await git("remote", "add", "origin", "http://fixture-origin.invalid/repository");
-		await git("config", "http.proxy", `https://localhost:${address.port}`);
-		if (process.platform === "win32") await git("config", "http.sslBackend", "openssl");
+		await appendFile(
+			join(root, ".git/config"),
+			`\n[remote "origin"]\nurl = http://fixture-origin.invalid/repository\n[http]\nproxy = https://localhost:${address.port}\n${process.platform === "win32" ? "sslBackend = openssl\n" : ""}`,
+		);
 		const module = new URL("../git/operations.ts", import.meta.url).href;
 		child = Bun.spawn(
 			[
@@ -66,7 +67,7 @@ test.concurrent("native fetch preserves a configured private HTTPS proxy", async
 		expect(code).not.toBe(0);
 		expect(stderr).toContain("502");
 	} finally {
-		child?.kill();
+		if (child?.exitCode === null) child.kill();
 		for (const socket of sockets) socket.destroy();
 		await new Promise<void>((resolve) => server.close(() => resolve()));
 		await rm(root, { recursive: true, force: true });

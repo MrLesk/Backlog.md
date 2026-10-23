@@ -1,11 +1,11 @@
 ---
 id: BACK-787
 title: Respect native Git trust and scope Nix certificate settings to build commands
-status: Done
+status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-10-23T06:33:00Z'
-updated_date: '2026-10-23T06:51:00Z'
+updated_date: '2026-10-23T07:06:00Z'
 labels: []
 dependencies: []
 references:
@@ -14,6 +14,7 @@ references:
   - flake.nix
   - DEVELOPMENT.md
   - 'https://github.com/MrLesk/Backlog.md/issues/1135'
+  - src/test/id-generation.test.ts
 modified_files:
   - src/test/git-certificate-trust.test.ts
   - src/git/operations.ts
@@ -26,6 +27,7 @@ modified_files:
   - src/test/fixtures/certificate-trust/unsupported-key-server.pem
   - src/test/fixtures/certificate-trust/trusted-compromised-cas.pem
   - scripts/filter-trusted-cas.cjs
+  - src/test/id-generation.test.ts
 priority: high
 type: bug
 ordinal: 397000
@@ -42,7 +44,7 @@ Backlog currently replaces native Git certificate policy and rejects valid HTTPS
 - [x] #1 Runtime Git fetches inherit the user certificate, proxy and verification configuration without a Backlog certificate wrapper.
 - [x] #2 The Nix development shell does not override host Git/npm certificate configuration; project network build commands keep their explicit trust settings.
 - [x] #3 Existing non-interactive fetch behavior, timeout, coalescing and parent-only ref synchronization remain intact.
-- [x] #4 Focused regression checks and platform CI verify the supported Git and Nix flows.
+- [ ] #4 Focused regression checks and platform CI verify the supported Git and Nix flows.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -60,6 +62,8 @@ Backlog currently replaces native Git certificate policy and rejects valid HTTPS
 Regression authority: Alex approved native Git ownership after the loopback probe showed a valid private HTTPS proxy accepted by Git and blocked by Backlog. Existing tests freeze the removed incident policy instead of user configuration. Replace that policy suite with a concurrent isolated real-Git HTTPS-proxy test and a small command-boundary test preserving existing fetch arguments and inherited options. Keep existing timeout/coalescing coverage.
 
 Nix environment regression authority: the approved request requires the development shell to preserve user Git/npm trust. Existing Nix checks validate pinned tools and build trust, not inherited shell settings. Add one actual nix develop command in CI comparing inherited Git and npm CA paths; the old shell overrides both paths and must fail this check.
+
+Windows verification found two fixture timeouts at the unchanged 10-second limit. Keep the full proxy request/status assertions but write its owned Git fixture configuration directly after git init instead of launching three config processes. The archive-ID suite describes a project outside Git but uses the helper that initializes Git; use initializeFilesystemTestProject for that declared local-filesystem scenario, retaining every archive/ID assertion. Existing Git and worktree suites retain Git-aware allocation coverage. Do not change timeouts, assertions, worker limits or retry policies.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -70,6 +74,10 @@ The private HTTPS proxy regression fails before the fix (zero requests) and pass
 Focused Git/offline verification: 33 tests pass. The first build-security run used npm older than CI requires and stopped at its existing npm version guard; rerunning with temporary npm12.2.0 and Node26.12.1. Full CI test profile started against the bundled CLI. Nix is not installed locally, so the actual shell and package checks will run in GitHub CI.
 
 Final code verification at a4cb686: CI https://github.com/MrLesk/Backlog.md/actions/runs/39912878306 passed on Windows, Linux and macOS, all six native builds, actual Nix package and development-tools builds, and the nix develop inherited-CA check. Architecture comparison and CodeQL passed. Seven project build/CI certificate checks pass on temporary Node26.12.1/npm12.2.0. Full local CI profile: 3601 pass,13 skip,one archived-document terminal-display failure; the same failure was reproduced with clean-main source and a clean-main bundle. No viewer code changed. Implementer specification and quality reviews confirm all requested boundaries and unchanged fetch lifecycle. This is a bounded removal of policy, not a new architecture layer. No groma files changed.
+
+Final task-record CI on top PR timed out in archive ID allocation and the private-proxy test, while the original code CI and bottom task-record Windows run passed. The archive test took 8.9 seconds even in its passing run. Its fixture uses initializeTestProject(false), where false controls autoCommit rather than filesystemOnly. This unexpectedly enables Git work for a scenario explicitly described as outside a Git repository. Correct fixture ownership and reduce unnecessary proxy setup child processes before rerunning platform verification.
+
+Windows fixture correction passes locally: 40 Git/proxy/archive/worktree-allocation tests, types and Biome. Every assertion and the 10-second timeout are unchanged. Proxy setup now appends only its owned temporary Git config after one git init. Archive-ID tests use the existing filesystem-only initializer, matching their declared no-Git scenario. User authorized Docker validation; checking the Docker state before running an isolated Linux container.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
