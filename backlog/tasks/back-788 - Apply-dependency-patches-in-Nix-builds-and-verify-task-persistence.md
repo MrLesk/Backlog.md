@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-10-23T06:39:00Z'
-updated_date: '2026-10-23T06:58:00Z'
+updated_date: '2026-10-23T07:18:00Z'
 labels: []
 dependencies:
   - BACK-787
@@ -61,10 +61,12 @@ Reproduced #1133 in an isolated bundle using the unpatched gray-matter dependenc
 Types and Biome pass. The expanded smoke check passes against the patched JavaScript bundle and a real compiled native executable, including browser/MCP startup and the nonzero write-failure check. The flake helper call matches the official bun2nix2.1.2 patched-dependency example. Actual Nix package evaluation and the patched cache require GitHub CI.
 
 Verified actual Nix package at code commit a85a2a8: job120281148752 logs show bun2nix applying the gray-matter patch to lib/engines.js, then the installed Nix CLI passing the expanded persistence/browser/MCP smoke at 06:46:48 UTC. Windows, Linux and macOS unit checks, six native builds/install smoke, architecture comparison and CodeQL pass. The remaining Nix development-tool build is still running; this note does not claim the full job has finished. Local native and bundle smoke pass; types and Biome pass. Implementer specification/quality review confirms the patch is owned by package.json and the existing bun2nix adapter, with one shared installed-package smoke and no new runtime workaround. Full local suite has 3601 passes,13 skips and one unrelated terminal-display failure reproduced with clean-main source and a clean-main bundle. No groma files changed.
+
+Full code CI at a85a2a8 completed successfully in https://github.com/MrLesk/Backlog.md/actions/runs/39913342581 including Nix package, development-tools and inherited-trust checks. Subsequent changes in the bottom task only correct test fixture setup and record results; this tasks application source and smoke behavior are unchanged. Corrected current Windows/Linux/macOS checks pass. Final automatic Nix checks on the recorded stack will gate merge. No Docker container was created because local Docker startup required macOS administrator approval on a locked Mac; Docker is fully closed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Nix now applies package.json dependency patches through the official bun2nix helper, restoring task frontmatter reads and writes. Shared installed-package smoke checks create/view/list/edit persistence and nonzero write-failure status. The missing-patch reproduction fails before; patched bundle/native checks and the actual installed Nix package pass. Platform unit/build checks, architecture comparison and CodeQL pass at a85a2a8; final Nix development-tool CI is recorded separately in notes. Delivered as top PR #1137 above #1136 in GitHub stack #1138.
+Nix applies package.json dependency patches through the official bun2nix helper, restoring task frontmatter reads and writes. Shared installed-package checks verify create/view/list/edit persistence and nonzero failed-write status. The unpatched reproduction fails; patched bundle, native executable and installed Nix package pass. Full Windows/Linux/macOS, six-build, Nix, architecture and CodeQL CI passed at a85a2a8. Delivered as PR#1137 above#1136 in GitHub stack#1138; final automatic checks gate merge.
 <!-- SECTION:FINAL_SUMMARY:END -->
