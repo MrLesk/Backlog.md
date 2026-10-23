@@ -1,11 +1,11 @@
 ---
 id: BACK-787
 title: Respect native Git trust and scope Nix certificate settings to build commands
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-10-23T06:33:00Z'
-updated_date: '2026-10-23T06:39:00Z'
+updated_date: '2026-10-23T06:51:00Z'
 labels: []
 dependencies: []
 references:
@@ -39,17 +39,17 @@ Backlog currently replaces native Git certificate policy and rejects valid HTTPS
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Runtime Git fetches inherit the user certificate, proxy and verification configuration without a Backlog certificate wrapper.
-- [ ] #2 The Nix development shell does not override host Git/npm certificate configuration; project network build commands keep their explicit trust settings.
-- [ ] #3 Existing non-interactive fetch behavior, timeout, coalescing and parent-only ref synchronization remain intact.
-- [ ] #4 Focused regression checks and platform CI verify the supported Git and Nix flows.
+- [x] #1 Runtime Git fetches inherit the user certificate, proxy and verification configuration without a Backlog certificate wrapper.
+- [x] #2 The Nix development shell does not override host Git/npm certificate configuration; project network build commands keep their explicit trust settings.
+- [x] #3 Existing non-interactive fetch behavior, timeout, coalescing and parent-only ref synchronization remain intact.
+- [x] #4 Focused regression checks and platform CI verify the supported Git and Nix flows.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bun run check:types passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bun run check:types passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -68,4 +68,12 @@ Nix environment regression authority: the approved request requires the developm
 The private HTTPS proxy regression fails before the fix (zero requests) and passes after it. Removed the runtime certificate wrapper and its incident-policy suite; kept native fetch arguments, timeouts and coalescing. Nix development shell no longer exports trust overrides; build checks and CI retain their scoped trust. Types, Biome and 27 focused Git tests pass. Architecture responsibility remains with the existing external Git element; no new OKF/C4 concept or stored metadata is needed.
 
 Focused Git/offline verification: 33 tests pass. The first build-security run used npm older than CI requires and stopped at its existing npm version guard; rerunning with temporary npm12.2.0 and Node26.12.1. Full CI test profile started against the bundled CLI. Nix is not installed locally, so the actual shell and package checks will run in GitHub CI.
+
+Final code verification at a4cb686: CI https://github.com/MrLesk/Backlog.md/actions/runs/39912878306 passed on Windows, Linux and macOS, all six native builds, actual Nix package and development-tools builds, and the nix develop inherited-CA check. Architecture comparison and CodeQL passed. Seven project build/CI certificate checks pass on temporary Node26.12.1/npm12.2.0. Full local CI profile: 3601 pass,13 skip,one archived-document terminal-display failure; the same failure was reproduced with clean-main source and a clean-main bundle. No viewer code changed. Implementer specification and quality reviews confirm all requested boundaries and unchanged fetch lifecycle. This is a bounded removal of policy, not a new architecture layer. No groma files changed.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Removed Backlog runtime certificate/proxy overrides and restored native Git ownership. Nix development shells preserve host Git/npm trust; build and release checks retain their own settings. The real private-proxy regression fails before and passes after. All Windows/Linux/macOS, six-target build, Nix, architecture and CodeQL CI checks passed at a4cb686. Local full-suite terminal limitation also reproduces on clean main. Delivered as the bottom PR #1136 in stack #1138.
+<!-- SECTION:FINAL_SUMMARY:END -->
