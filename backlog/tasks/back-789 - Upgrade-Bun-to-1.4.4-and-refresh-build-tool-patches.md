@@ -1,11 +1,11 @@
 ---
 id: BACK-789
 title: Upgrade Bun to 1.4.4 and refresh build tool patches
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-10-23T15:35:00Z'
-updated_date: '2026-10-23T15:42:00Z'
+updated_date: '2026-10-23T16:00:00Z'
 labels: []
 dependencies:
   - BACK-788
@@ -40,17 +40,17 @@ Bun 1.4.4 now fixes the embedded Brotli decoder and compromised certificate trus
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Native and Nix builds use official checksum-verified Bun 1.4.4 archives for all supported targets, with matching Bun type definitions and reproducible dependency caches.
-- [ ] #2 CI, release and Nix development tooling use the latest released npm patch; remaining upstream advisories and the project-owned tool boundary are documented accurately.
-- [ ] #3 Task persistence, browser, MCP, old-CPU Nix checks and Windows/Linux/macOS CI pass with the updated runtime.
-- [ ] #4 One hotfix is prepared with the two reviewed PRs and the runtime/tool update, using the established release-note format and no additional prerelease or manual package version bump.
+- [x] #1 Native and Nix builds use official checksum-verified Bun 1.4.4 archives for all supported targets, with matching Bun type definitions and reproducible dependency caches.
+- [x] #2 CI, release and Nix development tooling use the latest released npm patch; remaining upstream advisories and the project-owned tool boundary are documented accurately.
+- [x] #3 Task persistence, browser, MCP, old-CPU Nix checks and Windows/Linux/macOS CI pass with the updated runtime.
+- [x] #4 One hotfix is prepared with the two reviewed PRs and the runtime/tool update, using the established release-note format and no additional prerelease or manual package version bump.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bun run check:types passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bun run check:types passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -62,9 +62,25 @@ Bun 1.4.4 now fixes the embedded Brotli decoder and compromised certificate trus
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Updated all six official Bun archive pins and three Nix runtime sources to1.4.4, npm CI/release/Nix pins to12.2.1 and matching Bun types/cache files. Type checking, Biome and all seven existing build-tool/workflow trust tests pass. No new tests are needed: the existing installed-package and old-CPU checks exercise the runtime update and preserve task persistence.
+Updated all six verified native Bun archives and three Nix runtime sources to 1.4.4, npm CI/release/Nix pins to 12.2.1, matching Bun types, the existing Tailwind Bun peer, and both dependency caches. No root dependency or override was added. Node stays at 26.12.1; user Git/npm settings and launcher requirements are unchanged.
 
-The Tailwind build plugin also resolves Bun as a peer package. Refreshed that existing lockfile entry and all its platform packages to1.4.4 without adding a root dependency or override, then regenerated bun.nix. This prevents the build cache from retaining an affected runtime.
+Verification: types and Biome pass, seven build-tool/workflow trust tests pass, the updated downloader verifies the official host archive, and a fresh native executable passes task persistence, failed-write, browser and MCP smoke checks. The identical complete focused suite passes 44 tests. Its first run during concurrent native compilation missed a fixture PID file before a 500 ms timeout; that same test passes alone and in full Linux CI, with assertions and timeouts unchanged.
 
-The verified downloader fetched the official1.4.4 host archive and the fresh native executable passed task persistence, write-failure, browser and MCP smoke checks. The first44-test focused run had one500ms Git fixture timeout before child.pid existed while the native compiler ran concurrently. That test passed alone, and the identical complete44-test suite passed after compilation finished. No test, assertion, timeout or production Git code was changed; platform CI remains the release gate.
+Code CI passed at 9bbc305: https://github.com/MrLesk/Backlog.md/actions/runs/39980617495 . Windows/Linux/macOS tests, six native targets, actual Nix package and old-CPU checks, Node/npm development tools, and inherited Git/npm CA preservation all passed. Linux reports 3,602 passed, 13 skipped and zero failed. Architecture and CodeQL also passed. The independent final reviewer verified official archive/integrity values, matching peer/type/cache versions and the runtime security fixes, with no blocker or material simplification found.
+
+Specification and quality reviews: accepted runtime and tool pins, shared package smoke coverage, trust ownership and public launcher behavior match the task. The existing downloader owns platform runtime verification; CI and Nix consume the same release. No new behavior, abstraction or test was introduced. npm 12.2.1 still has upstream ip-address and Undici advisories, documented in DEVELOPMENT.md; npm is build tooling and is not embedded in the native CLI.
+
+Prepared one v1.55.3 hotfix with these notes, following the recent short hotfix format. The merged stack is the publication target; no prerelease or manual package version bump is used.
+
+- Restore native Git certificate and proxy settings, including support for private HTTPS proxies.
+- Fix task reads and writes in Nix packages.
+- Rebuild native executables and Nix packages with Bun 1.4.4 to include the upstream Brotli decoder and certificate trust fixes, and update build tools.
+
+Changes: https://github.com/MrLesk/Backlog.md/pull/1136, https://github.com/MrLesk/Backlog.md/pull/1137, https://github.com/MrLesk/Backlog.md/pull/1140
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Upgraded native and Nix runtimes to Bun 1.4.4 for the upstream Brotli and certificate-trust fixes, and updated available npm build-tool patches to 12.2.1. Verified matching archive hashes, types, peer runtime and dependency caches. Windows, Linux, macOS, six native targets and actual Nix CI passed, as did the independent review. Remaining upstream npm advisories are documented. Prepared v1.55.3 notes combining this update with the reviewed native-Git trust and Nix persistence fixes.
+<!-- SECTION:FINAL_SUMMARY:END -->
