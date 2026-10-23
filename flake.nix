@@ -149,7 +149,7 @@
           # Git has no proxy CApath setting. A path beneath this regular file cannot
           # load, blocking HTTPS proxies before HTTP/auth; empty CAfiles can fall back.
           blockedProxyCA = pkgs.writeText "backlog-unsupported-https-proxy-ca.pem" "";
-          shellTrust = {
+          buildTrust = {
             SSL_CERT_FILE = "${trustedCA}/ca-bundle.crt";
             SSL_CERT_DIR = "${trustedCA}/empty";
             NODE_EXTRA_CA_CERTS = "${trustedCA}/ca-bundle.crt";
@@ -254,7 +254,7 @@
             backlog-md = backlog-md;
           };
 
-          checks.development-tools = pkgs.runCommand "backlog-development-tools" (shellTrust // {
+          checks.development-tools = pkgs.runCommand "backlog-development-tools" (buildTrust // {
             nativeBuildInputs = [ nodeRuntime curlRuntime gitRuntime ];
           }) ''
             node -e 'const assert = require("node:assert/strict"); assert.equal(process.version, "v26.12.1"); assert.equal(process.versions.ares, "1.34.9"); assert.equal(typeof require("node:zlib").constants.BROTLI_DECODER_ERROR_FORMAT_BLOCK_SWITCH, "number");'
@@ -273,7 +273,7 @@
             name = "backlog";
           };
 
-          devShells.default = pkgs.mkShell (shellTrust // {
+          devShells.default = pkgs.mkShell {
             packages = [
               bunRuntime
               pkgs.bun2nix
@@ -281,7 +281,7 @@
               gitRuntime
               curlRuntime
             ];
-          });
+          };
         }
       );
 }

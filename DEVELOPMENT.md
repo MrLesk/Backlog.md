@@ -19,25 +19,11 @@ and native npm for downloads instead. Hosted
 runner trust during initial action preparation remains the runner vendor's
 responsibility. Bun's bundled Brotli security fix is also pending upstream; the
 package manager retains that runtime risk even with filtered certificate trust.
-The shipped Backlog CLI does not use Bun for outbound HTTPS. Task reads and ID
-allocation can fetch HTTPS remotes through native Git; Backlog gives those fetch
-children filtered trust while preserving private CAs and authentication. Direct
-HTTP/HTTPS and ordinary HTTP proxies remain supported. Git HTTPS proxies are
-blocked for both HTTP and HTTPS origins, including proxies with valid private
-certificates: Git cannot isolate their CA directory, so a filtered proxy CA file
-alone still admits compromised host roots. Fetch children set
-`GIT_PROXY_SSL_CAINFO` to an impossible path beneath an owned regular file to fail
-before proxy HTTP or authentication is sent. An empty CA file is insufficient
-because some libcurl versions fall back to their proxy CA directory.
-Use a direct connection, an HTTP proxy, or disable `remoteOperations` for offline
-use. SSH and local remotes use their normal Git behavior.
-
-Without an explicit Git CA file or directory, fetches filter the operating
-system's CA pool. Node-only bundled or `NODE_EXTRA_CA_CERTS` authorities do not
-become Git authorities. Custom Git installations with a different trust source
-must select it through `GIT_SSL_CAINFO` or Git's CA file/directory configuration.
-If the system pool is empty or unavailable, fetches fail closed with instructions
-to configure the CA file; Backlog does not discover backend-specific stores.
+The shipped Backlog CLI delegates remote fetches to native Git. Git uses the
+user's certificate, proxy and verification configuration. Backlog does not
+replace the user's certificate store or impose its own HTTPS-proxy policy.
+These environment settings remain the responsibility of the installed tools;
+Backlog's build and release workflows manage their own download trust.
 
 Run tests:
 
@@ -120,32 +106,10 @@ archives with published SHA-256 digests, preserving the release's bundled
 security fixes, and npm 12.2.0 from its integrity-pinned registry archive; Linux binaries are adapted with header order preserved by `patchelf --no-sort`. The flake also
 applies upstream Brotli commit `0ed4268a4401abcb4472096340477cf4af7d1a2b`
 for CVE-2026-111497 to the shell's curl and Git, avoiding a full Nixpkgs rebuild.
-The shell exports a current Node/NSS root bundle filtered for the incident as
-`SSL_CERT_FILE`, an empty `SSL_CERT_DIR`,
-and matching Git/curl/npm trust settings. Run `bun install --cafile "$SSL_CERT_FILE"`
-inside `nix develop`; `bun run update-nix` uses the same bundle automatically.
-The shell also selects an impossible `GIT_PROXY_SSL_CAINFO` path beneath an
-owned regular file: native Git HTTPS proxies are unsupported for the same reason
-as runtime fetches. Keep that
-restriction when selecting private origin roots below; a real proxy CA file
-would not isolate the host's proxy CA directory.
-
-This is an explicit, reproducible public CA selection: it overrides the host's
-Git and npm CA settings, including URL-specific Git settings. For private Git
-servers or registries, select an incident-filtered bundle containing their
-required private roots after entering the shell. Include the required public
-roots too if those services are also needed:
-
-```bash
-ca_directory=$(mktemp -d)
-node scripts/filter-trusted-cas.cjs /path/to/required-ca-bundle.pem "$ca_directory"
-export SSL_CERT_FILE="$ca_directory/ca-bundle.crt"
-export GIT_SSL_CAINFO="$SSL_CERT_FILE" NPM_CONFIG_CAFILE="$SSL_CERT_FILE"
-export SSL_CERT_DIR="$ca_directory/empty" GIT_SSL_CAPATH="$ca_directory/empty"
-```
-
-Outside an explicitly overridden shell, Backlog's native HTTPS fetch protection
-preserves the effective private Git CA policy automatically.
+The development shell pins tools without overriding the host's Git/npm
+certificate or proxy settings. Build checks use their own filtered certificate
+bundle. Commands that download dependencies use an explicit CA bundle as shown
+above; entering the shell does not select that bundle for unrelated commands.
 
 The Nix install check executes the packaged CLI natively and under QEMU's Ivy
 Bridge CPU model. JSC's JIT is disabled only for the emulated check because it

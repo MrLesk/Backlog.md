@@ -248,3 +248,9 @@ jobs:
           test "$actual_version" = "$expected_version"
           ./result/bin/backlog --help >/dev/null
           nix build .#checks.x86_64-linux.development-tools --no-link --print-build-logs
+      - name: Preserve user Git and npm trust in the development shell
+        run: |
+          BACKLOG_EXPECTED_GIT_CA="$GIT_SSL_CAINFO" \
+          BACKLOG_EXPECTED_NPM_CA="$NPM_CONFIG_CAFILE" \
+            nix develop --command sh -c \
+              'test "$GIT_SSL_CAINFO" = "$BACKLOG_EXPECTED_GIT_CA" && test "$NPM_CONFIG_CAFILE" = "$BACKLOG_EXPECTED_NPM_CA"'
