@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -127,7 +127,11 @@ function findAvailablePort(): Promise<number> {
 	});
 }
 
-async function run(executableAndArgs: string[], cwd = process.cwd()): Promise<string> {
+async function run(
+	executableAndArgs: string[],
+	cwd = process.cwd(),
+	expectedResult: "success" | "failure" = "success",
+): Promise<string> {
 	const child = Bun.spawn(executableAndArgs, {
 		cwd,
 		stderr: "pipe",
@@ -144,7 +148,10 @@ async function run(executableAndArgs: string[], cwd = process.cwd()): Promise<st
 	let operationFailure: CapturedFailure | undefined;
 	try {
 		const exitCode = await unwrapOutcome(exited, `${executableAndArgs.join(" ")} exit`);
-		assert(exitCode === 0, `${executableAndArgs.join(" ")} exited with ${exitCode}.`);
+		assert(
+			expectedResult === "success" ? exitCode === 0 : exitCode !== 0,
+			`${executableAndArgs.join(" ")} exited with ${exitCode}.`,
+		);
 	} catch (error) {
 		operationFailure = { error };
 	}
@@ -220,6 +227,29 @@ const smokeRoot = await mkdtemp(join(tmpdir(), "backlog-compiled-smoke-"));
 let smokeFailure: CapturedFailure | undefined;
 try {
 	await run([executable, "init", "Compiled Smoke", "--defaults", "--no-git", "--integration-mode", "none"], smokeRoot);
+	await run(
+		[executable, "task", "create", "Packaged task", "--description", "Persisted", "--priority", "high"],
+		smokeRoot,
+	);
+	const tasksDirectory = join(smokeRoot, "backlog/tasks");
+	const taskFiles = (await readdir(tasksDirectory)).filter((file) => file.endsWith(".md"));
+	assert(taskFiles.length === 1, "Task creation did not persist one Markdown file.");
+	const stored = await readFile(join(tasksDirectory, taskFiles[0] as string), "utf8");
+	const taskId = /^id:\s*(\S+)$/m.exec(stored)?.[1];
+	assert(taskId, "The saved task has no ID.");
+	const detail = JSON.parse(await run([executable, "task", "view", taskId, "--json"], smokeRoot));
+	assert(detail.task.description === "Persisted" && detail.task.priority === "high", "Task frontmatter was not read.");
+	const list = JSON.parse(await run([executable, "task", "list", "--json"], smokeRoot));
+	assert(list.tasks.length === 1 && list.tasks[0].id === taskId, "Task listing did not return the saved task.");
+	await run(
+		[executable, "task", "edit", taskId, "--title", "Updated packaged task", "--priority", "medium"],
+		smokeRoot,
+	);
+	const edited = JSON.parse(await run([executable, "task", "view", taskId, "--json"], smokeRoot));
+	assert(
+		edited.task.title === "Updated packaged task" && edited.task.priority === "medium",
+		"The task edit did not persist its title and metadata.",
+	);
 
 	const port = await findAvailablePort();
 	const browserServer = Bun.spawn([executable, "browser", "--no-open", "--non-interactive", "--port", String(port)], {
@@ -355,6 +385,10 @@ try {
 		mcpCleanupFailures,
 		mcpStderr ? `stderr:\n${mcpStderr}` : "",
 	);
+	// A real filesystem write failure must be reported to callers with a nonzero exit.
+	await rm(tasksDirectory, { recursive: true });
+	await writeFile(tasksDirectory, "This file blocks the task directory.");
+	await run([executable, "task", "create", "Cannot save"], smokeRoot, "failure");
 } catch (error) {
 	smokeFailure = { error };
 }

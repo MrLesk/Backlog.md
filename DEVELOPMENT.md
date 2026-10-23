@@ -67,7 +67,9 @@ and integration tests use this bundle path without bytecode compilation.
 ## Nix Packaging
 
 The flake uses bun2nix v2 to turn the repository's `bun.lock` into an offline
-dependency cache. Regenerate `bun.nix` whenever `bun.lock` changes:
+dependency cache. It applies `package.json`'s `patchedDependencies` through
+bun2nix's patch helper, using the same patch files as Bun installation.
+Regenerate `bun.nix` whenever `bun.lock` changes:
 
 ```bash
 SSL_CERT_FILE=/path/to/incident-filtered-ca-bundle.pem bun run update-nix
@@ -90,7 +92,8 @@ nix build .#backlog-md
 nix flake check
 ```
 
-The package build also runs the installed CLI and browser smoke checks. Lock
+The package build also checks task creation, reading, listing, editing and failed-write exit status,
+along with the installed browser and MCP smoke checks. Lock
 generation does not require Docker and package installation does not rewrite
 Nix files.
 
