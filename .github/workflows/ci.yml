@@ -13,7 +13,7 @@ permissions:
 env:
   NODE_OPTIONS: --use-openssl-ca
   NODE_USE_SYSTEM_CA: '0'
-  BUN_VERSION: 1.4.3
+  BUN_VERSION: 1.4.4
 
 jobs:
   test:
@@ -115,7 +115,7 @@ jobs:
           - name: Verify bun2nix dependency lock
             if: matrix.os == 'ubuntu-latest'
             run: |
-              npm install --global --strict-ssl=true --cafile="$SSL_CERT_FILE" npm@12.2.0
+              npm install --global --strict-ssl=true --cafile="$SSL_CERT_FILE" npm@12.2.1
               node --test scripts/update-nix.test.cjs scripts/ci-trust.test.cjs
               node scripts/update-nix.cjs
               git diff --exit-code -- bun.nix
