@@ -50,6 +50,11 @@
           packageJson = builtins.fromJSON (builtins.readFile ./package.json);
           bunDeps = pkgs.bun2nix.fetchBunDeps {
             bunNix = ./bun.nix;
+            overrides = pkgs.bun2nix.patchedDependenciesToOverrides {
+              patchedDependencies = pkgs.lib.mapAttrs (_: path: ./. + "/${path}") (
+                packageJson.patchedDependencies or { }
+              );
+            };
           };
           bunRuntime = pkgs.bun.overrideAttrs (final: bun: {
             version = "1.4.3";
