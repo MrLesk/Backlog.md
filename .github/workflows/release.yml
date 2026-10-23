@@ -17,7 +17,7 @@ permissions:
 env:
   NODE_OPTIONS: --use-openssl-ca
   NODE_USE_SYSTEM_CA: '0'
-  BUN_VERSION: 1.4.3
+  BUN_VERSION: 1.4.4
 
 jobs:
   prepare-release:
@@ -262,7 +262,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm install -g npm@12.2.0
+          npm install -g npm@12.2.1
           npm --version
       - name: Dry run trusted publish
         run: |
@@ -322,7 +322,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm install -g npm@12.2.0
+          npm install -g npm@12.2.1
           npm --version
       - name: Wait for platform binary
         wait: binary
@@ -385,7 +385,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - name: Use current npm
         shell: bash
-        run: npm install -g npm@12.2.0
+        run: npm install -g npm@12.2.1
       - name: Wait for platform package installability (Unix)
         background: true
         if: ${{ matrix.os != 'windows-latest' }}

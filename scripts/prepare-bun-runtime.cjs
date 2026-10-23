@@ -1,5 +1,4 @@
 // Download with Node's patched TLS verifier, then verify the release digest before extraction.
-// Bun 1.4.3's native cross-compile downloader still trusts the compromised eMudhra chains.
 const { createHash } = require("node:crypto");
 const { appendFileSync, chmodSync, mkdirSync, writeFileSync } = require("node:fs");
 const https = require("node:https");
@@ -8,15 +7,15 @@ const { tmpdir } = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
-const version = "1.4.3";
-// SHA-256 digests published on the official bun-v1.4.3 GitHub release.
+const version = "1.4.4";
+// SHA-256 digests published on the official bun-v1.4.4 GitHub release.
 const assets = {
-	"bun-darwin-arm64": ["bun-darwin-aarch64.zip", "80afd4c069b46a6fa8f3ec520bebc750a7843e4a8d5b9583d29ad436c00a3403"],
-	"bun-darwin-x64": ["bun-darwin-x64.zip", "62660e6438eb872278877acca77e1152d5d031324df368d4a81b428211489d2d"],
-	"bun-linux-arm64": ["bun-linux-aarch64.zip", "efa9813da5ed72423bf847f916e8d2c47c0d776add972354026a75e10da9aa21"],
-	"bun-linux-x64": ["bun-linux-x64.zip", "3e730528d89775f03f87f05c06787c4df4099d0a37f3f252e7b829cb23816e18"],
-	"bun-windows-arm64": ["bun-windows-aarch64.zip", "5e8f142ef722cbc9f67dc068a166e46ee72be8307b38cac7186589d2face668f"],
-	"bun-windows-x64": ["bun-windows-x64.zip", "0bf84e808552beea67bf1202a287a35c6c825d837b287b3f8e9dd513dba35d3d"],
+	"bun-darwin-arm64": ["bun-darwin-aarch64.zip", "c240d7f0ccb90c263a849fcdb09b7ee62630d921348ed6aafda86b9d577bc510"],
+	"bun-darwin-x64": ["bun-darwin-x64.zip", "50a3491f73abc2fe81673171a85762d3bc2cc1680ccecadd983de99adf77977e"],
+	"bun-linux-arm64": ["bun-linux-aarch64.zip", "baa6bb36f51d6e58561e02bbea825038a9df454f673d6d776e8bbf86f8c7850e"],
+	"bun-linux-x64": ["bun-linux-x64.zip", "bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c"],
+	"bun-windows-arm64": ["bun-windows-aarch64.zip", "2d57a0eec0cb44d95c918c3f9734f60455a1306ae5085d76fc68f44e3ee30d09"],
+	"bun-windows-x64": ["bun-windows-x64.zip", "cd2c0fccc78f3ede1f50ca827a15f063eda13d4d150a3d0674f4f6e323d864a5"],
 };
 
 function download(url, redirects = 0) {

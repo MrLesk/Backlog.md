@@ -1,24 +1,21 @@
 ## Local Development
 
-> **Runtime requirements:** Use Bun 1.4.3 and Node.js 26.12.1 or later, matching CI and the Nix development shell.
+> **Runtime requirements:** Use Bun 1.4.4 and Node.js 26.12.1 or later, matching CI and the Nix development shell.
 
 Run these commands to bootstrap the project:
 
 ```bash
-bun install --cafile /path/to/incident-filtered-ca-bundle.pem
+bun install
 ```
 
-Bun 1.4.3 still contains the compromised eMudhra trust paths. Until a patched
-Bun release is available, use an incident-filtered CA bundle explicitly for Bun
-package-manager requests. Updating the OS or setting `SSL_CERT_FILE` alone does
-not replace Bun's built-in trust. CI constructs this bundle offline before its
-network steps and passes it to every Bun install. Do not use `bun x`/`bunx` to
-download the Nix generator: Bun 1.4.3 can ignore its explicit CA file when
-resolving packages under inherited/custom trust. The updater uses patched Node
-and native npm for downloads instead. Hosted
-runner trust during initial action preparation remains the runner vendor's
-responsibility. Bun's bundled Brotli security fix is also pending upstream; the
-package manager retains that runtime risk even with filtered certificate trust.
+Bun 1.4.4 includes the upstream Brotli decoder and compromised eMudhra
+certificate fixes. Release executables embed that runtime; updating a separate
+Bun installation does not patch an existing executable. CI still constructs
+its own filtered certificate bundle for project-controlled downloads. The Nix
+lock updater uses the pinned Node/npm build tools to download its generator.
+Hosted runner trust during initial action preparation remains the runner
+vendor's responsibility.
+
 The shipped Backlog CLI delegates remote fetches to native Git. Git uses the
 user's certificate, proxy and verification configuration. Backlog does not
 replace the user's certificate store or impose its own HTTPS-proxy policy.
@@ -49,6 +46,15 @@ bun run check
 
 For contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+The pinned npm 12.2.1 build tool updates its bundled dependencies, but still
+includes ip-address 10.7.2, affected by
+[GHSA-rxp7-6hxx-x8q5](https://github.com/advisories/GHSA-rxp7-6hxx-x8q5),
+and Undici 6.29.0, which predates the
+[6.29.1 security fixes](https://github.com/nodejs/undici/releases/tag/v6.29.1).
+These are remaining upstream build-tool advisories. npm is not bundled into
+Backlog's native executable, and Backlog does not impose build-tool versions
+on users' Node installations.
+
 ## Standalone Builds
 
 `bun run build` produces a standalone executable with ESM bytecode. Bytecode
@@ -58,8 +64,8 @@ builds use the same settings for every supported target.
 For cross compilation, run `node scripts/prepare-bun-runtime.cjs <target>` with
 patched Node first, then set `BACKLOG_BUILD_EXECUTABLE_PATH` to its printed
 executable path. The helper verifies the official release SHA-256 before
-extracting the target runtime. CI exports this path automatically, so Bun's
-unpatched native target downloader is never used in release builds.
+extracting the target runtime. CI exports this path automatically, keeping
+every target on the same verified Bun release.
 
 Set `BACKLOG_BUILD_OUTDIR` to emit JavaScript and browser assets instead. Nix
 and integration tests use this bundle path without bytecode compilation.
@@ -78,8 +84,8 @@ SSL_CERT_FILE=/path/to/incident-filtered-ca-bundle.pem bun run update-nix
 The command requires patched Node 26.12.1 or later and a readable, nonempty
 filtered CA bundle before resolving the generator. Inside `nix develop`, it uses
 the local bun2nix only after verifying version 2.1.2. Otherwise it requires npm
-12.2.0 or later and downloads the exact bun2nix 2.1.2 package through native npm
-under that same Node, with explicit `--cafile` and `--strict-ssl=true`. npm retains
+12.2.0 or later (CI and Nix pin 12.2.1) and downloads the exact bun2nix 2.1.2
+package through native npm under that same Node, with explicit `--cafile` and `--strict-ssl=true`. npm retains
 its normal authentication, registry and proxy configuration. The generator then
 runs locally; it does not download packages through Bun. Commit the resulting
 `bun.nix` change together with the lockfile change. bun2nix 2.1.2 requires
@@ -99,14 +105,14 @@ Nix files.
 
 The flake is intentionally limited to `x86_64-linux`, `aarch64-linux`, and
 `aarch64-darwin`, which are the systems supported by the current Nixpkgs Bun
-package. On x86_64 Linux, the application runs with the official Bun 1.4.3
+package. On x86_64 Linux, the application runs with the official Bun 1.4.4
 unified x64 runtime. It requires SSE4.2 and selects CPU-specific paths at
 runtime. Dependency installation, the non-compile bundle build, the development
 shell, and the installed application all use that runtime. Project format and
 lint commands use the Biome version pinned in `bun.lock` rather than a second
 Nix-provided version. The development shell's Node uses official 26.12.1
 archives with published SHA-256 digests, preserving the release's bundled
-security fixes, and npm 12.2.0 from its integrity-pinned registry archive; Linux binaries are adapted with header order preserved by `patchelf --no-sort`. The flake also
+security fixes, and npm 12.2.1 from its integrity-pinned registry archive; Linux binaries are adapted with header order preserved by `patchelf --no-sort`. The flake also
 applies upstream Brotli commit `0ed4268a4401abcb4472096340477cf4af7d1a2b`
 for CVE-2026-111497 to the shell's curl and Git, avoiding a full Nixpkgs rebuild.
 The development shell pins tools without overriding the host's Git/npm
@@ -274,7 +280,7 @@ provenance automatically. Follow the steps below to keep the setup healthy.
   `backlog.md-windows-x64`.
 - Remove the legacy `NODE_AUTH_TOKEN` repository secret. Publishing now uses
   the GitHub-issued OIDC token, so no long-lived npm tokens should remain.
-- The workflow pins Node.js 26.12.1 and npm 12.2.0 for trusted publishing.
+- The workflow pins Node.js 26.12.1 and npm 12.2.1 for trusted publishing.
   Review both pins together when updating release tooling.
 
 ### Publishing steps

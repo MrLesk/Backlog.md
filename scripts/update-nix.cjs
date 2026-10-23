@@ -1,4 +1,4 @@
-// Keep generator downloads on patched Node: Bun 1.4.3's `x` resolver can ignore --cafile.
+// Resolve the pinned generator with the project's Node/npm build tools.
 const { execFileSync } = require("node:child_process");
 const { X509Certificate } = require("node:crypto");
 const { existsSync, readFileSync } = require("node:fs");

@@ -57,21 +57,21 @@
             };
           };
           bunRuntime = pkgs.bun.overrideAttrs (final: bun: {
-            version = "1.4.3";
+            version = "1.4.4";
             src = final.passthru.sources.${system};
             passthru = bun.passthru // {
               sources = {
                 aarch64-darwin = pkgs.fetchurl {
-                  url = "https://github.com/oven-sh/bun/releases/download/bun-v1.4.3/bun-darwin-aarch64.zip";
-                  hash = "sha256-gK/UwGm0am+o8+xSC+vHUKeEPkqNW5WD0prUNsAKNAM=";
+                  url = "https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-darwin-aarch64.zip";
+                  hash = "sha256-wkDX8My5DCY6hJ/NsJt+5iYw2SE0jtaq/ahrnVd7xRA=";
                 };
                 aarch64-linux = pkgs.fetchurl {
-                  url = "https://github.com/oven-sh/bun/releases/download/bun-v1.4.3/bun-linux-aarch64.zip";
-                  hash = "sha256-76mBPaXtckI7+Ef5FujSxHwNd2rdlyNUAmp14Q2pqiE=";
+                  url = "https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-linux-aarch64.zip";
+                  hash = "sha256-uqa7NvUdblhWHgK76oJQOKnfRU9nPW13bou/hvjHhQ4=";
                 };
                 x86_64-linux = pkgs.fetchurl {
-                  url = "https://github.com/oven-sh/bun/releases/download/bun-v1.4.3/bun-linux-x64.zip";
-                  hash = "sha256-PnMFKNiXdfA/h/BcBnh8TfQJnQo38/JS57gpyyOBbhg=";
+                  url = "https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-linux-x64.zip";
+                  hash = "sha256-v4zL+ysLgBWeD5ptFcVTF63YB3U028YTCj7bUvzLOVw=";
                 };
               };
             };
@@ -91,8 +91,8 @@
             };
           }.${system};
           npmSource = pkgs.fetchurl {
-            url = "https://registry.npmjs.org/npm/-/npm-12.2.0.tgz";
-            hash = "sha512-ZsJjKpTnlmSXOLLXiU1xDCzC4Wlok4IwZmh/aw2KUuXytU7q6qMv/cUT7MoeSf95Slwuw/lRXYefGzGCspHPNQ==";
+            url = "https://registry.npmjs.org/npm/-/npm-12.2.1.tgz";
+            hash = "sha512-bKCmFRVT/BB+YPEYbZwQ1XUI3N5t4xKSpU1MxOjo7z3iWzKBJ0ZXRC1xFdEN+TC7N5TdywaBzf2dMXGJq/e2PQ==";
           };
           # Preserve the release's security fixes instead of relinking older Nixpkgs libraries.
           nodeRuntime = pkgs.stdenvNoCC.mkDerivation rec {
@@ -139,7 +139,7 @@
               npm_version="$("$out/bin/node" "$out/lib/node_modules/npm/bin/npm-cli.js" --version)"
               echo "Packaged Node: $node_version; npm: $npm_version"
               test "$node_version" = "v${version}"
-              test "$npm_version" = "12.2.0"
+              test "$npm_version" = "12.2.1"
               test "$(head -n 1 "$out/lib/node_modules/npm/bin/npm-cli.js")" = "#!$out/bin/node"
               test "$(head -n 1 "$out/lib/node_modules/npm/bin/npx-cli.js")" = "#!$out/bin/node"
               runHook postInstallCheck
@@ -263,7 +263,7 @@
             nativeBuildInputs = [ nodeRuntime curlRuntime gitRuntime ];
           }) ''
             node -e 'const assert = require("node:assert/strict"); assert.equal(process.version, "v26.12.1"); assert.equal(process.versions.ares, "1.34.9"); assert.equal(typeof require("node:zlib").constants.BROTLI_DECODER_ERROR_FORMAT_BLOCK_SWITCH, "number");'
-            test "$(npm --version)" = "12.2.0"
+            test "$(npm --version)" = "12.2.1"
             test -s "$SSL_CERT_FILE"
             test -d "$SSL_CERT_DIR"
             test -f "$(dirname "$GIT_PROXY_SSL_CAINFO")"
