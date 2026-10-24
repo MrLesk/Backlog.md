@@ -377,7 +377,7 @@ describe("Core", () => {
 			expect(mixedCase?.id).toBe("TASK-007");
 		});
 
-		it("returns the local task when merge policy selects a same-path padded ID variant", async () => {
+		it("returns the progressed branch copy when merge policy selects a same-path padded ID variant", async () => {
 			const config = await core.filesystem.loadConfig();
 			if (!config) {
 				throw new Error("Expected config to be loaded");
@@ -403,10 +403,12 @@ describe("Core", () => {
 				status: "Done",
 			});
 
+			// most_progressed: the branch copy's Done outranks the working copy's To Do, so a read shows
+			// the branch copy. Mutations still resolve to the working copy (see the MCP archive test).
 			const loaded = await core.getTask("BACK-1");
-			expect(loaded?.id).toBe("BACK-1");
-			expect(loaded?.title).toBe("Local task version");
-			expect(loaded?.status).toBe("To Do");
+			expect(loaded?.id).toBe("BACK-001");
+			expect(loaded?.title).toBe("Progressed branch version");
+			expect(loaded?.status).toBe("Done");
 		});
 
 		it("fails closed when merge policy selects a padded ID variant at a different path", async () => {
@@ -737,13 +739,16 @@ describe("Core", () => {
 			expect(loaded?.title).toBe("Nested local version");
 		});
 
-		it("keeps the working-copy task active when a branch archives the same padded identity path", async () => {
+		it("keeps the task active when a branch archives the same padded identity path", async () => {
 			await commitPaddedTaskArchivedOnBranch(core.filesystem.archiveTasksDir);
 
+			// The working copy keeps the task on the board whatever a branch archived. Which copy is
+			// shown is then the strategy's call: most_progressed shows the branch copy that reached Done.
 			const tasks = await core.loadTasks();
 			const task = tasks.find((candidate) => candidate.id === "BACK-1" || candidate.id === "BACK-001");
-			expect(task?.id).toBe("BACK-1");
-			expect(task?.source).toBe("local");
+			expect(task?.id).toBe("BACK-001");
+			expect(task?.status).toBe("Done");
+			expect(task?.source).toBe("local-branch");
 			expect(await core.generateNextId()).toBe("BACK-2");
 		});
 
