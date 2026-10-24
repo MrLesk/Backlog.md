@@ -9,6 +9,8 @@ import { parseStoredUtcDate } from "../utils/utc-timestamp.ts";
  * - Remote branch tasks
  */
 
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { ARCHIVED_TASK_DIRECTORIES, DEFAULT_DIRECTORIES } from "../constants/index.ts";
 import type { GitBranchTip, GitOperations } from "../git/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
@@ -89,6 +91,8 @@ interface RemoteIndexEntry {
 	path: string; // "backlog/tasks/task-123 - title.md"
 	lastModified: Date;
 	commit: string;
+	/** The file's blob id in that commit: equal ids are identical copies. */
+	blobId: string;
 	stateEntry?: BranchTaskStateEntry;
 }
 
@@ -97,6 +101,7 @@ interface HydrationCandidate {
 	ref: string;
 	path: string;
 	commit: string;
+	blobId?: string;
 	stateEntry?: BranchTaskStateEntry;
 }
 
@@ -105,6 +110,7 @@ interface CachedTaskTreeEntry {
 	path: string;
 	type: TaskDirectoryType | null;
 	lastModified: number;
+	blobId: string;
 }
 
 interface PinnedBranchRef {
@@ -116,7 +122,22 @@ interface PinnedBranchRef {
 
 interface HydrationOptions {
 	source: "local-branch" | "remote";
-	loadTask: (commit: string, path: string) => Promise<Task | null>;
+	loadTask: (commit: string, path: string, blobId?: string) => Promise<Task | null>;
+}
+
+/**
+ * The Git blob id of a working-copy file, computed the way Git does (SHA-1 over
+ * `blob <size>\0<bytes>`), so it compares with a branch tree's ids. Undefined when the
+ * file cannot be read; the caller then treats every branch copy as a changed one.
+ */
+async function workingCopyBlobId(filePath: string | undefined): Promise<string | undefined> {
+	if (!filePath) return undefined;
+	try {
+		const bytes = await readFile(filePath);
+		return createHash("sha1").update(`blob ${bytes.byteLength}\0`).update(bytes).digest("hex");
+	} catch {
+		return undefined;
+	}
 }
 
 function logicalTaskPath(path: string, backlogDir: string): string {
@@ -238,7 +259,7 @@ async function hydrateTasks(winners: HydrationCandidate[], options: HydrationOpt
 			if (!w) break;
 
 			try {
-				const task = await options.loadTask(w.commit, w.path);
+				const task = await options.loadTask(w.commit, w.path, w.blobId);
 				if (task) {
 					task.source = options.source;
 					task.branch = options.source === "remote" ? w.ref.replace(/^origin\//, "") : w.ref;
@@ -256,30 +277,34 @@ async function hydrateTasks(winners: HydrationCandidate[], options: HydrationOpt
 }
 
 /**
- * Choose which remote tasks need to be hydrated based on strategy
- * Returns only the tasks that are newer or more progressed than local versions
+ * Choose which remote tasks need to be hydrated based on strategy.
+ * Under "most_recent" only a copy newer than the local one; under "most_progressed" every copy
+ * whose content differs from the working copy's, since its status may be further along whatever
+ * its date.
  */
 function chooseWinners(
 	localById: Map<string, Task>,
+	localBlobIds: Map<string, string>,
 	remoteIndex: Map<string, RemoteIndexEntry[]>,
 	strategy: "most_recent" | "most_progressed",
 	toRef: (entry: RemoteIndexEntry) => string,
 ): HydrationCandidate[] {
 	const winners: HydrationCandidate[] = [];
+	const candidate = (id: string, entry: RemoteIndexEntry): HydrationCandidate => ({
+		id,
+		ref: toRef(entry),
+		path: entry.path,
+		commit: entry.commit,
+		blobId: entry.blobId,
+		stateEntry: entry.stateEntry,
+	});
 
 	for (const [id, entries] of remoteIndex) {
 		const local = localById.get(id);
 
 		if (!local) {
 			// No local version - take the newest remote
-			const best = selectPreferredIdentityEntry(entries);
-			winners.push({
-				id,
-				ref: toRef(best),
-				path: best.path,
-				commit: best.commit,
-				stateEntry: best.stateEntry,
-			});
+			winners.push(candidate(id, selectPreferredIdentityEntry(entries)));
 			continue;
 		}
 
@@ -289,33 +314,29 @@ function chooseWinners(
 			const newestRemote = selectPreferredIdentityEntry(entries);
 
 			if (newestRemote.lastModified.getTime() > localTs) {
-				winners.push({
-					id,
-					ref: toRef(newestRemote),
-					path: newestRemote.path,
-					commit: newestRemote.commit,
-					stateEntry: newestRemote.stateEntry,
-				});
+				winners.push(candidate(id, newestRemote));
 			}
 			continue;
 		}
 
-		// For "most_progressed", we might need to check if remote is newer
-		// to potentially have a more progressed status
-		const localTs = local.updatedDate ? (parseStoredUtcDate(local.updatedDate)?.getTime() ?? Number.NaN) : 0;
-		const maybeNewer = entries.some((e) => e.lastModified.getTime() > localTs);
-
-		if (maybeNewer) {
-			// Only hydrate the newest remote to check if it's more progressed
-			const newestRemote = selectPreferredIdentityEntry(entries);
-			winners.push({
-				id,
-				ref: toRef(newestRemote),
-				path: newestRemote.path,
-				commit: newestRemote.commit,
-				stateEntry: newestRemote.stateEntry,
-			});
+		// Under "most_progressed" a branch copy may carry a status further along than the local
+		// copy's whatever the dates say: the task was edited on main after its branch moved it to
+		// In Progress, say. Nor does the newest copy speak for the others: main's own copy on the
+		// remote is newer than that branch's and would hide it. So every copy whose content differs
+		// from the working copy's is hydrated, once per distinct blob, and the identity index
+		// compares the statuses. A copy identical to the working copy cannot change the outcome and
+		// is skipped, which on most repositories is nearly all of them.
+		const localBlobId = localBlobIds.get(id);
+		const distinct = new Map<string, RemoteIndexEntry>();
+		for (const entry of entries) {
+			if (localBlobId !== undefined && entry.blobId === localBlobId) continue;
+			// An archived copy and an active copy can share a blob (an archive is a move); each
+			// lifecycle keeps its own slot, so neither hides the other from the identity index.
+			const key = `${entry.blobId}\0${entry.stateEntry?.type ?? ""}`;
+			const current = distinct.get(key);
+			if (!current || isPreferredIdentityEntry(entry, current)) distinct.set(key, entry);
 		}
+		for (const entry of distinct.values()) winners.push(candidate(id, entry));
 	}
 
 	return winners;
@@ -398,6 +419,7 @@ export class BranchTaskLoader {
 							path: cached.path,
 							lastModified,
 							commit: branchRef.commit,
+							blobId: cached.blobId,
 						};
 						if (cached.type) {
 							entry.stateEntry = {
@@ -426,6 +448,13 @@ export class BranchTaskLoader {
 		await Promise.all(workers);
 
 		const localById = new Map(localTasks.map((task) => [normalizeTaskId(task.id), task]));
+		const localBlobIds = new Map<string, string>();
+		await Promise.all(
+			localTasks.map(async (task) => {
+				const blobId = await workingCopyBlobId(task.filePath);
+				if (blobId) localBlobIds.set(normalizeTaskId(task.id), blobId);
+			}),
+		);
 		const strategy = userConfig?.taskResolutionStrategy ?? "most_progressed";
 		const candidatesFor = (
 			index: Map<string, RemoteIndexEntry[]>,
@@ -437,7 +466,7 @@ export class BranchTaskLoader {
 					: (entry: RemoteIndexEntry) => entry.branch;
 			let candidates: HydrationCandidate[];
 			if (localTasks.length > 0) {
-				candidates = chooseWinners(localById, index, strategy, toRef);
+				candidates = chooseWinners(localById, localBlobIds, index, strategy, toRef);
 			} else {
 				candidates = [];
 				for (const [id, entries] of index) {
@@ -447,6 +476,7 @@ export class BranchTaskLoader {
 						ref: toRef(best),
 						path: best.path,
 						commit: best.commit,
+						blobId: best.blobId,
 						stateEntry: best.stateEntry,
 					});
 				}
@@ -457,7 +487,7 @@ export class BranchTaskLoader {
 			);
 		};
 
-		const loadTask = (commit: string, path: string) => this.loadCachedTask(commit, path);
+		const loadTask = (commit: string, path: string, blobId?: string) => this.loadCachedTask(commit, path, blobId);
 		const hydrationResults = await Promise.all([
 			hydrateTasks(candidatesFor(remoteIndex, "remote"), { source: "remote", loadTask }),
 			hydrateTasks(candidatesFor(localIndex, "local-branch"), {
@@ -522,10 +552,10 @@ export class BranchTaskLoader {
 		if (cached) return await cached;
 
 		const promise = (async (): Promise<readonly CachedTaskTreeEntry[]> => {
-			const files = await this.git.listFilesInTree(commit, backlogDir);
-			if (files.length === 0) return [];
+			const blobs = await this.git.listTreeBlobs(commit, backlogDir);
+			if (blobs.size === 0) return [];
 			const lastModified = await this.git.getBranchLastModifiedMap(commit, backlogDir, historyCutoff);
-			return files.flatMap((path) => {
+			return [...blobs].flatMap(([path, blobId]) => {
 				const id = extractConfiguredTaskId(path, prefix);
 				if (!id) return [];
 				return [
@@ -534,6 +564,7 @@ export class BranchTaskLoader {
 						path,
 						type: getTaskTypeFromPath(path, backlogDir),
 						lastModified: (lastModified.get(path) ?? new Date(0)).getTime(),
+						blobId,
 					},
 				];
 			});
@@ -547,8 +578,9 @@ export class BranchTaskLoader {
 		}
 	}
 
-	private async loadCachedTask(commit: string, path: string): Promise<Task | null> {
-		const key = `${commit}\0${path}`;
+	private async loadCachedTask(commit: string, path: string, blobId?: string): Promise<Task | null> {
+		// Identical blobs on different branches parse to the same task, so one read serves them all.
+		const key = blobId ?? `${commit}\0${path}`;
 		let cached = this.taskCache.get(key);
 		if (!cached) {
 			const promise = this.git.showFile(commit, path).then((content) => {

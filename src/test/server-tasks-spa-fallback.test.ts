@@ -1066,15 +1066,15 @@ describe("BacklogServer task SPA fallback", () => {
 			server as unknown as {
 				core: {
 					git: {
-						listFilesInTree: (ref: string, path: string) => Promise<string[]>;
+						listTreeBlobs: (ref: string, path: string) => Promise<Map<string, string>>;
 					};
 				};
 			}
 		).core.git;
-		const originalListFilesInTree = coreGit.listFilesInTree.bind(coreGit);
+		const originalListTreeBlobs = coreGit.listTreeBlobs.bind(coreGit);
 		let movedDuringScan = false;
-		coreGit.listFilesInTree = async (ref, path) => {
-			const files = await originalListFilesInTree(ref, path);
+		coreGit.listTreeBlobs = async (ref, path) => {
+			const files = await originalListTreeBlobs(ref, path);
 			if (!movedDuringScan && ref === collisionCommit) {
 				movedDuringScan = true;
 				await replaceCollisionBranchTask("BACK-100", "Moved during scan");
@@ -1092,7 +1092,7 @@ describe("BacklogServer task SPA fallback", () => {
 			expect(replacement.status).toBe(200);
 			expect(((await replacement.json()) as Task).title).toBe("Moved during scan");
 		} finally {
-			coreGit.listFilesInTree = originalListFilesInTree;
+			coreGit.listTreeBlobs = originalListTreeBlobs;
 		}
 	});
 });
