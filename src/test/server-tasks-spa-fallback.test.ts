@@ -738,12 +738,16 @@ describe("BacklogServer task SPA fallback", () => {
 		});
 	});
 
-	it("returns the local task when active origin/main has a padded version at the same path", async () => {
+	it("returns the progressed origin/main copy when it has a padded version at the same path", async () => {
 		await restartWithActiveRemoteCollision(true);
 
+		// most_progressed: origin/main's copy reached Done, so the detail view shows that copy, as the
+		// board does; the working copy is still what a save from the browser writes.
 		const response = await request("/api/task/BACK-1");
 		expect(response.status).toBe(200);
-		expect(((await response.json()) as Task).title).toBe("Main collision task");
+		const task = (await response.json()) as Task;
+		expect(task.title).toBe("Remote same-path version");
+		expect(task.status).toBe("Done");
 	});
 
 	it("returns the local legacy task when an active branch changes the same task path", async () => {
