@@ -180,6 +180,7 @@ const CONFIG_GET_KEYS = [
 	"zeroPaddedIds",
 	"checkActiveBranches",
 	"activeBranchDays",
+	"cliReadsActiveBranches",
 ] as const;
 
 const CONFIG_SET_KEYS = [
@@ -198,6 +199,7 @@ const CONFIG_SET_KEYS = [
 	"zeroPaddedIds",
 	"checkActiveBranches",
 	"activeBranchDays",
+	"cliReadsActiveBranches",
 ] as const;
 
 function normalizeIntegrationOption(value: string): IntegrationMode | null {
@@ -2759,10 +2761,13 @@ async function runTaskList(
 			baseFilters.parentTaskId = resolvedParentId;
 		}
 
+		// The working copy alone unless the project routes this read through the cross-branch index
+		// (`cli_reads_active_branches`), where a task shows the status the board shows for it.
+		const includeCrossBranch = await core.cliReadsActiveBranches();
 		const tasks = await core.queryTasks({
 			query: searchQuery || undefined,
 			filters: Object.keys(baseFilters).length > 0 ? baseFilters : undefined,
-			includeCrossBranch: false,
+			includeCrossBranch,
 		});
 		const config = await core.filesystem.loadConfig();
 
@@ -2784,7 +2789,8 @@ async function runTaskList(
 		// a row selected as ready can never be serialized from a second, later verdict. A read that
 		// matched nothing describes nothing, so it reads no corpus at all.
 		const derivesReadiness = Boolean(options.ready) || outputMode === "json";
-		const readinessRows = derivesReadiness && tasks.length > 0 ? await loadTaskListItems(core, tasks) : [];
+		const readinessRows =
+			derivesReadiness && tasks.length > 0 ? await loadTaskListItems(core, tasks, { includeCrossBranch }) : [];
 		const readyRows = options.ready ? readinessRows.filter((row) => row.isReady) : readinessRows;
 		if (outputMode === "json") {
 			const page = selectListWindow(narrowForDisplay(readyRows), listWindow);
@@ -2909,10 +2915,11 @@ async function runTaskList(
 			updateProgress("Loading configuration...");
 			const config = await core.filesystem.loadConfig();
 
-			updateProgress("Loading local tasks...");
+			const includeCrossBranch = await core.cliReadsActiveBranches();
+			updateProgress(includeCrossBranch ? "Loading tasks across active branches..." : "Loading local tasks...");
 			const tasks = await core.queryTasks({
 				filters: Object.keys(interactiveLoaderFilters).length > 0 ? interactiveLoaderFilters : undefined,
-				includeCrossBranch: false,
+				includeCrossBranch,
 			});
 
 			// Throws before anything is displayed when the parent is missing or ambiguous.
@@ -2928,7 +2935,7 @@ async function runTaskList(
 				statuses: config?.statuses || [],
 				// The filters above narrow what is displayed. Dependency readiness must still see
 				// every task, or a dependency assigned to someone else reads as unknown.
-				readinessTasks: prefiltersDisplayList ? await core.queryTasks({ includeCrossBranch: false }) : undefined,
+				readinessTasks: prefiltersDisplayList ? await core.queryTasks({ includeCrossBranch }) : undefined,
 			};
 		},
 		filter: initialUnifiedFilter,
@@ -3943,9 +3950,16 @@ addHelpSchema(taskCmd.command("view <taskId>"), {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
 		const localTasks = await core.fs.listTasks();
-		const task = await core.getTaskWithSubtasks(taskId, localTasks, { includeCrossBranch: false });
+		// The working copy alone unless the project routes this read through the cross-branch index
+		// (`cli_reads_active_branches`), where the task shows the status the board shows for it.
+		const readOptions = { includeCrossBranch: await core.cliReadsActiveBranches() };
+		const task = await core.getTaskWithSubtasks(taskId, localTasks, readOptions);
 		if (!task) {
-			console.error(`Task ${taskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
+			console.error(
+				readOptions.includeCrossBranch
+					? `Task ${taskId} not found.`
+					: `Task ${taskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`,
+			);
 			process.exitCode = 1;
 			return;
 		}
@@ -3956,12 +3970,12 @@ addHelpSchema(taskCmd.command("view <taskId>"), {
 
 		// Plain text output for non-interactive environments
 		if (outputMode === "json") {
-			printJson(taskViewJson(await loadTaskDetail(core, task), cwd));
+			printJson(taskViewJson(await loadTaskDetail(core, task, readOptions), cwd));
 			return;
 		}
 
 		if (outputMode === "plain") {
-			console.log(formatTaskPlainText(await loadTaskDetail(core, task)));
+			console.log(formatTaskPlainText(await loadTaskDetail(core, task, readOptions)));
 			return;
 		}
 
@@ -4102,9 +4116,16 @@ taskCmd
 		}
 
 		const localTasks = await core.fs.listTasks();
-		const task = await core.getTaskWithSubtasks(taskId, localTasks, { includeCrossBranch: false });
+		// The working copy alone unless the project routes this read through the cross-branch index
+		// (`cli_reads_active_branches`), where the task shows the status the board shows for it.
+		const readOptions = { includeCrossBranch: await core.cliReadsActiveBranches() };
+		const task = await core.getTaskWithSubtasks(taskId, localTasks, readOptions);
 		if (!task) {
-			console.error(`Task ${taskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`);
+			console.error(
+				readOptions.includeCrossBranch
+					? `Task ${taskId} not found.`
+					: `Task ${taskId} not found. ${LOCAL_TASK_LOOKUP_HINT}`,
+			);
 			process.exitCode = 1;
 			return;
 		}
@@ -4115,12 +4136,12 @@ taskCmd
 
 		// Plain text output for non-interactive environments
 		if (outputMode === "json") {
-			printJson(taskViewJson(await loadTaskDetail(core, task), cwd));
+			printJson(taskViewJson(await loadTaskDetail(core, task, readOptions), cwd));
 			return;
 		}
 
 		if (outputMode === "plain") {
-			console.log(formatTaskPlainText(await loadTaskDetail(core, task)));
+			console.log(formatTaskPlainText(await loadTaskDetail(core, task, readOptions)));
 			return;
 		}
 
@@ -5288,7 +5309,7 @@ agentsCmd
 
 // Config command group
 const CONFIG_AVAILABLE_KEYS =
-	"Available keys: defaultEditor, projectName, defaultAssignee, defaultStatus, statuses, labels, priorities, types, projects, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays";
+	"Available keys: defaultEditor, projectName, defaultAssignee, defaultStatus, statuses, labels, priorities, types, projects, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays, cliReadsActiveBranches";
 
 const configCmd = addHelpSchema(program.command("config"), {
 	reads: "Project Backlog.md configuration",
@@ -5480,6 +5501,9 @@ addHelpSchema(configCmd.command("get <key>"), {
 				case "activeBranchDays":
 					console.log(config.activeBranchDays?.toString() || "30");
 					break;
+				case "cliReadsActiveBranches":
+					console.log(config.cliReadsActiveBranches?.toString() || "false");
+					break;
 				default:
 					console.error(`Unknown config key: ${key}`);
 					console.error(CONFIG_AVAILABLE_KEYS);
@@ -5662,6 +5686,18 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 					}
 					break;
 				}
+				case "cliReadsActiveBranches": {
+					const boolValue = value.toLowerCase();
+					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
+						config.cliReadsActiveBranches = true;
+					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
+						config.cliReadsActiveBranches = false;
+					} else {
+						console.error("cliReadsActiveBranches must be true or false");
+						process.exit(1);
+					}
+					break;
+				}
 				case "activeBranchDays": {
 					const days = Number.parseInt(value, 10);
 					if (Number.isNaN(days) || days < 0) {
@@ -5766,6 +5802,7 @@ addHelpSchema(configCmd.command("list"), {
 			console.log(`  taskPrefix: ${config.prefixes?.task || "task"} (read-only)`);
 			console.log(`  checkActiveBranches: ${config.checkActiveBranches ?? "true"}`);
 			console.log(`  activeBranchDays: ${config.activeBranchDays ?? "30"}`);
+			console.log(`  cliReadsActiveBranches: ${config.cliReadsActiveBranches ?? "false"}`);
 		} catch (err) {
 			reportCommandFailure("Failed to list config values", err);
 		}
