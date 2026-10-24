@@ -215,6 +215,25 @@ describe("Config commands", () => {
 		expect(portOutput.trim()).toBe("7001");
 	});
 
+	it("round-trips cliReadsActiveBranches through config get/set/list and the config file", async () => {
+		const defaultGet = await $`bun ${CLI_PATH} config get cliReadsActiveBranches`.cwd(TEST_DIR).text();
+		expect(defaultGet.trim()).toBe("false");
+
+		await $`bun ${CLI_PATH} config set cliReadsActiveBranches true`.cwd(TEST_DIR).quiet();
+
+		const afterSet = await $`bun ${CLI_PATH} config get cliReadsActiveBranches`.cwd(TEST_DIR).text();
+		expect(afterSet.trim()).toBe("true");
+		const listOutput = await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text();
+		expect(listOutput).toContain("cliReadsActiveBranches: true");
+		expect(await Bun.file(core.filesystem.configFilePath).text()).toContain("cli_reads_active_branches: true");
+
+		core.filesystem.invalidateConfigCache();
+		expect((await core.filesystem.loadConfig())?.cliReadsActiveBranches).toBe(true);
+
+		const rejected = await $`bun ${CLI_PATH} config set cliReadsActiveBranches maybe`.cwd(TEST_DIR).nothrow().quiet();
+		expect(rejected.exitCode).not.toBe(0);
+	});
+
 	it("round-trips hideEmptyColumns through config get/set/list", async () => {
 		const defaultGet = await $`bun ${CLI_PATH} config get hideEmptyColumns`.cwd(TEST_DIR).text();
 		expect(defaultGet.trim()).toBe("false");
