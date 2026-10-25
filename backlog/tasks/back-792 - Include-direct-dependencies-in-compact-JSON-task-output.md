@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-10-25T19:45:00Z'
-updated_date: '2026-10-25T19:47:00Z'
+updated_date: '2026-10-25T20:02:00Z'
 labels: []
 dependencies: []
 references:
@@ -19,6 +19,7 @@ modified_files:
   - src/formatters/json-output.ts
   - src/test/cli-json-watch.test.ts
   - CLI-INSTRUCTIONS.md
+  - src/test/cli-dependency-graph.test.ts
 priority: medium
 type: enhancement
 ordinal: 400000
@@ -58,6 +59,8 @@ Consumers building dependency views currently need one task-view process per tas
 The three real CLI checks failed before the change: task list and search omitted dependencies and an empty dependency list was undefined. The existing compact serializer now emits the stored array once for all compact records; the redundant detail field/type was removed. Watch coverage checks stored IDs and a clear-to-empty edit.
 
 All 60 JSON, watch, pagination and cross-surface search tests pass. Types, Biome, build and diff checks pass. The maintenance pass keeps dependencies in the existing shared compact serializer, uses [] for absent lists, and removes the redundant detail-only type/property assignments. No new loader, query or content-version API is introduced.
+
+Full Linux CI exposed an older dependency-graph test that explicitly forbade direct dependency IDs in compact output. Updated it to require stored direct IDs and empty arrays while retaining the assertion that compact output excludes the full graph. This aligns the existing graph coverage with the accepted JSON output contract.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
