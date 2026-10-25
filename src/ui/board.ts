@@ -1611,7 +1611,8 @@ export async function renderBoardTui(
 			await syncOpenPopup();
 		};
 
-		screen.key(["enter"], async () => {
+		// Program normalizes carriage return to enter and line feed to linefeed.
+		screen.key(["enter", "linefeed"], async () => {
 			if (popupOpen || filterPopupOpen || modalOpen || currentFocus === "filters") return;
 
 			// In move mode, Enter confirms the move

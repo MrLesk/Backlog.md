@@ -76,6 +76,7 @@ async function withBoardPopup(
 		hideEmptyColumns?: boolean;
 		/** Columns to step right through before opening the popup. */
 		startColumn?: number;
+		openKey?: "enter" | "linefeed";
 	},
 	run: (context: {
 		screen: ScreenInterface & EmittingWidget;
@@ -108,7 +109,7 @@ async function withBoardPopup(
 		}
 
 		// Open the popup on the selected task in the focused column.
-		pressKey(screen, "enter");
+		pressKey(screen, options.openKey ?? "enter");
 		await Bun.sleep(30);
 		expect(findPopupBody(screen)).toBeDefined();
 
@@ -139,6 +140,13 @@ async function withBoardPopup(
 }
 
 describe("board task popup stays in sync with live task state", () => {
+	it.each(["enter", "linefeed"] as const)("opens the selected task with %s", async (openKey) => {
+		await withBoardPopup({ openKey }, async ({ popupBody, text }) => {
+			expect(popupBody()?.getContent?.()).toContain("ORIGINAL-BODY");
+			expect(text()).toContain("Popup task");
+		});
+	});
+
 	it("rebuilds the popup after an in-popup editor edit", async () => {
 		const edited = createTask({ title: "Edited title", description: "UPDATED-BODY" });
 		await withBoardPopup(
