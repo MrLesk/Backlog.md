@@ -3774,6 +3774,23 @@ export class Core {
 		}
 	}
 
+	/** Archive a resolved task while its task lock and the create lock are held. */
+	private async archiveTaskFile(task: Task, fromPath: string, autoCommit?: boolean): Promise<void> {
+		const toPath = join(await this.fs.getArchiveTasksDir(), basename(fromPath));
+		await this.moveRecordFile(fromPath, toPath, () => new TaskFileExistsError(task.id, "archive", basename(toPath)));
+		this.contentStore?.transitionTask(task.id, { ...task, filePath: toPath, source: "archived" });
+
+		// A failed commit must report that the file has already moved.
+		try {
+			if (await this.shouldAutoCommit(autoCommit)) {
+				const repoRoot = await this.git.stageFileMove(fromPath, toPath);
+				await this.git.commitFiles(`backlog: Archive task ${task.id}`, [fromPath, toPath], repoRoot);
+			}
+		} catch (error) {
+			throw markRecordAlreadyMoved(new ChangeNotCommittedError(`Task ${task.id} was archived`, error), "archiveState");
+		}
+	}
+
 	/**
 	 * Move a task off the board into the archive. Any status can be archived. The record keeps its
 	 * ID, its status and every link other tasks hold to it, and no other record is rewritten.
@@ -3796,29 +3813,7 @@ export class Core {
 				const current = await this.loadTaskForMutation(task.id, options);
 				const fromPath = current?.filePath;
 				if (!current || !fromPath) return false;
-				const toPath = join(await this.fs.getArchiveTasksDir(), basename(fromPath));
-				await this.moveRecordFile(
-					fromPath,
-					toPath,
-					() => new TaskFileExistsError(current.id, "archive", basename(toPath)),
-				);
-				this.contentStore?.transitionTask(current.id, { ...current, filePath: toPath, source: "archived" });
-
-				// The file is in the archive from here on. A commit that fails after this point says so,
-				// rather than letting a caller retry an archive that already ran.
-				try {
-					if (await this.shouldAutoCommit(autoCommit)) {
-						// Stage the file move for proper Git tracking
-						const repoRoot = await this.git.stageFileMove(fromPath, toPath);
-						await this.git.commitFiles(`backlog: Archive task ${current.id}`, [fromPath, toPath], repoRoot);
-					}
-				} catch (error) {
-					// The tag is for the browser, which refreshes instead of offering the archive again.
-					throw markRecordAlreadyMoved(
-						new ChangeNotCommittedError(`Task ${current.id} was archived`, error),
-						"archiveState",
-					);
-				}
+				await this.archiveTaskFile(current, fromPath, autoCommit);
 				return true;
 			}),
 		);
@@ -4035,7 +4030,7 @@ export class Core {
 	 * caller selected with {@link getTerminalStatusTasksByAge}. Only those IDs are archived, so a
 	 * task that became eligible after the selection was shown stays on the board.
 	 *
-	 * Each task is read again first. One that has left the board or the final status since it was
+	 * Each task is checked under its lock. One that has left the board or the final status since it was
 	 * selected is skipped with the reason. One that cannot be archived is a failure with the reason.
 	 * Neither stops the others. {@link formatCleanupResult} words the result for both callers.
 	 */
@@ -4046,21 +4041,100 @@ export class Core {
 		const skipped: Array<{ taskId: string; reason: string }> = [];
 		const failures: Array<{ taskId: string; reason: string }> = [];
 		const leftTheBoard = "it is no longer on the board";
-		for (const taskId of taskIds) {
-			try {
-				const task = await this.fs.loadTask(taskId);
-				if (!task) {
-					skipped.push({ taskId, reason: leftTheBoard });
-				} else if (!isTerminalStatus(task.status, statuses)) {
-					skipped.push({ taskId, reason: `its status is now ${task.status}` });
-				} else if (await this.archiveTask(taskId)) {
-					archivedTaskIds.push(taskId);
-				} else {
-					skipped.push({ taskId, reason: leftTheBoard });
+		if (taskIds.length === 0) return { archivedTaskIds, skipped, failures };
+		const loadIndex = async () => {
+			for (let attempt = 0; ; attempt++) {
+				try {
+					const snapshot = await this.loadTaskCorpusSnapshot(undefined, { publishSharedState: false });
+					if (!snapshot.identityIndex) throw new Error("Task corpus identity index was not initialized");
+					return snapshot.identityIndex;
+				} catch (error) {
+					// A task can move between enumeration and metadata reads. Retry that snapshot,
+					// but stop after three attempts so a continuously changing board cannot stall cleanup.
+					if ((error as NodeJS.ErrnoException).code !== "ENOENT" || attempt >= 2) throw error;
 				}
-			} catch (error) {
-				failures.push({ taskId, reason: error instanceof Error ? error.message : String(error) });
 			}
+		};
+		const initialIndex = await loadIndex();
+		const tasks = taskIds.flatMap((taskId) => {
+			const resolution = initialIndex.resolveForMutation(taskId);
+			return resolution.status === "found" ? [resolution.task] : [];
+		});
+		const lockedIds = new Set(tasks.map((task) => canonicalTaskId(task.id)));
+		const movedIds = new Set<string>();
+		const archiveSelected = async (taskId: string, index: TaskIdentityIndex) => {
+			const resolution = index.resolveForMutation(taskId);
+			if (resolution.status === "ambiguous") throw new AmbiguousTaskIdError(taskId, resolution.candidates);
+			if (resolution.status !== "found") {
+				// Explicit lookups still report damaged files that corpus lists omit.
+				if (resolution.status === "not-found") await this.fs.loadTask(taskId);
+				skipped.push({ taskId, reason: leftTheBoard });
+				return;
+			}
+			const task = resolution.task;
+			const identity = canonicalTaskId(task.id);
+			if (movedIds.has(identity)) {
+				skipped.push({ taskId, reason: leftTheBoard });
+			} else if (!lockedIds.has(identity)) {
+				throw new Error(`Task ${taskId} changed while cleanup was starting. Preview it again before archiving.`);
+			} else if (!isTerminalStatus(task.status, statuses)) {
+				skipped.push({ taskId, reason: `its status is now ${task.status}` });
+			} else {
+				if (!task.filePath) throw new Error(`Task ${taskId} has no file path.`);
+				try {
+					await this.archiveTaskFile(task, task.filePath);
+					archivedTaskIds.push(taskId);
+				} finally {
+					// Includes a move whose later Git commit failed; do not retry it through an ID alias.
+					if (!(await Bun.file(task.filePath).exists())) movedIds.add(identity);
+				}
+			}
+		};
+		const runSelected = async (operation: (taskId: string) => Promise<void>) => {
+			for (const taskId of taskIds) {
+				try {
+					await operation(taskId);
+				} catch (error) {
+					failures.push({ taskId, reason: error instanceof Error ? error.message : String(error) });
+				}
+			}
+		};
+
+		// Task locks come before the create lock, as in single-task archive. Once both are held,
+		// one fresh identity index is safe for the whole batch instead of rescanning for every ID.
+		let batchStarted = false;
+		try {
+			await this.fs.withTaskLocks(tasks, () =>
+				this.withCreateLock(async () => {
+					batchStarted = true;
+					const currentIndex = await loadIndex();
+					await runSelected((taskId) => archiveSelected(taskId, currentIndex));
+				}),
+			);
+		} catch (error) {
+			if (batchStarted) throw error;
+			// A busy or moved task must not stop unrelated tasks. No writes happened before the
+			// batch acquired every lock, so it is safe to retry each task with the same checks.
+			await runSelected(async (taskId) => {
+				const currentIndex = await loadIndex();
+				const resolution = currentIndex.resolveForMutation(taskId);
+				if (resolution.status !== "found") return await archiveSelected(taskId, currentIndex);
+				let taskStarted = false;
+				try {
+					await this.fs.withTaskLock(resolution.task, () =>
+						this.withCreateLock(async () => {
+							taskStarted = true;
+							await archiveSelected(taskId, await loadIndex());
+						}),
+					);
+				} catch (error) {
+					if (taskStarted) throw error;
+					// It can leave the board between the refreshed lookup and lock acquisition too.
+					const latestIndex = await loadIndex();
+					if (latestIndex.resolveForMutation(taskId).status === "found") throw error;
+					await archiveSelected(taskId, latestIndex);
+				}
+			});
 		}
 		return { archivedTaskIds, skipped, failures };
 	}
