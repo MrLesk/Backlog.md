@@ -477,6 +477,41 @@ describe("Cleanup functionality", () => {
 			expect(await boardIds()).toEqual(["TASK-1"]);
 		});
 
+		it.each([false, true])("retries a file moved during metadata loading (selected: %s)", async (selectMoved) => {
+			await core.createTask(finished("TASK-1", "Still selected", 7), false);
+			await core.createTask(finished("TASK-2", "Moved during metadata read", 7), false);
+			const moving = await core.filesystem.loadTask("TASK-2");
+			if (!moving?.filePath) throw new Error("Expected task file");
+			const movingPath = moving.filePath;
+			const list = core.filesystem.listTasks.bind(core.filesystem);
+			let moved = false;
+			spyOn(core.filesystem, "listTasks").mockImplementation(async (...args) => {
+				const tasks = await list(...args);
+				if (!moved) {
+					moved = true;
+					await rename(movingPath, join(core.filesystem.archiveTasksDir, basename(movingPath)));
+				}
+				return tasks;
+			});
+
+			const result = await core.archiveTerminalStatusTasks(selectMoved ? ["TASK-1", "TASK-2"] : ["TASK-1"]);
+
+			expect(result).toEqual({
+				archivedTaskIds: ["TASK-1"],
+				skipped: selectMoved ? [{ taskId: "TASK-2", reason: "it is no longer on the board" }] : [],
+				failures: [],
+			});
+		});
+
+		it("stops retrying a snapshot that keeps losing files", async () => {
+			const missing = Object.assign(new Error("Task disappeared"), { code: "ENOENT" });
+			const list = spyOn(core.filesystem, "listTasks").mockRejectedValue(missing);
+
+			await expect(core.archiveTerminalStatusTasks(["TASK-1"])).rejects.toBe(missing);
+
+			expect(list).toHaveBeenCalledTimes(3);
+		});
+
 		it("reports a failed commit after the move and continues with other tasks", async () => {
 			await core.createTask(finished("TASK-1", "Commit fails", 7), false);
 			await core.createTask(finished("TASK-2", "Commit succeeds", 7), false);

@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-10-25T19:50:00Z'
-updated_date: '2026-10-25T20:05:00Z'
+updated_date: '2026-10-25T20:10:00Z'
 labels:
   - bug
 dependencies: []
@@ -57,6 +57,8 @@ Issue #1045 exposes stale cleanup preview/confirmation state. Cleanup also repea
 4. Simplify the final implementation, create its scoped PR, run independent Codex and maintenance reviews, then merge after all CI checks pass.
 
 5. Address independent review findings: retain cross-branch identity checks in the batch snapshot, refresh fallback targets before locking, and add combined concurrency/alias regressions. Repeat correctness and junior-maintenance reviews on the updated commit.
+
+6. Cover a task disappearing during the initial metadata read and retry that snapshot only for transient missing-file races, with a fixed retry limit.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -71,6 +73,8 @@ Simplicity pass: age and preview count are derived from one selection, no global
 
 Independent Codex correctness and junior-maintenance reviews found two regressions in the initial refactor: branch identities were omitted and fallback targets could use stale paths. Added three real filesystem/Git regressions that failed first, then switched the batch to the existing stable branch-aware corpus loader. Each fallback target is refreshed before locking and checked again if it disappears during acquisition. Identity and terminal status remain checked inside the locks.
 All 79 distinct focused tests now pass (60 core/archive/CLI/commit tests plus 19 HTTP/UI tests), along with types, Biome and build. The corrected benchmark remains bounded: 25 tasks use 2/2 reads in 21 ms; 100 use 2/2 in 64 ms locally. The maintenance review found the phase-state modal and shared archive helper reasonable; its concrete findings are addressed without adding a new layer.
+
+A second independent correctness review reproduced an unselected task disappearing between enumeration and metadata stats, which could abort the entire initial snapshot. Two real filesystem regressions (selected and unselected moved tasks) failed first. The existing cleanup-local snapshot loader now retries ENOENT at most three times, preserving all other errors. A further test verifies the retry limit. All 47 cleanup/UI/HTTP tests pass; together with the 35 archive/CLI/commit tests this gives 82 distinct focused passing tests. Types, Biome and build pass. The small retry loop keeps its limit and reason beside the code rather than introducing another abstraction.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -4043,9 +4043,17 @@ export class Core {
 		const leftTheBoard = "it is no longer on the board";
 		if (taskIds.length === 0) return { archivedTaskIds, skipped, failures };
 		const loadIndex = async () => {
-			const snapshot = await this.loadTaskCorpusSnapshot(undefined, { publishSharedState: false });
-			if (!snapshot.identityIndex) throw new Error("Task corpus identity index was not initialized");
-			return snapshot.identityIndex;
+			for (let attempt = 0; ; attempt++) {
+				try {
+					const snapshot = await this.loadTaskCorpusSnapshot(undefined, { publishSharedState: false });
+					if (!snapshot.identityIndex) throw new Error("Task corpus identity index was not initialized");
+					return snapshot.identityIndex;
+				} catch (error) {
+					// A task can move between enumeration and metadata reads. Retry that snapshot,
+					// but stop after three attempts so a continuously changing board cannot stall cleanup.
+					if ((error as NodeJS.ErrnoException).code !== "ENOENT" || attempt >= 2) throw error;
+				}
+			}
 		};
 		const initialIndex = await loadIndex();
 		const tasks = taskIds.flatMap((taskId) => {
