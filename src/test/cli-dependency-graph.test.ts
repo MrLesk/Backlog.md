@@ -234,7 +234,7 @@ describe("CLI dependency graph", () => {
 		}
 	});
 
-	it("leaves compact list, search, and edit payloads unchanged", async () => {
+	it("keeps the full graph out of compact payloads while including direct dependencies", async () => {
 		await addTask("task-1", "Foundation");
 		await addTask("task-2", "Selected", ["task-1"]);
 
@@ -242,18 +242,17 @@ describe("CLI dependency graph", () => {
 		expect(list.dependencyGraph).toBeUndefined();
 		for (const summary of list.tasks) {
 			expect(Object.keys(summary)).not.toContain("dependencyGraph");
-			expect(Object.keys(summary)).not.toContain("dependencies");
+			expect(summary.dependencies).toEqual(summary.id === "TASK-2" ? ["task-1"] : []);
 		}
 
 		const search = JSON.parse((await runCli(["search", "Selected", "--json"])).stdout.toString());
 		expect(search.dependencyGraph).toBeUndefined();
 		for (const entry of search.results) {
 			expect(Object.keys(entry.data)).not.toContain("dependencyGraph");
-			expect(Object.keys(entry.data)).not.toContain("dependencies");
+			expect(entry.data.dependencies).toEqual(["task-1"]);
 		}
 
-		// Only the compact machine-readable payloads must stay unchanged; the plain confirmation is
-		// deliberately the same detail layout as task view.
+		// The plain edit confirmation uses the same full graph as task view.
 		const edited = await runCli(["task", "edit", "2", "--plain", "-l", "graph"]);
 		expect(edited.exitCode).toBe(0);
 		expect(edited.stdout.toString()).toContain("Dependency Graph:");

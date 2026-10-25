@@ -108,6 +108,7 @@ describe("CLI JSON output", () => {
 					parentTaskId: null,
 					acceptanceCriteriaCompleted: 1,
 					acceptanceCriteriaCount: 1,
+					dependencies: ["TASK-2"],
 					references: ["https://example.com/issue"],
 					modifiedFiles: ["src/cli.ts"],
 					ordinal: 1000,
@@ -144,6 +145,7 @@ describe("CLI JSON output", () => {
 		const bare = JSON.parse(result.stdout.toString()).tasks.find((t: { id: string }) => t.id === "TASK-3");
 		expect(bare.references).toEqual([]);
 		expect(bare.modifiedFiles).toEqual([]);
+		expect(bare.dependencies).toEqual([]);
 	});
 
 	it("returns a compact versioned decision-list envelope", async () => {
@@ -302,6 +304,7 @@ describe("CLI JSON output", () => {
 		expect(output.results[0].data.id).toBe("TASK-1");
 		expect(output.results[0].data.acceptanceCriteriaCompleted).toBe(1);
 		expect(output.results[0].data.acceptanceCriteriaCount).toBe(1);
+		expect(output.results[0].data.dependencies).toEqual(["TASK-2"]);
 		// Task results carry the same verdict the task list publishes.
 		expect(output.results[0].data.isReady).toBe(false);
 		expect(output.results[1].data).toEqual({
