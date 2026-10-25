@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
@@ -40,6 +40,7 @@ describe("Cleanup functionality", () => {
 	});
 
 	afterEach(async () => {
+		mock.restore();
 		await safeCleanup(TEST_DIR);
 	});
 
@@ -322,6 +323,115 @@ describe("Cleanup functionality", () => {
 			(await core.getTerminalStatusTasksByAge(days)).map((task) => task.id);
 		const boardIds = async () => (await core.filesystem.listTasks()).map((task) => task.id);
 		const archivedIds = async () => (await core.filesystem.listArchivedTasks()).map((task) => task.id);
+
+		it("reads the board and archive a bounded number of times for a batch", async () => {
+			const ids = Array.from({ length: 25 }, (_, index) => `TASK-${index + 1}`);
+			for (const id of ids) await core.filesystem.saveTask(finished(id, id, 7));
+			const boardReads = spyOn(core.filesystem, "listTasks");
+			const archiveReads = spyOn(core.filesystem, "listArchivedTasks");
+
+			const result = await core.archiveTerminalStatusTasks(ids);
+
+			expect(result).toEqual({ archivedTaskIds: ids, skipped: [], failures: [] });
+			expect(boardReads.mock.calls.length).toBeLessThanOrEqual(3);
+			expect(archiveReads.mock.calls.length).toBeLessThanOrEqual(3);
+		});
+
+		it("skips a task reopened between the first read and acquiring its lock", async () => {
+			await core.createTask(finished("TASK-1", "Reopened while starting cleanup", 7), false);
+			const lock = core.filesystem.withTaskLock.bind(core.filesystem);
+			let reopened = false;
+			spyOn(core.filesystem, "withTaskLock").mockImplementation(async (task, operation) => {
+				if (!reopened) {
+					reopened = true;
+					const current = await core.filesystem.loadTask(task.id);
+					if (!current) throw new Error("Expected selected task");
+					await core.filesystem.saveTask({ ...current, status: "In Progress" });
+				}
+				return await lock(task, operation);
+			});
+
+			const result = await core.archiveTerminalStatusTasks(["TASK-1"]);
+
+			expect(result).toEqual({
+				archivedTaskIds: [],
+				skipped: [{ taskId: "TASK-1", reason: "its status is now In Progress" }],
+				failures: [],
+			});
+			expect(await boardIds()).toEqual(["TASK-1"]);
+		});
+
+		it("reports a busy task and still archives the other selected tasks", async () => {
+			await core.createTask(finished("TASK-1", "Busy", 7), false);
+			await core.createTask(finished("TASK-2", "Available", 7), false);
+			const busy = await core.filesystem.loadTask("TASK-1");
+			if (!busy) throw new Error("Expected busy task");
+			const result = await core.filesystem.withTaskLock(busy, () =>
+				core.archiveTerminalStatusTasks(["TASK-1", "TASK-2"]),
+			);
+
+			expect(result.archivedTaskIds).toEqual(["TASK-2"]);
+			expect(result.skipped).toEqual([]);
+			expect(result.failures).toHaveLength(1);
+			expect(result.failures[0]?.taskId).toBe("TASK-1");
+			expect(await boardIds()).toEqual(["TASK-1"]);
+		});
+
+		it("fails closed if a second identity appears before the cleanup locks are acquired", async () => {
+			await core.createTask(finished("TASK-1", "Contested while starting cleanup", 7), false);
+			await core.createTask(finished("TASK-2", "Uncontested", 7), false);
+			const lock = core.filesystem.withTaskLock.bind(core.filesystem);
+			let added = false;
+			spyOn(core.filesystem, "withTaskLock").mockImplementation(async (task, operation) => {
+				if (!added) {
+					added = true;
+					await Bun.write(
+						join(core.filesystem.archiveTasksDir, "task-01 - New claimant.md"),
+						serializeTask(finished("TASK-01", "New claimant", 30)),
+					);
+				}
+				return await lock(task, operation);
+			});
+
+			const result = await core.archiveTerminalStatusTasks(["TASK-1", "TASK-2"]);
+
+			expect(result.archivedTaskIds).toEqual(["TASK-2"]);
+			expect(result.failures[0]?.reason).toContain("ambiguous");
+			expect(await boardIds()).toEqual(["TASK-1"]);
+		});
+
+		it("does not archive the same file twice through equivalent IDs", async () => {
+			await core.createTask(finished("TASK-1", "One file", 7), false);
+
+			const result = await core.archiveTerminalStatusTasks(["TASK-1", "TASK-01"]);
+
+			expect(result).toEqual({
+				archivedTaskIds: ["TASK-1"],
+				skipped: [{ taskId: "TASK-01", reason: "it is no longer on the board" }],
+				failures: [],
+			});
+		});
+
+		it("reports a failed commit after the move and continues with other tasks", async () => {
+			await core.createTask(finished("TASK-1", "Commit fails", 7), false);
+			await core.createTask(finished("TASK-2", "Commit succeeds", 7), false);
+			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Expected config");
+			await core.filesystem.saveConfig({ ...config, autoCommit: true });
+			const commit = spyOn(core.gitOps, "commitFiles")
+				.mockRejectedValueOnce(new Error("Commit failed"))
+				.mockResolvedValueOnce();
+
+			const result = await core.archiveTerminalStatusTasks(["TASK-1", "TASK-01", "TASK-2"]);
+
+			expect(result.archivedTaskIds).toEqual(["TASK-2"]);
+			expect(result.skipped).toEqual([{ taskId: "TASK-01", reason: "it is no longer on the board" }]);
+			expect(result.failures).toHaveLength(1);
+			expect(result.failures[0]?.reason).toContain("was archived");
+			expect(commit).toHaveBeenCalledTimes(2);
+			expect(await boardIds()).toEqual([]);
+			expect(await archivedIds()).toEqual(["TASK-1", "TASK-2"]);
+		});
 
 		it("archives the selected tasks and leaves the rest on the board", async () => {
 			await core.createTask(finished("task-1", "Old finished", 7), false);
