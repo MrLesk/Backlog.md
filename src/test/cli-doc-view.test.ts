@@ -30,6 +30,15 @@ describe("CLI doc view command", () => {
 		await safeCleanup(TEST_DIR);
 	});
 
+	it.each([false, true])("fails for a missing document (plain: %s)", async (plain) => {
+		const options = plain ? ["--plain"] : [];
+		const result = await $`bun ${cliPath} doc view doc-9999 ${options}`.cwd(TEST_DIR).quiet().nothrow();
+
+		expect(result.exitCode).toBe(1);
+		expect(result.stdout.toString()).toBe("");
+		expect(result.stderr.toString()).toBe("Document doc-9999 not found.\n");
+	});
+
 	it("prints document content with --plain", async () => {
 		const result = await $`bun ${cliPath} doc view doc-1 --plain`.cwd(TEST_DIR).quiet();
 

@@ -4,6 +4,7 @@ title: Report missing documents and duplicate IDs in doc and decision read comma
 status: To Do
 assignee: []
 created_date: '2026-10-11 19:10'
+updated_date: '2026-10-25T19:16:00Z'
 labels:
   - bug
 dependencies: []
@@ -26,7 +27,7 @@ The maintainer's ruling on issue #1065 is that document and decision commands fo
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 `backlog doc view <id>` for an ID that matches no document prints a not found message to stderr and exits non-zero.
+- [x] #1 `backlog doc view <id>` for an ID that matches no document prints a not found message to stderr and exits non-zero.
 - [ ] #2 `backlog doc list` prints a warning when two or more document files share an ID, naming the ID and the files and pointing to `backlog doctor`, and exits non-zero, as `backlog task list` does for duplicate task IDs.
 - [ ] #3 `backlog decision list` does the same for decisions; with `--json` the warning goes to stderr and stdout stays valid JSON.
 - [ ] #4 Without duplicates both list commands print no warning and exit 0, and their output is unchanged.
@@ -39,3 +40,9 @@ The maintainer's ruling on issue #1065 is that document and decision commands fo
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+The missing-document exit-code criterion is implemented and verified by BACK-743.1 for issue #1148. Both real CLI output modes now exit 1 with the not-found message on stderr and empty stdout. Remaining document/decision list diagnostics stay in this parent task.
+<!-- SECTION:NOTES:END -->
