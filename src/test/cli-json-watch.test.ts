@@ -187,6 +187,7 @@ describe("CLI JSON watch", () => {
 		const watch = startWatch();
 		await expectCurrent(watch);
 		expect(JSON.parse(watch.snapshots.at(-1) ?? "").tasks[0].isReady).toBe(true);
+		expect(JSON.parse(watch.snapshots.at(-1) ?? "").tasks[0].dependencies).toEqual(["TASK-2"]);
 		const completed = (await core.filesystem.listArchivedTasks())[0];
 		if (!completed?.filePath) throw new Error("Missing completed task path");
 		await rm(completed.filePath);
@@ -201,6 +202,11 @@ describe("CLI JSON watch", () => {
 		expect(JSON.parse(watch.snapshots.at(-1) ?? "").tasks.find((task: Task) => task.id === "TASK-1").isReady).toBe(
 			false,
 		);
+		await core.updateTaskFromInput("TASK-1", { dependencies: [] }, false);
+		await expectCurrent(watch);
+		expect(
+			JSON.parse(watch.snapshots.at(-1) ?? "").tasks.find((task: Task) => task.id === "TASK-1").dependencies,
+		).toEqual([]);
 		// A failed initial lookup produces no JSON, exactly as in one-shot mode.
 		const invalid = startWatch(args);
 		expect(await invalid.process.exited).toBe(1);

@@ -30,6 +30,7 @@ type CompactTaskJson = {
 	parentTaskId: string | null;
 	acceptanceCriteriaCompleted: number;
 	acceptanceCriteriaCount: number;
+	dependencies: string[];
 	references: string[];
 	modifiedFiles: string[];
 	ordinal: number | null;
@@ -69,7 +70,6 @@ type DependencyGraphJson = {
 type TaskDetailsJson = TaskSummaryJson & {
 	path: string | null;
 	description: string | null;
-	dependencies: string[];
 	/**
 	 * Derived from the whole visible corpus at read time. `dependencies` above it stays the task's
 	 * own list of direct dependency IDs, unchanged.
@@ -148,6 +148,7 @@ function toCompactTaskJson(task: Task): CompactTaskJson {
 		parentTaskId: nullable(task.parentTaskId),
 		acceptanceCriteriaCompleted: acceptanceCriteria.filter((criterion) => criterion.checked).length,
 		acceptanceCriteriaCount: acceptanceCriteria.length,
+		dependencies: task.dependencies ?? [],
 		references: task.references ?? [],
 		modifiedFiles: task.modifiedFiles ?? [],
 		ordinal: task.ordinal ?? null,
@@ -183,7 +184,6 @@ function toTaskDetailsJson(task: TaskDetail, projectRoot: string): TaskDetailsJs
 		...toTaskSummaryJson({ ...task, isReady: task.readiness.isReady }),
 		path: toProjectRelativePath(projectRoot, task.filePath),
 		description: nullableDescription(task.description),
-		dependencies: task.dependencies ?? [],
 		dependencyGraph: toDependencyGraphJson(task.dependencyGraph),
 		readiness: task.readiness,
 		documentation: task.documentation ?? [],
