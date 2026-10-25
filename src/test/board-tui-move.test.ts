@@ -167,13 +167,13 @@ describe("TUI board single-task mover", () => {
 		});
 	});
 
-	it("moves only the selected task and confirms with Enter", async () => {
+	it.each(["enter", "linefeed"])("moves only the selected task and confirms with %s", async (keyName) => {
 		await withBoard(async ({ screen, footer, quit }) => {
 			pressKey(screen, "m");
 			expect(footer()).toContain("MOVE MODE");
 
 			pressKey(screen, "right");
-			pressKey(screen, "enter");
+			pressKey(screen, keyName);
 			await retry(async () => {
 				const moved = await core.filesystem.loadTask("TASK-1");
 				if (moved?.status !== "In Progress") throw new Error("move not persisted yet");
@@ -534,28 +534,40 @@ describe("TUI board multi-select mover", () => {
 		);
 	});
 
-	it("freezes the move set and ignores Escape while the confirm write is in flight", async () => {
-		await withBoard(async ({ screen, quit }) => {
-			pressKey(screen, "m");
-			pressKey(screen, "S-down");
-			pressKey(screen, "S-m");
-			pressKey(screen, "right");
-			pressKey(screen, "right");
-			pressKey(screen, "enter");
-			// The write is now awaiting the core; late recruitment and a late Escape must
-			// neither change the confirmed set nor make the move look canceled.
-			pressKey(screen, "S-m");
-			pressKey(screen, "escape");
+	it.each(["enter", "linefeed"])(
+		"freezes the move set and ignores repeated %s and Escape during the write",
+		async (keyName) => {
+			await withBoard(async ({ screen, quit }) => {
+				let writes = 0;
+				const originalMove = core.moveTasksToStatus.bind(core);
+				core.moveTasksToStatus = async (params) => {
+					writes++;
+					await Bun.sleep(50);
+					return await originalMove(params);
+				};
+				pressKey(screen, "m");
+				pressKey(screen, "S-down");
+				pressKey(screen, "S-m");
+				pressKey(screen, "right");
+				pressKey(screen, "right");
+				pressKey(screen, keyName);
+				pressKey(screen, keyName);
+				// The write is now awaiting the core; late recruitment and a late Escape must
+				// neither change the confirmed set nor make the move look canceled.
+				pressKey(screen, "S-m");
+				pressKey(screen, "escape");
 
-			await retry(async () => {
-				const moved = await core.filesystem.loadTask("TASK-1");
-				if (moved?.status !== "In Progress") throw new Error("set move not persisted yet");
-			}, 6);
-			expect((await core.filesystem.loadTask("TASK-2"))?.status).toBe("In Progress");
-			expect((await core.filesystem.loadTask("TASK-3"))?.status).toBe("To Do");
-			await quit();
-		});
-	});
+				await retry(async () => {
+					const moved = await core.filesystem.loadTask("TASK-1");
+					if (moved?.status !== "In Progress") throw new Error("set move not persisted yet");
+				}, 6);
+				expect((await core.filesystem.loadTask("TASK-2"))?.status).toBe("In Progress");
+				expect((await core.filesystem.loadTask("TASK-3"))?.status).toBe("To Do");
+				expect(writes).toBe(1);
+				await quit();
+			});
+		},
+	);
 
 	it("reports per-task failures in the transient footer and still moves the rest", async () => {
 		await withBoard(async ({ screen, footer, quit }) => {
