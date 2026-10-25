@@ -634,8 +634,9 @@ export async function applyDuplicateTaskIdRepair(
 					sourcePath,
 					targetPath,
 					content: replaceFrontmatterTaskId(content, change.oldId, change.newId),
-					stagedPath: `${targetPath}.backlog-doctor-${transactionId}-${index}.tmp`,
-					backupPath: `${sourcePath}.backlog-doctor-${transactionId}-${index}.bak`,
+					// A valid task filename can already use the filesystem's full filename limit.
+					stagedPath: join(dirname(targetPath), `.backlog-doctor-${transactionId}-${index}.tmp`),
+					backupPath: join(dirname(sourcePath), `.backlog-doctor-${transactionId}-${index}.bak`),
 				};
 			}),
 		);
