@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-10-25T19:50:00Z'
-updated_date: '2026-10-25T19:57:00Z'
+updated_date: '2026-10-25T20:05:00Z'
 labels:
   - bug
 dependencies: []
@@ -55,6 +55,8 @@ Issue #1045 exposes stale cleanup preview/confirmation state. Cleanup also repea
 2. Add core regressions for bounded corpus reads, locked tasks and tasks reopened before archive locks. Share the existing file-move/commit implementation and validate the selected batch under locks.
 3. Run focused UI/core/HTTP and lifecycle checks, types, formatting, build, and the disposable before/after benchmark. Verify cleanup in a disposable browser project.
 4. Simplify the final implementation, create its scoped PR, run independent Codex and maintenance reviews, then merge after all CI checks pass.
+
+5. Address independent review findings: retain cross-branch identity checks in the batch snapshot, refresh fallback targets before locking, and add combined concurrency/alias regressions. Repeat correctness and junior-maintenance reviews on the updated commit.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -66,6 +68,9 @@ Regression evidence: four UI cases failed before the change; the new corpus-read
 Disposable benchmark: 25 tasks fell from 76 board/archive reads and about 87 ms to 2/2 reads and 20 ms; 100 tasks fell from 301/301 reads and about 823 ms to 2/2 reads and 63 ms. Timings are local measurements, not guarantees.
 Browser interaction was attempted through the Browser skill, but its runtime failed during import with: Importing module node:process is not allowed in node_repl. No live browser result is claimed; DOM and live HTTP tests cover the flow.
 Simplicity pass: age and preview count are derived from one selection, no global cache or new service, and both archive entry points share one file-move/commit helper.
+
+Independent Codex correctness and junior-maintenance reviews found two regressions in the initial refactor: branch identities were omitted and fallback targets could use stale paths. Added three real filesystem/Git regressions that failed first, then switched the batch to the existing stable branch-aware corpus loader. Each fallback target is refreshed before locking and checked again if it disappears during acquisition. Identity and terminal status remain checked inside the locks.
+All 79 distinct focused tests now pass (60 core/archive/CLI/commit tests plus 19 HTTP/UI tests), along with types, Biome and build. The corrected benchmark remains bounded: 25 tasks use 2/2 reads in 21 ms; 100 use 2/2 in 64 ms locally. The maintenance review found the phase-state modal and shared archive helper reasonable; its concrete findings are addressed without adding a new layer.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -4042,7 +4042,12 @@ export class Core {
 		const failures: Array<{ taskId: string; reason: string }> = [];
 		const leftTheBoard = "it is no longer on the board";
 		if (taskIds.length === 0) return { archivedTaskIds, skipped, failures };
-		const initialIndex = await this.buildWorkingCopyTaskIndex();
+		const loadIndex = async () => {
+			const snapshot = await this.loadTaskCorpusSnapshot(undefined, { publishSharedState: false });
+			if (!snapshot.identityIndex) throw new Error("Task corpus identity index was not initialized");
+			return snapshot.identityIndex;
+		};
+		const initialIndex = await loadIndex();
 		const tasks = taskIds.flatMap((taskId) => {
 			const resolution = initialIndex.resolveForMutation(taskId);
 			return resolution.status === "found" ? [resolution.task] : [];
@@ -4094,7 +4099,7 @@ export class Core {
 			await this.fs.withTaskLocks(tasks, () =>
 				this.withCreateLock(async () => {
 					batchStarted = true;
-					const currentIndex = await this.buildWorkingCopyTaskIndex();
+					const currentIndex = await loadIndex();
 					await runSelected((taskId) => archiveSelected(taskId, currentIndex));
 				}),
 			);
@@ -4103,11 +4108,24 @@ export class Core {
 			// A busy or moved task must not stop unrelated tasks. No writes happened before the
 			// batch acquired every lock, so it is safe to retry each task with the same checks.
 			await runSelected(async (taskId) => {
-				const resolution = initialIndex.resolveForMutation(taskId);
-				if (resolution.status !== "found") return await archiveSelected(taskId, initialIndex);
-				await this.fs.withTaskLock(resolution.task, () =>
-					this.withCreateLock(async () => archiveSelected(taskId, await this.buildWorkingCopyTaskIndex())),
-				);
+				const currentIndex = await loadIndex();
+				const resolution = currentIndex.resolveForMutation(taskId);
+				if (resolution.status !== "found") return await archiveSelected(taskId, currentIndex);
+				let taskStarted = false;
+				try {
+					await this.fs.withTaskLock(resolution.task, () =>
+						this.withCreateLock(async () => {
+							taskStarted = true;
+							await archiveSelected(taskId, await loadIndex());
+						}),
+					);
+				} catch (error) {
+					if (taskStarted) throw error;
+					// It can leave the board between the refreshed lookup and lock acquisition too.
+					const latestIndex = await loadIndex();
+					if (latestIndex.resolveForMutation(taskId).status === "found") throw error;
+					await archiveSelected(taskId, latestIndex);
+				}
 			});
 		}
 		return { archivedTaskIds, skipped, failures };

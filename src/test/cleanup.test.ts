@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
-import { mkdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, rename, stat, unlink } from "node:fs/promises";
+import { basename, join } from "node:path";
 import { $ } from "bun";
 import { Core, formatCleanupResult } from "../core/backlog.ts";
 import { serializeTask } from "../markdown/serializer.ts";
@@ -410,6 +410,71 @@ describe("Cleanup functionality", () => {
 				skipped: [{ taskId: "TASK-01", reason: "it is no longer on the board" }],
 				failures: [],
 			});
+		});
+
+		it("skips equivalent IDs after a move when a busy task forces individual processing", async () => {
+			await core.createTask(finished("TASK-1", "Available", 7), false);
+			await core.createTask(finished("TASK-2", "Busy", 7), false);
+			const busy = await core.filesystem.loadTask("TASK-2");
+			if (!busy) throw new Error("Expected busy task");
+
+			const result = await core.filesystem.withTaskLock(busy, () =>
+				core.archiveTerminalStatusTasks(["TASK-1", "TASK-01", "TASK-2"]),
+			);
+
+			expect(result.archivedTaskIds).toEqual(["TASK-1"]);
+			expect(result.skipped).toEqual([{ taskId: "TASK-01", reason: "it is no longer on the board" }]);
+			expect(result.failures.map((failure) => failure.taskId)).toEqual(["TASK-2"]);
+		});
+
+		it("skips a task archived by another writer before the batch can lock it", async () => {
+			await core.createTask(finished("TASK-1", "Available", 7), false);
+			await core.createTask(finished("TASK-2", "Archived meanwhile", 7), false);
+			const moved = await core.filesystem.loadTask("TASK-2");
+			if (!moved?.filePath) throw new Error("Expected task file");
+			const movedPath = moved.filePath;
+			const lock = core.filesystem.withTaskLock.bind(core.filesystem);
+			let archived = false;
+			spyOn(core.filesystem, "withTaskLock").mockImplementation(async (task, operation) => {
+				if (!archived) {
+					archived = true;
+					await rename(movedPath, join(core.filesystem.archiveTasksDir, basename(movedPath)));
+				}
+				return await lock(task, operation);
+			});
+
+			const result = await core.archiveTerminalStatusTasks(["TASK-1", "TASK-2"]);
+
+			expect(result).toEqual({
+				archivedTaskIds: ["TASK-1"],
+				skipped: [{ taskId: "TASK-2", reason: "it is no longer on the board" }],
+				failures: [],
+			});
+		});
+
+		it("refuses a cross-branch identity conflict and still archives unrelated selected work", async () => {
+			await core.createTask(finished("TASK-1", "Local identity", 7), false);
+			await core.createTask(finished("TASK-2", "Uncontested", 7), false);
+			const original = await core.filesystem.loadTask("TASK-1");
+			if (!original?.filePath) throw new Error("Expected local file");
+			await $`git add .`.cwd(TEST_DIR).quiet();
+			await $`git commit -m seed`.cwd(TEST_DIR).quiet();
+			await $`git switch -c conflicting-identity`.cwd(TEST_DIR).quiet();
+			await unlink(original.filePath);
+			await Bun.write(
+				join(core.filesystem.tasksDir, "task-1 - Different-identity.md"),
+				serializeTask(finished("TASK-1", "Different identity", 7)),
+			);
+			await $`git add .`.cwd(TEST_DIR).quiet();
+			await $`git commit -m conflict`.cwd(TEST_DIR).quiet();
+			await $`git switch main`.cwd(TEST_DIR).quiet();
+
+			const result = await core.archiveTerminalStatusTasks(["TASK-1", "TASK-2"]);
+
+			expect(result.archivedTaskIds).toEqual(["TASK-2"]);
+			expect(result.failures).toHaveLength(1);
+			expect(result.failures[0]?.reason).toContain("ambiguous");
+			expect(await boardIds()).toEqual(["TASK-1"]);
 		});
 
 		it("reports a failed commit after the move and continues with other tasks", async () => {
