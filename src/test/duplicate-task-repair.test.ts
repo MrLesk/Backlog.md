@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { chmod, mkdir, readdir, rmdir, unlink } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import {
@@ -386,6 +386,26 @@ describe("duplicate task repair", () => {
 		expect(repaired).toBe(betaContent.replace("id: TASK-01", `id: ${change.newId}`));
 	});
 
+	it("repairs a duplicate whose filename is near the filesystem filename limit", async () => {
+		await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
+		const title = "Z".repeat(240);
+		const sourcePath = await writeTask(core.filesystem.tasksDir, `task-01 - ${title}.md`, makeTask("TASK-01", title));
+		const original = await Bun.file(sourcePath).text();
+		const plan = await core.previewDuplicateTaskIdRepair();
+		const change = plan.changes[0];
+		if (!change) throw new Error("Expected one repair change");
+
+		const result = await core.repairDuplicateTaskIds(plan.fingerprint);
+
+		expect(result.repairedFiles).toBe(1);
+		expect(await Bun.file(join(testDir, change.targetPath)).text()).toBe(
+			original.replace("id: TASK-01", `id: ${change.newId}`),
+		);
+		expect(await Bun.file(sourcePath).exists()).toBe(false);
+		expect(await findLocalDuplicateTaskIds(core)).toEqual([]);
+		expect((await readdir(core.filesystem.tasksDir)).filter((file) => file.includes(".backlog-doctor-"))).toEqual([]);
+	});
+
 	it("leaves every original file in place when a preview becomes stale", async () => {
 		const alphaPath = await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
 		const betaPath = await writeTask(core.filesystem.tasksDir, "task-1 - Beta.md", makeTask("TASK-1", "Beta"));
@@ -417,7 +437,8 @@ describe("duplicate task repair", () => {
 		if (!secondChange) throw new Error("Expected two repair changes");
 		const blockingBackupPath = join(
 			testDir,
-			`${secondChange.sourcePath}.backlog-doctor-${process.pid}-${fixedTime}-1.bak`,
+			dirname(secondChange.sourcePath),
+			`.backlog-doctor-${process.pid}-${fixedTime}-1.bak`,
 		);
 		await mkdir(blockingBackupPath);
 		Date.now = () => fixedTime;
@@ -462,7 +483,8 @@ describe("duplicate task repair", () => {
 
 	it("rolls back the whole transaction when an external writer wins the second target", async () => {
 		const alphaPath = await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
-		const betaPath = await writeTask(core.filesystem.tasksDir, "task-01 - Beta.md", makeTask("TASK-01", "Beta"));
+		const title = "Z".repeat(240);
+		const betaPath = await writeTask(core.filesystem.tasksDir, `task-01 - ${title}.md`, makeTask("TASK-01", title));
 		const gammaPath = await writeTask(
 			core.filesystem.archiveTasksDir,
 			"task-001 - Gamma.md",
@@ -526,9 +548,8 @@ describe("duplicate task repair", () => {
 		expect(String(failure)).toContain(firstChange.sourcePath);
 		expect(String(failure)).toContain("preserved");
 		expect(await Bun.file(firstSource).text()).toBe(externalSource);
-		const sourceFilename = firstChange.sourcePath.split("/").at(-1) ?? "";
 		const backupFilename = (await readdir(core.filesystem.tasksDir)).find(
-			(file) => file.startsWith(`${sourceFilename}.backlog-doctor-`) && file.endsWith(".bak"),
+			(file) => file.startsWith(".backlog-doctor-") && file.endsWith(".bak"),
 		);
 		expect(backupFilename).toBeDefined();
 		expect(await Bun.file(join(core.filesystem.tasksDir, backupFilename ?? "")).text()).toBe(originalSource);
