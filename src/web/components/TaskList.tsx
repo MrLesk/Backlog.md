@@ -768,7 +768,7 @@ const TaskList: React.FC<TaskListProps> = ({
 						<select
 							value={priorityFilter}
 							onChange={(event) => handlePriorityChange(event.target.value)}
-							className="min-w-[120px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+							className="min-w-[120px] h-10 py-2 pl-3 pr-9 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
 						>
 							{priorityOptions.map((option) => (
 								<option key={option.value || "all"} value={option.value}>
@@ -780,7 +780,7 @@ const TaskList: React.FC<TaskListProps> = ({
 						<select
 							value={milestoneFilter}
 							onChange={(event) => handleMilestoneChange(event.target.value)}
-							className="min-w-[160px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+							className="min-w-[160px] h-10 py-2 pl-3 pr-9 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
 						>
 							<option value="">All milestones</option>
 							<option value="__none">No milestone</option>
@@ -932,7 +932,11 @@ const TaskList: React.FC<TaskListProps> = ({
 													)}
 												</div>
 												{task.dueDate && (
-													<div className="mt-1 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+													<div
+														className="mt-1 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap"
+														// Start under the title: skip the ring slot plus the title row gap-2.
+														style={progressSlotDigits > 0 ? { paddingLeft: `calc(${progressSlotWidth} + 0.5rem)` } : undefined}
+													>
 														Due: <StoredDate value={task.dueDate} dateFormat={dateFormat} />
 													</div>
 												)}
@@ -962,7 +966,7 @@ const TaskList: React.FC<TaskListProps> = ({
 														{visibleLabels.map((label) => (
 															<span
 																key={label}
-																className="inline-flex max-w-[7rem] truncate rounded-circle bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700 dark:bg-gray-700 dark:text-gray-200"
+																className="inline-block min-w-0 max-w-[7rem] truncate rounded-circle bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700 dark:bg-gray-700 dark:text-gray-200"
 																title={label}
 															>
 																{label}
