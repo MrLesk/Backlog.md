@@ -5099,7 +5099,7 @@ addHelpSchema(decisionCmd.command("edit <decisionId>"), {
 		{ name: "status", type: "String", description: "New decision status; free-form" },
 	],
 	optional: [{ name: "plain", type: "Boolean", description: "Use plain text output" }],
-	writes: "Replaces the status line in the decision's frontmatter; the rest of the file stays as it is",
+	writes: "Updates decision status; legacy sections gain markers in place and other content is preserved",
 	output: "Updated decision ID",
 	examples: ["backlog decision edit decision-1 -s superseded"],
 })
@@ -5117,8 +5117,8 @@ addHelpSchema(decisionCmd.command("edit <decisionId>"), {
 		}
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const id = await core.updateDecisionStatus(decisionId, options.status);
-		console.log(`Updated decision ${id}`);
+		const decision = await core.updateDecisionFromInput(decisionId, { status: options.status });
+		console.log(`Updated decision ${decision.id}`);
 	});
 
 addHelpSchema(decisionCmd.command("archive <decisionId>"), {

@@ -16,7 +16,15 @@ const STATUS_FLAG = "-s";
 // Decision dates come from the run clock; nothing here depends on a particular date.
 const TODAY = new Date().toISOString().slice(0, 10);
 
-const REFUSAL = "Cannot change the status of decision-1 without changing other content";
+const REFUSAL = "Cannot save decision-1:";
+
+// Legacy migration may add marker lines; every other source byte must still match.
+function withoutDecisionMarkers(content: string): string {
+	return content
+		.replace(/\r?\n<!-- SECTION:([A-Z_]+):BEGIN -->\r?\n<!-- SECTION:\1:END -->$/, "")
+		.replace(/\r?\n<!-- SECTION:(?:CONTEXT|DECISION|CONSEQUENCES|ALTERNATIVES):END -->$/, "")
+		.replace(/^<!-- SECTION:(?:CONTEXT|DECISION|CONSEQUENCES|ALTERNATIVES):(?:BEGIN|END) -->\r?\n/gm, "");
+}
 
 let TEST_DIR: string;
 let decisionsDir: string;
@@ -145,9 +153,8 @@ describe("changing a decision's status from the CLI", () => {
 		]);
 	});
 
-	it("changes only the status line of a decision the serializer cannot write back", async () => {
-		// An extra frontmatter key, a nested heading and an unrecognised section are all lost when a
-		// decision is parsed and serialized again.
+	it("preserves metadata and unmanaged sections when the first status edit adds markers", async () => {
+		// This was the original content-loss case; migration must only add markers around known sections.
 		const original = [
 			"---",
 			"id: decision-1",
@@ -185,22 +192,28 @@ describe("changing a decision's status from the CLI", () => {
 
 		const result = await changeStatus("decision-1", "superseded");
 		expect(result.exitCode).toBe(0);
-		expect((await readFile(filepath)).toString()).toBe(expected);
+		expect(withoutDecisionMarkers((await readFile(filepath)).toString())).toBe(expected);
 
-		// Setting the status it already has changes nothing.
+		// Once migrated, setting the same status changes no bytes.
+		const migrated = await readFile(filepath, "utf8");
 		expect((await changeStatus("decision-1", "superseded")).exitCode).toBe(0);
-		expect((await readFile(filepath)).toString()).toBe(expected);
+		expect(await readFile(filepath, "utf8")).toBe(migrated);
 	});
 
-	it.each(replacedCases)("replaces the status line and keeps every other byte: $name", async ({ before, after }) => {
-		const filepath = await writeDecisionFile("decision-1 - Case.md", before);
+	it.each(replacedCases)(
+		"replaces the status line and preserves other bytes apart from migration markers: $name",
+		async ({ before, after }) => {
+			const filepath = await writeDecisionFile("decision-1 - Case.md", before);
 
-		const result = await changeStatus("decision-1", "superseded");
+			const result = await changeStatus("decision-1", "superseded");
 
-		expect(result.exitCode).toBe(0);
-		expect((await readFile(filepath)).toString()).toBe(after);
-		expect((await cli("decision", "list", "--plain")).stdout.toString()).toBe("decision-1 - Case (superseded)\n");
-	});
+			expect(result.exitCode).toBe(0);
+			const saved = await readFile(filepath, "utf8");
+			expect(withoutDecisionMarkers(saved)).toBe(after);
+			if (before.includes("\r\n")) expect(saved.replace(/\r\n/g, "")).not.toContain("\n");
+			expect((await cli("decision", "list", "--plain")).stdout.toString()).toBe("decision-1 - Case (superseded)\n");
+		},
+	);
 
 	it("takes a free-form status and the ID forms other decision lookups take", async () => {
 		await cli("decision", "create", "Use Postgres", "-s", "accepted");
@@ -275,7 +288,7 @@ describe("changing a decision's status from the CLI", () => {
 
 		expect((await cli("decision", "restore", "decision-1")).exitCode).toBe(0);
 		expect((await changeStatus("decision-1", "superseded")).exitCode).toBe(0);
-		expect(await readFile(join(decisionsDir, filename), "utf8")).toBe(
+		expect(withoutDecisionMarkers(await readFile(join(decisionsDir, filename), "utf8"))).toBe(
 			original.replace("status: accepted", "status: superseded"),
 		);
 	});
@@ -337,7 +350,7 @@ describe("changing a decision's status from the CLI", () => {
 		expect((await changeStatus("decision-1", "superseded")).exitCode).toBe(0);
 
 		expect((await lstat(link)).isSymbolicLink()).toBe(true);
-		expect(await readFile(target, "utf8")).toBe(
+		expect(withoutDecisionMarkers(await readFile(target, "utf8"))).toBe(
 			"---\nid: decision-1\ntitle: Shared\nstatus: superseded\n---\n\n## Context\n",
 		);
 	});
@@ -380,7 +393,7 @@ describe("changing a decision's status from the CLI", () => {
 		);
 		expect(help).toContain("Optional fields:\n  - plain: Boolean - Use plain text output");
 		expect(help).toContain(
-			"Writes:\n  - Replaces the status line in the decision's frontmatter; the rest of the file stays as it is",
+			"Writes:\n  - Updates decision status; legacy sections gain markers in place and other content is preserved",
 		);
 		expect(help).toContain("Output:\n  - Updated decision ID");
 		expect(help).toContain(`Examples:\n  backlog ${command} decision-1 ${STATUS_FLAG} superseded`);

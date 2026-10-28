@@ -790,7 +790,7 @@ backlog doc delete doc-1
 
 ### Decision Management
 
-Decisions are records of choices, kept in `backlog/decisions/`. The CLI creates and lists decisions, changes only their status, and archives, restores, and deletes them; MCP has no decision tools.
+Decisions are records of choices, kept in `backlog/decisions/`. The CLI creates and lists decisions, changes their status, and archives, restores, and deletes them; MCP has no decision tools. The first edit adds section markers in place. Unknown metadata and text outside the four managed sections stay unchanged. Duplicate known section headings must be resolved before saving. Auto-commit refuses edits when a decision links to content outside the Git repository; disable auto-commit for that edit.
 
 ```bash
 # Create a decision and list the decisions

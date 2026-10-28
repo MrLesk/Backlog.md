@@ -257,3 +257,68 @@ export function preprocessFrontmatter(frontmatter: string): string {
 		})
 		.join("\n"); // Always join with \n for consistent YAML parsing
 }
+
+/** Change decision metadata without rewriting untouched source. Status retains its plain-entry contract. */
+export function updateDecisionFrontmatter(content: string, updates: Record<string, unknown>): string {
+	const original = parseFrontmatter(preprocessFrontmatter(content)).data;
+	const expected = { ...original };
+	const lines = content.split(/(?<=\n)/);
+	const newline = lines[0]?.endsWith("\r\n") ? "\r\n" : "\n";
+	for (const [key, value] of Object.entries(updates)) {
+		if (isDeepStrictEqual(original[key], value)) continue;
+		if (value === undefined) delete expected[key];
+		else expected[key] = value;
+		const closingIndex = lines.findIndex((line, index) => index > 0 && line.startsWith("---"));
+		if (key !== "status" && closingIndex > 0) {
+			// Other metadata uses the existing YAML writer, preserving every entry it does not own.
+			let serialized: string;
+			try {
+				serialized = stringifyFrontmatter("", { [key]: value }, lines.join(""));
+			} catch (error) {
+				if (!(error instanceof FrontmatterReferenceError)) throw error;
+				throw new FrontmatterReferenceError(
+					original.id,
+					"the update would change preserved metadata or break a YAML reference",
+					{ cause: error },
+				);
+			}
+			const metadata = serialized
+				.slice(serialized.indexOf("\n") + 1, serialized.lastIndexOf("\n---"))
+				.replace(/\r$/, "");
+			const entries = metadata.replace(/\r?\n/g, newline) + newline;
+			// Keep the original delimiters, including their BOM, line endings and body separator.
+			lines.splice(1, closingIndex - 1, ...entries.split(/(?<=\n)/));
+			continue;
+		}
+		const entryIndex = lines.findIndex((line, index) => index < closingIndex && new RegExp(`^${key}\\s*:`).test(line));
+		if (closingIndex < 0 || entryIndex < 0) {
+			throw new FrontmatterReferenceError(
+				original.id,
+				`the "${key}" entry cannot be changed without rewriting other metadata`,
+			);
+		}
+		const prefix = lines[entryIndex]?.match(new RegExp(`^${key}\\s*:[ \\t]*`))?.[0] ?? `${key}: `;
+		let entryEnd = entryIndex + 1;
+		while (entryEnd < closingIndex && /^[ \t]/.test(lines[entryEnd] ?? "")) entryEnd++;
+		const replacement =
+			value === undefined
+				? []
+				: stringifyFrontmatter("", { [key]: value })
+						.replace(new RegExp(`^${key}: `, "m"), prefix)
+						.trimEnd()
+						.split("\n")
+						.slice(1, -1)
+						.map((line) => line + newline);
+		lines.splice(entryIndex, entryEnd - entryIndex, ...replacement);
+	}
+	const updated = lines.join("");
+	try {
+		if (isDeepStrictEqual(parseFrontmatter(preprocessFrontmatter(updated)).data, expected)) return updated;
+	} catch {
+		// Removing an anchor or changing an alias must fail before any source is written.
+	}
+	throw new FrontmatterReferenceError(
+		original.id,
+		"the update would change preserved metadata or break a YAML reference",
+	);
+}

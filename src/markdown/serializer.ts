@@ -1,11 +1,15 @@
 import type { AcceptanceCriterion, Decision, Document, Task } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
-import { stringifyFrontmatter } from "./frontmatter.ts";
+import { stringifyFrontmatter, updateDecisionFrontmatter } from "./frontmatter.ts";
+import { parseDecision } from "./parser.ts";
 import {
 	AcceptanceCriteriaManager,
 	CommentsManager,
+	DECISION_SECTION_KEYS,
 	DefinitionOfDoneManager,
+	getDecisionSections,
 	getStructuredSections,
+	updateDecisionSections,
 	updateStructuredSections,
 } from "./structured-sections.ts";
 
@@ -125,22 +129,27 @@ export function serializeTask(task: Task, originalContent = ""): string {
 }
 
 export function serializeDecision(decision: Decision, originalContent = ""): string {
-	const frontmatter = {
-		id: decision.id,
-		title: decision.title,
-		date: decision.date,
-		status: decision.status,
-	};
-
-	let content = `## Context\n\n${decision.context}\n\n`;
-	content += `## Decision\n\n${decision.decision}\n\n`;
-	content += `## Consequences\n\n${decision.consequences}`;
-
-	if (decision.alternatives) {
-		content += `\n\n## Alternatives\n\n${decision.alternatives}`;
+	const frontmatter = { id: decision.id, title: decision.title, date: decision.date, status: decision.status };
+	// Keep the entire original header and body. parseMarkdown intentionally trims bodies for readers.
+	const header = originalContent.match(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---[^\r\n]*(?:\r?\n|$)/)?.[0] ?? "";
+	const originalBody = originalContent ? originalContent.slice(header.length) : decision.rawContent;
+	const sections = getDecisionSections(originalBody);
+	const updates: Partial<Record<(typeof DECISION_SECTION_KEYS)[number], string>> = {};
+	for (const key of DECISION_SECTION_KEYS) {
+		if (decision[key] !== undefined && (!originalContent || decision[key] !== (sections[key] ?? "")))
+			updates[key] = decision[key];
 	}
+	const newline = (header || originalBody).includes("\r\n") ? "\r\n" : "\n";
+	const body = updateDecisionSections(originalBody, updates, newline);
+	if (!originalContent) return stringifyFrontmatter(body, frontmatter);
 
-	return stringifyFrontmatter(content, frontmatter, originalContent);
+	const previous = parseDecision(originalContent.replace(/^\uFEFF/, ""));
+	const metadataUpdates: Record<string, unknown> = {};
+	for (const key of ["id", "title", "date", "status"] as const) {
+		if (decision[key] !== previous[key]) metadataUpdates[key] = decision[key];
+	}
+	const updatedHeader = updateDecisionFrontmatter(header, metadataUpdates);
+	return updatedHeader + body;
 }
 
 export function serializeDocument(document: Document, originalContent = ""): string {

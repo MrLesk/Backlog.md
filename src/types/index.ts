@@ -215,6 +215,15 @@ export interface DecisionCreateInput {
 	status?: string;
 }
 
+export interface DecisionUpdateInput {
+	title?: string;
+	status?: string;
+	context?: string;
+	decision?: string;
+	consequences?: string;
+	alternatives?: string;
+}
+
 export interface Decision {
 	id: string;
 	title: string;

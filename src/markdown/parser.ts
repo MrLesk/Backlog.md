@@ -7,6 +7,7 @@ import {
 	CommentsManager,
 	DefinitionOfDoneManager,
 	extractStructuredSection,
+	getDecisionSections,
 	STRUCTURED_SECTION_KEYS,
 } from "./structured-sections.ts";
 
@@ -141,16 +142,17 @@ export function parseTask(content: string): Task {
 
 export function parseDecision(content: string): Decision {
 	const { frontmatter, content: rawContent } = parseMarkdown(content, ["date"]);
+	const sections = getDecisionSections(rawContent);
 
 	return {
 		id: String(frontmatter.id || ""),
 		title: String(frontmatter.title || ""),
 		date: normalizeDate(frontmatter.date),
 		status: String(frontmatter.status || "proposed") as Decision["status"],
-		context: extractSection(rawContent, "Context") || "",
-		decision: extractSection(rawContent, "Decision") || "",
-		consequences: extractSection(rawContent, "Consequences") || "",
-		alternatives: extractSection(rawContent, "Alternatives"),
+		context: sections.context ?? "",
+		decision: sections.decision ?? "",
+		consequences: sections.consequences ?? "",
+		alternatives: sections.alternatives,
 		rawContent, // Raw markdown content without frontmatter
 	};
 }

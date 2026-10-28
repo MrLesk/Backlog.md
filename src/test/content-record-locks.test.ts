@@ -34,7 +34,7 @@ describe("document and decision mutation locks", () => {
 	async function update(kind: ContentRecordKind) {
 		return kind === "document"
 			? core.updateDocumentFromInput({ id: "doc-1", content: "Changed" })
-			: core.updateDecisionStatus("decision-1", "accepted");
+			: core.updateDecisionFromInput("decision-1", { status: "accepted" });
 	}
 
 	it.each(["document", "decision"] as const)("refuses competing %s CLI, HTTP, and lifecycle writes", async (kind) => {
@@ -61,8 +61,8 @@ describe("document and decision mutation locks", () => {
 			const route = kind === "document" ? "docs" : "decisions";
 			const response = await fetch(`http://127.0.0.1:${server.getPort()}/api/${route}/${id}`, {
 				method: "PUT",
-				headers: { "Content-Type": kind === "document" ? "application/json" : "text/plain" },
-				body: kind === "document" ? JSON.stringify({ content: "Changed" }) : "## Context\n\nChanged",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(kind === "document" ? { content: "Changed" } : { context: "Changed" }),
 			});
 			expect(response.status).toBe(409);
 			expect((await response.json()).error).toContain(busy);
@@ -124,8 +124,8 @@ describe("document and decision mutation locks", () => {
 							second.updateDocumentFromInput({ id: "doc-1", tags: ["new"], content: "Original" }),
 						]
 					: [
-							first.updateDecisionFromContent("decision-1", "## Context\n\nNew context"),
-							second.updateDecisionStatus("decision-1", "accepted"),
+							first.updateDecisionFromInput("decision-1", { context: "New context" }),
+							second.updateDecisionFromInput("decision-1", { status: "accepted" }),
 						],
 			);
 			expect(results.some((result) => result.status === "fulfilled")).toBe(true);
@@ -149,7 +149,7 @@ describe("document and decision mutation locks", () => {
 			if (kind === "document") {
 				await other.updateDocumentFromInput({ id: "doc-1", content: "Original", tags: ["saved first"] });
 			} else {
-				await other.updateDecisionFromContent("decision-1", "## Context\n\nSaved first");
+				await other.updateDecisionFromInput("decision-1", { context: "Saved first" });
 			}
 			return originalLock(lockedKind, record, operation);
 		};

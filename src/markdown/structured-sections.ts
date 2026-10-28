@@ -23,6 +23,17 @@ const SECTION_CONFIG: Record<StructuredSectionKey, SectionConfig> = {
 	finalSummary: { title: "Final Summary", markerId: "FINAL_SUMMARY" },
 };
 
+export const DECISION_SECTION_KEYS = ["context", "decision", "consequences", "alternatives"] as const;
+export type DecisionSectionKey = (typeof DECISION_SECTION_KEYS)[number];
+const DECISION_SECTION_CONFIG: Record<DecisionSectionKey, SectionConfig> = {
+	context: { title: "Context", markerId: "CONTEXT" },
+	decision: { title: "Decision", markerId: "DECISION" },
+	consequences: { title: "Consequences", markerId: "CONSEQUENCES" },
+	alternatives: { title: "Alternatives", markerId: "ALTERNATIVES" },
+};
+const MARKED_SECTION_CONFIG = { ...SECTION_CONFIG, ...DECISION_SECTION_CONFIG };
+type MarkedSectionKey = StructuredSectionKey | DecisionSectionKey;
+
 const SECTION_INSERTION_ORDER: StructuredSectionKey[] = [
 	"description",
 	"implementationPlan",
@@ -235,15 +246,15 @@ function escapeForRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function getConfig(key: StructuredSectionKey): SectionConfig {
-	return SECTION_CONFIG[key];
+function getConfig(key: MarkedSectionKey): SectionConfig {
+	return MARKED_SECTION_CONFIG[key];
 }
 
-function getBeginMarker(key: StructuredSectionKey): string {
+function getBeginMarker(key: MarkedSectionKey): string {
 	return `<!-- SECTION:${getConfig(key).markerId}:BEGIN -->`;
 }
 
-function getEndMarker(key: StructuredSectionKey): string {
+function getEndMarker(key: MarkedSectionKey): string {
 	return `<!-- SECTION:${getConfig(key).markerId}:END -->`;
 }
 
@@ -507,7 +518,7 @@ interface SentinelBlock {
  * markers were nested by pre-fix writes still resolves to one block containing
  * its full interior instead of hiding everything after the first END line.
  */
-function findSentinelBlocks(content: string, key: StructuredSectionKey): SentinelBlock[] {
+function findSentinelBlocks(content: string, key: MarkedSectionKey): SentinelBlock[] {
 	const heading = `## ${getConfig(key).title}`.toLowerCase();
 	const begin = getBeginMarker(key);
 	const end = getEndMarker(key);
@@ -550,15 +561,18 @@ function findSentinelBlocks(content: string, key: StructuredSectionKey): Sentine
 /**
  * Rejects section input that contains the target section's own sentinel marker
  * as a whole line: wrapping such a payload would nest markers and hide content
- * from every reader. Inline mentions and other sections' markers stay legal.
+ * from every reader. Inline mentions stay legal. Task sections allow other sections' markers;
+ * decision inputs reserve every SECTION marker line.
  */
-export function assertSectionInputHasNoMarkerLines(value: string | undefined, key: StructuredSectionKey): void {
+export function assertSectionInputHasNoMarkerLines(value: string | undefined, key: MarkedSectionKey): void {
 	if (typeof value !== "string" || value.length === 0) return;
 	const begin = getBeginMarker(key);
 	const end = getEndMarker(key);
 	for (const line of value.replace(/\r\n/g, "\n").split("\n")) {
 		const trimmed = line.trimEnd();
-		if (trimmed !== begin && trimmed !== end) continue;
+		const reserved =
+			key in DECISION_SECTION_CONFIG ? SECTION_SENTINEL_LINE_REGEX.test(trimmed) : trimmed === begin || trimmed === end;
+		if (!reserved) continue;
 		throw new Error(
 			`${getConfig(key).title} content cannot contain the reserved marker line "${trimmed}". Indent it with a space to include it as literal text.`,
 		);
@@ -1519,4 +1533,143 @@ export class DefinitionOfDoneManager {
 	static migrateToStableFormat(content: string): string {
 		return migrateChecklistToStableFormat(content, DEFINITION_OF_DONE_DEFINITION);
 	}
+}
+
+export class AmbiguousDecisionSectionError extends Error {
+	constructor(title: string) {
+		super(`Cannot save decision: more than one ${title} section exists. Keep one managed section before saving.`);
+	}
+}
+
+interface DecisionSectionRange {
+	key: DecisionSectionKey;
+	bodyStart: number;
+	bodyEnd: number;
+	marked: boolean;
+}
+
+/** Markdown headings, not heading-shaped lines in fenced code, delimit legacy decision sections. */
+function decisionSectionRanges(content: string): DecisionSectionRange[] {
+	const blocks = DECISION_SECTION_KEYS.flatMap((key) =>
+		findSentinelBlocks(content, key).map((block) => ({ ...block, key })),
+	);
+	const headings: Array<{ start: number; end: number }> = [];
+	let offset = 0;
+	while (offset < content.length) {
+		const heading = fromMarkdown(content.slice(offset)).children.find(
+			(node) => node.type === "heading" && node.depth === 2,
+		);
+		if (!heading?.position) break;
+		const start = offset + (heading.position.start.offset ?? 0);
+		const end = offset + (heading.position.end.offset ?? 0);
+		headings.push({ start, end });
+		// A marked body owns its Markdown, including unfinished fences. Resume parsing after its END.
+		offset = blocks.find((block) => block.start === start)?.end ?? end;
+	}
+	const ranges: DecisionSectionRange[] = [];
+	for (const [index, heading] of headings.entries()) {
+		const title = content.slice(heading.start, heading.end).trimEnd().toLowerCase();
+		const key = DECISION_SECTION_KEYS.find((key) => title === `## ${getConfig(key).title}`.toLowerCase());
+		if (!key) continue;
+		const block = blocks.find((block) => block.start === heading.start && block.key === key);
+		const newline = content.indexOf("\n", heading.end);
+		ranges.push({
+			key,
+			bodyStart: block?.bodyStart ?? (newline < 0 ? content.length : newline + 1),
+			bodyEnd: block?.bodyEnd ?? headings[index + 1]?.start ?? content.length,
+			marked: block !== undefined,
+		});
+	}
+	return ranges;
+}
+
+function assertUniqueDecisionSections(ranges: DecisionSectionRange[]): void {
+	const seen = new Set<DecisionSectionKey>();
+	for (const { key } of ranges) {
+		if (seen.has(key)) throw new AmbiguousDecisionSectionError(getConfig(key).title);
+		seen.add(key);
+	}
+}
+
+/** Raw editors must validate structure before extraction can hide a pasted delimiter or duplicate section. */
+export function assertDecisionEditorStructure(original: string, edited: string): void {
+	const markerLines = (source: string) =>
+		source
+			.split("\n")
+			.map((line) => line.trimEnd())
+			.filter((line) => SECTION_SENTINEL_LINE_REGEX.test(line))
+			.join("\n");
+	if (markerLines(original) !== markerLines(edited)) {
+		throw new Error("Keep decision section marker lines unchanged and edit only the section text.");
+	}
+	assertUniqueDecisionSections(decisionSectionRanges(edited));
+}
+
+/** Read section fields without exposing the stored marker lines. Duplicate headings are refused on write. */
+export function getDecisionSections(content: string): Partial<Record<DecisionSectionKey, string>> {
+	const sections: Partial<Record<DecisionSectionKey, string>> = {};
+	for (const range of decisionSectionRanges(content)) {
+		sections[range.key] ??= content.slice(range.bodyStart, range.bodyEnd).replace(/\r\n/g, "\n").trim();
+	}
+	return sections;
+}
+
+/** Hide only structural marker lines when displaying the complete decision body. */
+export function stripDecisionSectionMarkers(content: string): string {
+	let result = content;
+	for (const range of decisionSectionRanges(content)
+		.filter((range) => range.marked)
+		.reverse()) {
+		const endOfMarker = content.indexOf("\n", range.bodyEnd);
+		result = result.slice(0, range.bodyEnd) + result.slice(endOfMarker < 0 ? content.length : endOfMarker + 1);
+		const beginOfMarker = content.lastIndexOf("\n", range.bodyStart - 2) + 1;
+		result = result.slice(0, beginOfMarker) + result.slice(range.bodyStart);
+	}
+	return result;
+}
+
+/** Migrate legacy sections in place, then replace only named bodies. All outside source stays byte-for-byte. */
+export function updateDecisionSections(
+	content: string,
+	updates: Partial<Record<DecisionSectionKey, string>>,
+	newline: "\n" | "\r\n",
+): string {
+	const ranges = decisionSectionRanges(content);
+	assertUniqueDecisionSections(ranges);
+	const edits: Array<{ start: number; end: number; text: string }> = [];
+	let appended = "";
+	for (const key of DECISION_SECTION_KEYS) {
+		const value = updates[key];
+		assertSectionInputHasNoMarkerLines(value, key);
+		const matching = ranges.filter((range) => range.key === key);
+		const range = matching[0];
+		const body = value === undefined ? undefined : value.replace(/\r\n/g, "\n").replace(/\n/g, newline);
+		const terminated = (text: string) => (text && !text.endsWith("\n") ? text + newline : text);
+		if (!range) {
+			if (body !== undefined) {
+				appended += `## ${getConfig(key).title}${newline}${newline}${getBeginMarker(key)}${newline}${terminated(body)}${getEndMarker(key)}${newline}${newline}`;
+			}
+			continue;
+		}
+		if (range.marked) {
+			if (body !== undefined) edits.push({ start: range.bodyStart, end: range.bodyEnd, text: terminated(body) });
+			continue;
+		}
+		const existingBody = content.slice(range.bodyStart, range.bodyEnd);
+		// Wrapping a pre-existing marker line would give the text a new structural meaning.
+		assertSectionInputHasNoMarkerLines(existingBody, key);
+		const prefix = range.bodyStart > 0 && content[range.bodyStart - 1] !== "\n" ? newline : "";
+		edits.push({
+			start: range.bodyStart,
+			end: range.bodyEnd,
+			text: `${prefix}${getBeginMarker(key)}${newline}${terminated(body ?? existingBody)}${getEndMarker(key)}${range.bodyEnd === content.length && !content.endsWith("\n") ? "" : newline}`,
+		});
+	}
+	let result = content;
+	for (const edit of edits.sort((left, right) => right.start - left.start)) {
+		result = result.slice(0, edit.start) + edit.text + result.slice(edit.end);
+	}
+	if (appended)
+		result += `${result && !result.endsWith(newline + newline) ? (result.endsWith(newline) ? newline : newline + newline) : ""}${appended}`;
+	return result;
 }
