@@ -339,7 +339,7 @@ describe("a title change moves only the file the record was loaded from", () => 
 		expect(await readdir(OUTSIDE_DIR)).toEqual([]);
 	});
 
-	// Decisions have no update command; the web UI saves them through this Core method.
+	// Title changes use the shared core update path.
 	it("decision: renames its own file and keeps another record that shares its number", async () => {
 		const other = await createGuideAndRecordSharingItsNumber(DECISION);
 

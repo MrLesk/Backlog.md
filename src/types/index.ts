@@ -213,6 +213,10 @@ export interface TaskListFilter {
 export interface DecisionCreateInput {
 	title: string;
 	status?: string;
+	context?: string;
+	decision?: string;
+	consequences?: string;
+	alternatives?: string;
 }
 
 export interface DecisionUpdateInput {

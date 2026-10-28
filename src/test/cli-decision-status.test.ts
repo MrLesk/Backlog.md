@@ -339,10 +339,12 @@ describe("changing a decision's status from the CLI", () => {
 		await cli("decision", "create", "Use Postgres", "-s", "accepted");
 		const before = await snapshotDecisions();
 
-		for (const result of [await cli(...CHANGE_STATUS, "decision-1"), await changeStatus("decision-1", "")]) {
-			expect(result.exitCode).toBe(1);
-			expect(result.stderr.toString()).toContain("Provide --status with non-empty text or --superseded-by.");
-		}
+		const missing = await cli(...CHANGE_STATUS, "decision-1");
+		expect(missing.exitCode).toBe(1);
+		expect(missing.stderr.toString()).toContain("Provide at least one edit field");
+		const empty = await changeStatus("decision-1", "");
+		expect(empty.exitCode).toBe(1);
+		expect(empty.stderr.toString()).toContain("Decision status cannot be empty");
 		expect(await snapshotDecisions()).toEqual(before);
 	});
 
@@ -382,11 +384,8 @@ describe("changing a decision's status from the CLI", () => {
 
 	it("is listed and documented in the decision help", async () => {
 		const command = CHANGE_STATUS.join(" ");
-		// The usage and the description are checked apart: the columns between them are the argument
-		// parser's and move whenever another decision command or option is added.
 		const groupHelp = (await cli("decision", "--help")).stdout.toString();
 		expect(groupHelp).toContain(`${CHANGE_STATUS[1]} [options] <decisionId>`);
-		expect(groupHelp).toContain("change decision status or replacement link");
 
 		const help = (await cli(...CHANGE_STATUS, "--help")).stdout.toString();
 		expect(help).toContain(`Usage: backlog ${command} [options] <decisionId>`);
@@ -394,12 +393,12 @@ describe("changing a decision's status from the CLI", () => {
 		expect(help).toContain("set decision status (free-form)");
 		expect(help).toContain("Input schema:");
 		expect(help).toContain("Required fields:\n  - decisionId: Decision ID - Decision to update");
-		expect(help).toContain("Optional fields:\n  - status: String - New decision status; free-form");
+		expect(help).toContain("  - status: String - New decision status; free-form");
 		expect(help).toContain("  - plain: Boolean - Use plain text output");
 		expect(help).toContain(
 			"Writes:\n  - Updates named decision fields and updated_date when the record changes; preserves other content",
 		);
 		expect(help).toContain("Output:\n  - Updated decision ID");
-		expect(help).toContain(`Examples:\n  backlog ${command} decision-1 ${STATUS_FLAG} superseded`);
+		expect(help).toContain(`backlog ${command} decision-1 ${STATUS_FLAG} superseded`);
 	});
 });

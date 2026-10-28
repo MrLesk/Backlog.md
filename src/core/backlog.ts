@@ -427,6 +427,34 @@ function assertSectionInputsSafe(input: {
  */
 export class RecordRefusedError extends Error {}
 
+/** Shared field and marker validation for decision creation and partial updates. */
+function assertDecisionInput(input: DecisionCreateInput | DecisionUpdateInput, operation: "create" | "update"): void {
+	if (!input || typeof input !== "object" || Array.isArray(input)) {
+		throw new RecordRefusedError(`Decision ${operation} must be a JSON object.`);
+	}
+	const allowed = new Set<string>([
+		"title",
+		"status",
+		...DECISION_SECTION_KEYS,
+		...(operation === "update" ? ["supersededBy"] : []),
+	]);
+	for (const [key, value] of Object.entries(input)) {
+		if (!allowed.has(key) || (value !== undefined && typeof value !== "string")) {
+			throw new RecordRefusedError(`Invalid decision field: ${key}. Expected text for ${[...allowed].join(", ")}.`);
+		}
+	}
+	if ((operation === "create" && input.title === undefined) || (input.title !== undefined && !input.title.trim()))
+		throw new RecordRefusedError("Decision title cannot be empty.");
+	if (input.status !== undefined && !input.status) throw new RecordRefusedError("Decision status cannot be empty.");
+	for (const key of DECISION_SECTION_KEYS) {
+		try {
+			assertSectionInputHasNoMarkerLines(input[key], key);
+		} catch (error) {
+			throw new RecordRefusedError((error as Error).message);
+		}
+	}
+}
+
 function refuseBrokenFrontmatterReference(error: unknown): never {
 	if (error instanceof FrontmatterReferenceError) {
 		throw new RecordRefusedError(error.message, { cause: error });
@@ -4467,27 +4495,7 @@ export class Core {
 		input: DecisionUpdateInput,
 		autoCommit?: boolean,
 	): Promise<Decision> {
-		if (!input || typeof input !== "object" || Array.isArray(input)) {
-			throw new RecordRefusedError("Decision update must be a JSON object.");
-		}
-		const allowed = new Set<string>(["title", "status", "supersededBy", ...DECISION_SECTION_KEYS]);
-		for (const [key, value] of Object.entries(input)) {
-			if (!allowed.has(key) || (value !== undefined && typeof value !== "string")) {
-				throw new RecordRefusedError(
-					`Invalid decision field: ${key}. Expected text for title, status, supersededBy, context, decision, consequences or alternatives.`,
-				);
-			}
-		}
-		if (input.title !== undefined && !input.title.trim())
-			throw new RecordRefusedError("Decision title cannot be empty.");
-		if (input.status !== undefined && !input.status) throw new RecordRefusedError("Decision status cannot be empty.");
-		for (const key of DECISION_SECTION_KEYS) {
-			try {
-				assertSectionInputHasNoMarkerLines(input[key], key);
-			} catch (error) {
-				throw new RecordRefusedError((error as Error).message);
-			}
-		}
+		assertDecisionInput(input, "update");
 		const target = await this.getDecision(decisionId);
 		if (!target) throw new Error(`Decision ${decisionId} not found`);
 		return await this.fs.withContentRecordLock("decision", target, async () => {
@@ -4523,15 +4531,17 @@ export class Core {
 	}
 
 	async createDecisionFromInput(input: DecisionCreateInput, autoCommit?: boolean): Promise<Decision> {
+		assertDecisionInput(input, "create");
 		return await this.withCreateLock(async () => {
 			const decision: Decision = {
 				id: await generateNextDecisionId(this),
 				title: input.title,
 				date: formatUtcTimestamp(),
-				status: (input.status || "proposed") as Decision["status"],
-				context: "",
-				decision: "",
-				consequences: "",
+				status: (input.status ?? "proposed") as Decision["status"],
+				context: input.context ?? "",
+				decision: input.decision ?? "",
+				consequences: input.consequences ?? "",
+				alternatives: input.alternatives,
 				rawContent: "",
 			};
 
