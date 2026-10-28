@@ -81,7 +81,6 @@ import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-s
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { launchBrowser } from "./utils/browser-launch.ts";
 import { formatDependencyCleanupMessage } from "./utils/dependency-graph.ts";
-import { documentNotFoundMessage } from "./utils/document-id.ts";
 import {
 	type ContentIdentityReport,
 	type DraftIdentityFindings,
@@ -4852,15 +4851,10 @@ addHelpSchema(docCmd.command("update <docId>"), {
 	.action(async (docId: string, options) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const existingDocument = await core.getDocument(docId);
-		if (!existingDocument) {
-			throw new Error(documentNotFoundMessage(docId));
-		}
-
 		const document = await core.updateDocumentFromInput({
 			id: docId,
 			title: options.title,
-			content: options.content ?? existingDocument.rawContent,
+			content: options.content,
 			type: options.type,
 			path: options.path,
 			...(options.tags !== undefined && { tags: parseDelimitedStringList(options.tags) ?? [] }),
