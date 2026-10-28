@@ -254,6 +254,19 @@ export function taskViewJson(task: TaskDetail, projectRoot: string) {
 	};
 }
 
+export function decisionViewJson(decision: Decision) {
+	return {
+		schemaVersion: 1,
+		kind: "decision-view" as const,
+		decision: {
+			...toDecisionSummaryJson(decision),
+			updatedAt: normalizePublicDate(decision.updatedDate),
+			archived: Boolean(decision.archived),
+			content: decision.rawContent,
+		},
+	};
+}
+
 export function decisionListJson(decisions: Decision[], page?: ListPage<unknown>) {
 	return {
 		schemaVersion: 1,

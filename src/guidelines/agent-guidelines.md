@@ -790,12 +790,19 @@ backlog doc delete doc-1
 
 ### Decision Management
 
-Decisions are records of choices, kept in `backlog/decisions/`. The CLI creates and lists decisions, changes their status and replacement link, and archives, restores, and deletes them; MCP has no decision tools. The first edit adds section markers in place. Unknown metadata and text outside the four managed sections stay unchanged. Duplicate known section headings must be resolved before saving. Auto-commit refuses edits when a decision links to content outside the Git repository; disable auto-commit for that edit.
+Decisions are records of choices, kept in `backlog/decisions/`. The CLI creates, lists, views and edits decisions, and archives, restores, and deletes them; MCP has no decision tools. The first edit adds section markers in place. Unknown metadata and text outside the four managed sections stay unchanged. Duplicate known section headings must be resolved before saving. Auto-commit refuses edits when a decision links to content outside the Git repository; disable auto-commit for that edit.
 
 ```bash
 # Create a decision and list the decisions
-backlog decision create "Use PostgreSQL" -s accepted
+backlog decision create "Use PostgreSQL" -s accepted --context "Need transactions" --decision "Use PostgreSQL"
 backlog decision list --plain
+
+# Read an active or archived decision; JSON is also available
+backlog decision view decision-1 --plain
+backlog decision view decision-1 --json
+
+# Replace named sections or title; an empty section value clears it
+backlog decision edit decision-1 -t "Revised choice" --context $'First line\nSecond line' --alternatives ""
 
 # Change only a decision's status
 backlog decision edit decision-1 -s superseded
@@ -816,8 +823,9 @@ backlog decision restore decision-1
 backlog decision delete decision-1
 ```
 
+- Use `--context`, `--decision`, `--consequences` and `--alternatives` on create or edit. Each flag replaces one section; omitted flags preserve existing content. Multi-line values need real newlines, as in the bash/zsh example above. Literal `\n` is not decoded.
 - A replacement must identify one existing decision and cannot be the decision itself. Lists show the link. Changes set `updated_date`; unchanged saves keep it, and omitted links survive later edits.
-- Archiving keeps the ID reserved, so no new decision receives it. An archived decision leaves lists and search and is read-only until it is restored.
+- Archiving keeps the ID reserved, so no new decision receives it. An archived decision leaves lists and search, remains readable with `decision view`, and is read-only until it is restored.
 - Removing a decision takes two steps: archive, then delete. Delete works only on an archived decision, asks no question, removes the file and releases the ID once no other file and no committed file on any branch uses the number.
 - Archiving or deleting a decision changes no task. The command prints the tasks and drafts whose documentation list names the moved or removed file; update those entries yourself.
 

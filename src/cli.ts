@@ -30,8 +30,10 @@ import { initializeProject } from "./core/init.ts";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey } from "./core/milestones.ts";
 import { loadTaskDetail, loadTaskListItems } from "./core/task-detail.ts";
 import { isConfigValueError } from "./file-system/operations.ts";
+import { formatDecisionPlainText } from "./formatters/decision-plain-text.ts";
 import {
 	decisionListJson,
+	decisionViewJson,
 	draftListJson,
 	formatJson,
 	printJson,
@@ -58,6 +60,7 @@ import type { CallToolResult } from "./mcp/types.ts";
 import {
 	type BacklogConfig,
 	type ContentRecordKind,
+	type DecisionUpdateInput,
 	DOCUMENT_TYPE_VALUES,
 	type Document as DocType,
 	type DocumentSearchResult,
@@ -5072,65 +5075,136 @@ addHelpSchema(docCmd.command("view <docId>"), {
 
 const decisionCmd = program.command("decision");
 
-addHelpSchema(decisionCmd.command("create <title>"), {
-	required: [{ name: "title", type: "String", description: "Decision title" }],
-	optional: [
-		{ name: "status", type: "String", description: "Decision status; free-form, defaults to proposed" },
-		{ name: "plain", type: "Boolean", description: "Use plain text output" },
-	],
-	writes: "Creates a decision markdown file under the configured decisions directory",
-	output: "Created decision ID",
-	examples: ['backlog decision create "Adopt Bun test runner" -s accepted --plain'],
-})
+const decisionSectionHelpFields = [
+	{ name: "context", type: "Markdown", description: "Replace Context; empty text clears it, omission keeps it" },
+	{ name: "decision", type: "Markdown", description: "Replace Decision; empty text clears it, omission keeps it" },
+	{
+		name: "consequences",
+		type: "Markdown",
+		description: "Replace Consequences; empty text clears it, omission keeps it",
+	},
+	{
+		name: "alternatives",
+		type: "Markdown",
+		description: "Replace Alternatives; empty text clears it, omission keeps it",
+	},
+];
+
+function addDecisionSectionOptions(command: Command): Command {
+	return command
+		.option("--context <text>", "replace Context (multi-line: use real newlines); empty text clears it")
+		.option("--decision <text>", "replace Decision (multi-line: use real newlines); empty text clears it")
+		.option("--consequences <text>", "replace Consequences (multi-line: use real newlines); empty text clears it")
+		.option("--alternatives <text>", "replace Alternatives (multi-line: use real newlines); empty text clears it");
+}
+
+addDecisionSectionOptions(
+	addHelpSchema(decisionCmd.command("create <title>"), {
+		required: [{ name: "title", type: "String", description: "Decision title" }],
+		optional: [
+			{ name: "status", type: "String", description: "Decision status; free-form, defaults to proposed" },
+			...decisionSectionHelpFields,
+			{ name: "plain", type: "Boolean", description: "Use plain text output" },
+		],
+		writes: "Creates a decision markdown file; sections not given are empty",
+		output: "Created decision ID",
+		examples: [
+			'backlog decision create "Use PostgreSQL" --context "Need transactions" --decision "Use PostgreSQL" -s accepted',
+		],
+	}),
+)
 	.description("create a decision")
 	.option("-s, --status <status>", "set decision status (free-form, defaults to proposed)")
-	// Accepted so agent guidance that always passes --plain works; create output is already plain text.
 	.option("--plain", "use plain text output")
 	.action(async (title: string, options) => {
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		const decision = await core.createDecisionFromInput({ title, status: options.status });
+		const core = new Core(await requireProjectRoot());
+		const decision = await core.createDecisionFromInput({
+			title,
+			status: options.status,
+			context: options.context,
+			decision: options.decision,
+			consequences: options.consequences,
+			alternatives: options.alternatives,
+		});
 		console.log(`Created decision ${decision.id}`);
 	});
 
-addHelpSchema(decisionCmd.command("edit <decisionId>"), {
-	required: [{ name: "decisionId", type: "Decision ID", description: "Decision to update" }],
-	optional: [
-		{ name: "status", type: "String", description: "New decision status; free-form" },
-		{
-			name: "superseded-by",
-			type: "Decision ID",
-			description: "Existing replacement decision; empty value to clear; does not change status",
-		},
-		{ name: "plain", type: "Boolean", description: "Use plain text output" },
-	],
-	writes: "Updates named decision fields and updated_date when the record changes; preserves other content",
-	output: "Updated decision ID",
-	examples: [
-		"backlog decision edit decision-1 -s superseded --superseded-by decision-2",
-		'backlog decision edit decision-1 --superseded-by ""',
-	],
-})
-	.description("change decision status or replacement link")
+addDecisionSectionOptions(
+	addHelpSchema(decisionCmd.command("edit <decisionId>"), {
+		required: [{ name: "decisionId", type: "Decision ID", description: "Decision to update" }],
+		optional: [
+			{ name: "title", type: "String", description: "Replacement title" },
+			{ name: "status", type: "String", description: "New decision status; free-form" },
+			...decisionSectionHelpFields,
+			{
+				name: "superseded-by",
+				type: "Decision ID",
+				description: "Existing replacement decision; empty value to clear; does not change status",
+			},
+			{ name: "plain", type: "Boolean", description: "Use plain text output" },
+		],
+		writes: "Updates named decision fields and updated_date when the record changes; preserves other content",
+		output: "Updated decision ID",
+		examples: [
+			'backlog decision edit decision-1 -t "Revised choice" --context "New context" --alternatives ""',
+			"backlog decision edit decision-1 -s superseded --superseded-by decision-2",
+			'backlog decision edit decision-1 --superseded-by ""',
+		],
+	}),
+)
+	.description("edit decision content, title, status or replacement link")
+	.option("-t, --title <title>", "set decision title")
 	.option("-s, --status <status>", "set decision status (free-form)")
 	.option("--superseded-by <id>", "set the replacing decision; pass an empty value to clear")
-	// Accepted so agent guidance that always passes --plain works; edit output is already plain text.
 	.option("--plain", "use plain text output")
 	.action(async (decisionId: string, options) => {
-		if ((options.status === undefined && options.supersededBy === undefined) || options.status === "") {
+		const input: DecisionUpdateInput = {
+			title: options.title,
+			status: options.status,
+			supersededBy: options.supersededBy,
+			context: options.context,
+			decision: options.decision,
+			consequences: options.consequences,
+			alternatives: options.alternatives,
+		};
+		if (!Object.values(input).some((value) => value !== undefined)) {
 			console.error(
-				"Provide --status with non-empty text or --superseded-by. For example: backlog decision edit decision-1 --superseded-by decision-2",
+				'Provide at least one edit field. For example: backlog decision edit decision-1 --context "New context"',
 			);
 			process.exitCode = 1;
 			return;
 		}
-		const cwd = await requireProjectRoot();
-		const core = new Core(cwd);
-		const decision = await core.updateDecisionFromInput(decisionId, {
-			status: options.status,
-			supersededBy: options.supersededBy,
-		});
+		const core = new Core(await requireProjectRoot());
+		const decision = await core.updateDecisionFromInput(decisionId, input);
 		console.log(`Updated decision ${decision.id}`);
+	});
+
+addHelpSchema(decisionCmd.command("view <decisionId>"), {
+	reads: "Active or archived decision metadata and full Markdown content",
+	required: [{ name: "decisionId", type: "Decision ID", description: "Decision to display" }],
+	optional: [
+		{ name: "plain", type: "Boolean", description: "Use plain text output (the default)" },
+		{ name: "json", type: "Boolean", description: "Use versioned machine-readable JSON output" },
+	],
+	writes: "None; this is a read-only command",
+	output: "ID, title, date, status, replacement link, last update and content; archived records are marked read-only",
+	examples: ["backlog decision view decision-1 --plain", "backlog decision view decision-1 --json"],
+})
+	.description("view an active or archived decision")
+	.option("--plain", "use plain text output (the default)")
+	.option("--json", "print versioned machine-readable JSON output")
+	.action(async (decisionId: string, options) => {
+		const mode = getReadOutputMode(options);
+		if (!mode) return;
+		const core = new Core(await requireProjectRoot());
+		const decision = await core.getDecision(decisionId);
+		if (!decision) {
+			console.error(`Decision ${decisionId} not found.`);
+			process.exitCode = 1;
+			return;
+		}
+		if (mode === "json") printJson(decisionViewJson(decision));
+		else console.log(formatDecisionPlainText(decision));
 	});
 
 addHelpSchema(decisionCmd.command("archive <decisionId>"), {

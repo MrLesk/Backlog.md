@@ -16,11 +16,13 @@ Create a task when work requires planning, decisions, or handoff notes. Search f
 
 For long lists, use `--max-count` and `--skip`, follow the printed `Next` command, or use `--count` for the total; command help covers the details.
 
-For scripts, `task list`, `task view`, `task <id>`, `draft list`, `decision list`, and `search` accept versioned `--json` output instead of `--plain`. `task list --json --watch` emits complete replacement responses; read successive JSON values, not individual lines. Filters and local scope are unchanged; intermediate edits may be coalesced. Restart for a fresh snapshot.
+For scripts, `task list`, `task view`, `task <id>`, `draft list`, `decision list`, `decision view`, and `search` accept versioned `--json` output instead of `--plain`. `task list --json --watch` emits complete replacement responses; read successive JSON values, not individual lines. Filters and local scope are unchanged; intermediate edits may be coalesced. Restart for a fresh snapshot.
 
 ### Decision Records
 
-Use `backlog decision create "Title"` and `backlog decision list --plain` for decision records. To record a replacement, use `backlog decision edit decision-1 --superseded-by decision-2`; this leaves status unchanged, or combine it with `-s superseded`. The replacement must identify one existing decision and cannot be the decision itself. Pass `--superseded-by ""` to clear the link. Changes set `updated_date`; omitted fields, unknown metadata and unmanaged text stay intact. Run `backlog decision edit --help` for details.
+Create a decision with `backlog decision create "Title" --context "Why" --decision "The choice"`, then read it with `backlog decision view decision-1 --plain` or `--json`. `decision list --plain` lists active decisions; `decision view` also reads archived decisions. Use `backlog decision edit decision-1 -t "New title" --context "New context"` to update it. Create and edit accept `--context`, `--decision`, `--consequences` and `--alternatives`; each replaces a section, an empty value clears it, and omitted flags keep existing content. Multi-line values need real newlines, for example `--context $'First line\nSecond line'` in bash/zsh. Literal `\n` stays literal.
+
+To record a replacement, use `backlog decision edit decision-1 --superseded-by decision-2`; this leaves status unchanged, or combine it with `-s superseded`. The replacement must identify one existing decision and cannot be the decision itself. Pass `--superseded-by ""` to clear the link. Changes set `updated_date`; omitted fields, unknown metadata and unmanaged text stay intact. Run `backlog decision edit --help` for details.
 
 ### Required Guides
 
