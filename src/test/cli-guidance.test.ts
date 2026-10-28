@@ -43,7 +43,7 @@ describe("CLI Integration", () => {
 
 			expect(output).toContain("Backlog.md instructions");
 			expect(output).toContain("Start here:");
-			expect(output).toMatch(/'backlog instructions overview'\s+Required first read before answering any user request/);
+			expect(output).toMatch(/'backlog instructions overview'\s+Required first read before working on tracked tasks/);
 			expect(output).not.toMatch(/^\s+'backlog instructions'\s+List workflow guides/m);
 			expect(output).toContain("task-creation");
 			expect(output).toContain("task-execution");

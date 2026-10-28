@@ -75,7 +75,7 @@ const CLI_INSTRUCTION_TEXT_BY_KEY: Record<WorkflowGuideKey, string> = {
 export const INSTRUCTION_GUIDES: WorkflowGuideDefinition[] = [
 	...WORKFLOW_GUIDES.map((guide) => ({
 		...guide,
-		description: guide.key === "overview" ? "Required first read before answering any user request" : guide.description,
+		description: guide.key === "overview" ? "Required first read before working on tracked tasks" : guide.description,
 		resourceText: CLI_INSTRUCTION_TEXT_BY_KEY[guide.key],
 		toolText: undefined,
 	})),
