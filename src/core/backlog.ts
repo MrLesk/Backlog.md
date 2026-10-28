@@ -17,6 +17,7 @@ import {
 import { type GitBranchTip, type GitIndexEntry, GitOperations } from "../git/operations.ts";
 import { FrontmatterReferenceError } from "../markdown/frontmatter.ts";
 import { parseTask } from "../markdown/parser.ts";
+import { serializeDecision } from "../markdown/serializer.ts";
 import {
 	assertSectionInputHasNoMarkerLines,
 	assertValidChecklistMarks,
@@ -4469,11 +4470,11 @@ export class Core {
 		if (!input || typeof input !== "object" || Array.isArray(input)) {
 			throw new RecordRefusedError("Decision update must be a JSON object.");
 		}
-		const allowed = new Set<string>(["title", "status", ...DECISION_SECTION_KEYS]);
+		const allowed = new Set<string>(["title", "status", "supersededBy", ...DECISION_SECTION_KEYS]);
 		for (const [key, value] of Object.entries(input)) {
 			if (!allowed.has(key) || (value !== undefined && typeof value !== "string")) {
 				throw new RecordRefusedError(
-					`Invalid decision field: ${key}. Expected text for title, status, context, decision, consequences or alternatives.`,
+					`Invalid decision field: ${key}. Expected text for title, status, supersededBy, context, decision, consequences or alternatives.`,
 				);
 			}
 		}
@@ -4499,6 +4500,23 @@ export class Core {
 				...fields,
 				status: (input.status ?? existing.status) as Decision["status"],
 			};
+			if (input.supersededBy !== undefined) {
+				updated.supersededBy = undefined;
+				if (input.supersededBy !== "") {
+					const replacement = await this.getDecision(input.supersededBy);
+					if (!replacement) throw new RecordRefusedError(`Replacement decision ${input.supersededBy} not found.`);
+					if (decisionIdKey(replacement.id) === decisionIdKey(existing.id))
+						throw new RecordRefusedError("A decision cannot supersede itself.");
+					updated.supersededBy = decisionIdKey(replacement.id) ?? replacement.id;
+				}
+			}
+			// Compare the actual planned source so first-write marker migration also gets a timestamp.
+			const original = await readFile(this.fs.contentRecordFilePath("decision", existing), "utf8");
+			try {
+				if (serializeDecision(updated, original) !== original) updated.updatedDate = formatUtcTimestamp();
+			} catch (error) {
+				refuseBrokenFrontmatterReference(error);
+			}
 			await this.createDecision(updated, autoCommit);
 			return (await this.getDecision(updated.id)) ?? updated;
 		});

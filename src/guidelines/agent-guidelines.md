@@ -790,7 +790,7 @@ backlog doc delete doc-1
 
 ### Decision Management
 
-Decisions are records of choices, kept in `backlog/decisions/`. The CLI creates and lists decisions, changes their status, and archives, restores, and deletes them; MCP has no decision tools. The first edit adds section markers in place. Unknown metadata and text outside the four managed sections stay unchanged. Duplicate known section headings must be resolved before saving. Auto-commit refuses edits when a decision links to content outside the Git repository; disable auto-commit for that edit.
+Decisions are records of choices, kept in `backlog/decisions/`. The CLI creates and lists decisions, changes their status and replacement link, and archives, restores, and deletes them; MCP has no decision tools. The first edit adds section markers in place. Unknown metadata and text outside the four managed sections stay unchanged. Duplicate known section headings must be resolved before saving. Auto-commit refuses edits when a decision links to content outside the Git repository; disable auto-commit for that edit.
 
 ```bash
 # Create a decision and list the decisions
@@ -799,6 +799,12 @@ backlog decision list --plain
 
 # Change only a decision's status
 backlog decision edit decision-1 -s superseded
+
+# Set the replacement without changing status; combine with -s superseded when wanted
+backlog decision edit decision-1 --superseded-by decision-2
+
+# Clear the replacement link
+backlog decision edit decision-1 --superseded-by ""
 
 # Archive a decision that is no longer wanted (its file moves to backlog/archive/decisions/)
 backlog decision archive decision-1
@@ -810,6 +816,7 @@ backlog decision restore decision-1
 backlog decision delete decision-1
 ```
 
+- A replacement must identify one existing decision and cannot be the decision itself. Lists show the link. Changes set `updated_date`; unchanged saves keep it, and omitted links survive later edits.
 - Archiving keeps the ID reserved, so no new decision receives it. An archived decision leaves lists and search and is read-only until it is restored.
 - Removing a decision takes two steps: archive, then delete. Delete works only on an archived decision, asks no question, removes the file and releases the ID once no other file and no committed file on any branch uses the number.
 - Archiving or deleting a decision changes no task. The command prints the tasks and drafts whose documentation list names the moved or removed file; update those entries yourself.

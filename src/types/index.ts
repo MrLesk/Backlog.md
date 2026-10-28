@@ -218,6 +218,8 @@ export interface DecisionCreateInput {
 export interface DecisionUpdateInput {
 	title?: string;
 	status?: string;
+	/** Empty text clears the replacement link; omission preserves it. */
+	supersededBy?: string;
 	context?: string;
 	decision?: string;
 	consequences?: string;
@@ -228,6 +230,8 @@ export interface Decision {
 	id: string;
 	title: string;
 	date: string;
+	updatedDate?: string;
+	supersededBy?: string;
 	status: "proposed" | "accepted" | "rejected" | "superseded";
 	context: string;
 	decision: string;

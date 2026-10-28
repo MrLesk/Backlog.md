@@ -141,13 +141,15 @@ export function parseTask(content: string): Task {
 }
 
 export function parseDecision(content: string): Decision {
-	const { frontmatter, content: rawContent } = parseMarkdown(content, ["date"]);
+	const { frontmatter, content: rawContent } = parseMarkdown(content, ["date", "updated_date"]);
 	const sections = getDecisionSections(rawContent);
 
 	return {
 		id: String(frontmatter.id || ""),
 		title: String(frontmatter.title || ""),
 		date: normalizeDate(frontmatter.date),
+		updatedDate: frontmatter.updated_date ? normalizeDate(frontmatter.updated_date) : undefined,
+		supersededBy: frontmatter.superseded_by ? String(frontmatter.superseded_by) : undefined,
 		status: String(frontmatter.status || "proposed") as Decision["status"],
 		context: sections.context ?? "",
 		decision: sections.decision ?? "",

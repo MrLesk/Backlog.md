@@ -165,9 +165,11 @@ describe("decision section round trips", () => {
 			const first = await update({ status: "accepted" });
 			expect(first.context).toContain("## Revisit trigger\nInside code");
 			const migrated = await Bun.file(decisionPath).text();
-			expect(migrated.replace(/^<!-- SECTION:[A-Z_]+:(?:BEGIN|END) -->\r?\n/gm, "")).toBe(
-				original.replace("status: proposed", "status: accepted"),
-			);
+			expect(
+				migrated
+					.replace(/^updated_date:[^\r\n]*\r?\n/m, "")
+					.replace(/^<!-- SECTION:[A-Z_]+:(?:BEGIN|END) -->\r?\n/gm, ""),
+			).toBe(original.replace("status: proposed", "status: accepted"));
 			expect(migrated).toContain("<!-- SECTION:CONTEXT:BEGIN -->");
 			await update({ context: "Replacement" });
 			const saved = await Bun.file(decisionPath).text();

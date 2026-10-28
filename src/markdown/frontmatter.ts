@@ -64,10 +64,13 @@ export function stringifyFrontmatter(content: string, data: Record<string, unkno
 	const unknown = preserveUnknownFrontmatter(originalContent, new Set(Object.keys(data)));
 	// Passing a body object prevents gray-matter from interpreting a leading --- block as metadata.
 	const serialized = matter.stringify({ content }, ownedData, {});
-	if (!unknown.text) return serialized;
-	const preserved = serialized.replace(
+	if (!unknown.text && !unknown.prefix) return serialized;
+	// A clear-only update can have no owned values; still provide a header for preserved entries.
+	const withHeader = Object.keys(ownedData).length > 0 ? serialized : `---\n\n---\n${serialized}`;
+	const preserved = withHeader.replace(
 		/^(---\n)([\s\S]*?)\n---\n/,
-		(_match, opening, fields) => `${opening}${fields.replace(/^/gm, unknown.indent)}\n${unknown.text}---\n`,
+		(_match, opening, fields) =>
+			`${opening}${unknown.prefix}${fields ? `${fields.replace(/^/gm, unknown.indent)}\n` : ""}${unknown.text}---\n`,
 	);
 	let actual: Record<string, unknown>;
 	try {
@@ -97,10 +100,13 @@ export function stringifyFrontmatter(content: string, data: Record<string, unkno
 	return preserved;
 }
 
-function preserveUnknownFrontmatter(content: string, ownedKeys: Set<string>): { text: string; indent: string } {
+function preserveUnknownFrontmatter(
+	content: string,
+	ownedKeys: Set<string>,
+): { text: string; indent: string; prefix: string } {
 	// Extract without parsing first: existing Markdown accepts @assignee values after preprocessing.
 	const raw = matter(content, { engines: { yaml: () => ({}) } }).matter;
-	if (!raw) return { text: "", indent: "" };
+	if (!raw) return { text: "", indent: "", prefix: "" };
 	const lines = raw.split(/(?<=\n)/);
 	const starts: number[] = [];
 	let offset = 0;
@@ -136,7 +142,7 @@ function preserveUnknownFrontmatter(content: string, ownedKeys: Set<string>): { 
 		},
 	});
 	const mapping = mappings.find((node) => node.result === parsed.data);
-	if (!mapping) return { text: "", indent: "" };
+	if (!mapping) return { text: "", indent: "", prefix: "" };
 	const flowMapping = raw[mapping.start] === "{";
 	const indent = flowMapping ? "" : (lines[mapping.line]?.match(/^[ \t]*/)?.[0] ?? "");
 	const entries: { key: string; start: number; end: number; contentEnd: number; omitted: boolean }[] = [];
@@ -181,7 +187,10 @@ function preserveUnknownFrontmatter(content: string, ownedKeys: Set<string>): { 
 			return source.endsWith("\n") ? source : `${source}\n`;
 		})
 		.join("");
-	return { text, indent };
+	// Standalone comments and blank lines before the first entry do not belong to any key.
+	// gray-matter includes the opening delimiter's newline in raw; the writer already supplies it.
+	const prefix = flowMapping ? "" : raw.slice(0, entries[0]?.start ?? raw.length).replace(/^\r?\n/, "");
+	return { text, indent, prefix };
 }
 
 function normalizeFlowList(prefix: string, rawValue: string): string | null {

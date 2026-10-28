@@ -18,6 +18,10 @@ For long lists, use `--max-count` and `--skip`, follow the printed `Next` comman
 
 For scripts, `task list`, `task view`, `task <id>`, `draft list`, `decision list`, and `search` accept versioned `--json` output instead of `--plain`. `task list --json --watch` emits complete replacement responses; read successive JSON values, not individual lines. Filters and local scope are unchanged; intermediate edits may be coalesced. Restart for a fresh snapshot.
 
+### Decision Records
+
+Use `backlog decision create "Title"` and `backlog decision list --plain` for decision records. To record a replacement, use `backlog decision edit decision-1 --superseded-by decision-2`; this leaves status unchanged, or combine it with `-s superseded`. The replacement must identify one existing decision and cannot be the decision itself. Pass `--superseded-by ""` to clear the link. Changes set `updated_date`; omitted fields, unknown metadata and unmanaged text stay intact. Run `backlog decision edit --help` for details.
+
 ### Required Guides
 
 Read the matching guide before taking these actions; this overview does not replace it:

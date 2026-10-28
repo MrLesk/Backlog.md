@@ -5094,30 +5094,42 @@ addHelpSchema(decisionCmd.command("create <title>"), {
 	});
 
 addHelpSchema(decisionCmd.command("edit <decisionId>"), {
-	required: [
-		{ name: "decisionId", type: "Decision ID", description: "Decision to update" },
+	required: [{ name: "decisionId", type: "Decision ID", description: "Decision to update" }],
+	optional: [
 		{ name: "status", type: "String", description: "New decision status; free-form" },
+		{
+			name: "superseded-by",
+			type: "Decision ID",
+			description: "Existing replacement decision; empty value to clear; does not change status",
+		},
+		{ name: "plain", type: "Boolean", description: "Use plain text output" },
 	],
-	optional: [{ name: "plain", type: "Boolean", description: "Use plain text output" }],
-	writes: "Updates decision status; legacy sections gain markers in place and other content is preserved",
+	writes: "Updates named decision fields and updated_date when the record changes; preserves other content",
 	output: "Updated decision ID",
-	examples: ["backlog decision edit decision-1 -s superseded"],
+	examples: [
+		"backlog decision edit decision-1 -s superseded --superseded-by decision-2",
+		'backlog decision edit decision-1 --superseded-by ""',
+	],
 })
-	.description("change the status of a decision")
+	.description("change decision status or replacement link")
 	.option("-s, --status <status>", "set decision status (free-form)")
+	.option("--superseded-by <id>", "set the replacing decision; pass an empty value to clear")
 	// Accepted so agent guidance that always passes --plain works; edit output is already plain text.
 	.option("--plain", "use plain text output")
 	.action(async (decisionId: string, options) => {
-		if (!options.status) {
+		if ((options.status === undefined && options.supersededBy === undefined) || options.status === "") {
 			console.error(
-				"Status is required. Provide non-empty text, for example: backlog decision edit decision-1 -s superseded",
+				"Provide --status with non-empty text or --superseded-by. For example: backlog decision edit decision-1 --superseded-by decision-2",
 			);
 			process.exitCode = 1;
 			return;
 		}
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const decision = await core.updateDecisionFromInput(decisionId, { status: options.status });
+		const decision = await core.updateDecisionFromInput(decisionId, {
+			status: options.status,
+			supersededBy: options.supersededBy,
+		});
 		console.log(`Updated decision ${decision.id}`);
 	});
 
@@ -5190,7 +5202,8 @@ addListWindowOptions(decisionListCommand)
 			if (windowDecisions.length === 0) console.log("No decisions found.");
 			for (const decision of windowDecisions) {
 				const status = decision.status ? ` (${decision.status})` : "";
-				console.log(`${decision.id} - ${decision.title}${status}`);
+				const replacement = decision.supersededBy ? ` [superseded by ${decision.supersededBy}]` : "";
+				console.log(`${decision.id} - ${decision.title}${status}${replacement}`);
 			}
 		});
 	});

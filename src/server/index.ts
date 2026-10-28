@@ -1454,6 +1454,8 @@ export class BacklogServer {
 				title: decision.title,
 				status: decision.status,
 				date: decision.date,
+				updatedDate: decision.updatedDate,
+				supersededBy: decision.supersededBy,
 				context: decision.context,
 				decision: decision.decision,
 				consequences: decision.consequences,
