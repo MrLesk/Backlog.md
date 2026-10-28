@@ -173,7 +173,16 @@ Record evidence for the task's criteria and report what changed, how it was veri
 - When a task is complete, commit and push its changes to its own branch and create or update its PR without asking for
   approval. Ask Alex before any other commit, push, or merge that places commits on `main`.
 - For task work, use the exact task ID and title for both the commit subject and PR title: `BACK-123 - Title of the task`.
-- Use `gh` for GitHub work when available and follow the sections in the [PR template](.github/pull_request_template.md).
+- Use `gh` for GitHub work when available.
+
+### PR descriptions
+
+Keep PR descriptions brief and include only what is not obvious from the code. Explain unclear reasons, tradeoffs,
+limitations, or dependencies in a few short sentences. Link to detailed validation or documentation instead of copying it.
+
+Do not repeat the diff, list changed files, or report routine passing checks and review steps. Omit template sections
+that add no useful context. Keep required issue or task links; if no explanation is needed, those links can be the
+whole description.
 
 ### Releases
 
