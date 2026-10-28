@@ -129,7 +129,14 @@ export function serializeTask(task: Task, originalContent = ""): string {
 }
 
 export function serializeDecision(decision: Decision, originalContent = ""): string {
-	const frontmatter = { id: decision.id, title: decision.title, date: decision.date, status: decision.status };
+	const frontmatter = {
+		id: decision.id,
+		title: decision.title,
+		date: decision.date,
+		status: decision.status,
+		updated_date: decision.updatedDate,
+		superseded_by: decision.supersededBy,
+	};
 	// Keep the entire original header and body. parseMarkdown intentionally trims bodies for readers.
 	const header = originalContent.match(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---[^\r\n]*(?:\r?\n|$)/)?.[0] ?? "";
 	const originalBody = originalContent ? originalContent.slice(header.length) : decision.rawContent;
@@ -145,8 +152,16 @@ export function serializeDecision(decision: Decision, originalContent = ""): str
 
 	const previous = parseDecision(originalContent.replace(/^\uFEFF/, ""));
 	const metadataUpdates: Record<string, unknown> = {};
-	for (const key of ["id", "title", "date", "status"] as const) {
-		if (decision[key] !== previous[key]) metadataUpdates[key] = decision[key];
+	const metadataFields = {
+		id: "id",
+		title: "title",
+		date: "date",
+		status: "status",
+		updated_date: "updatedDate",
+		superseded_by: "supersededBy",
+	} as const;
+	for (const [key, field] of Object.entries(metadataFields)) {
+		if (decision[field] !== previous[field]) metadataUpdates[key] = decision[field];
 	}
 	const updatedHeader = updateDecisionFrontmatter(header, metadataUpdates);
 	return updatedHeader + body;

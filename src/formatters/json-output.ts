@@ -102,6 +102,7 @@ type DecisionSummaryJson = {
 	title: string;
 	status: Decision["status"];
 	date: string | null;
+	supersededBy: string | null;
 };
 
 type SearchResultJson =
@@ -223,6 +224,7 @@ function toDecisionSummaryJson(decision: Decision): DecisionSummaryJson {
 		title: decision.title,
 		status: decision.status,
 		date: normalizePublicDate(decision.date),
+		supersededBy: nullable(decision.supersededBy),
 	};
 }
 

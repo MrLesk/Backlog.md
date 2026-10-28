@@ -275,9 +275,11 @@ describe("document and decision unknown frontmatter", () => {
 		expect(await Bun.file(originalPath).bytes()).toEqual(originalBytes);
 		expect(await readdir(filesystem.decisionsDir)).toEqual([filename]);
 		await $`bun ${CLI_PATH} decision edit decision-1 -s accepted`.cwd(root).quiet();
-		expect((await Bun.file(originalPath).text()).replace(/^<!-- SECTION:[A-Z_]+:(?:BEGIN|END) -->\n/gm, "")).toBe(
-			source.replace("status: proposed", "status: accepted"),
-		);
+		expect(
+			(await Bun.file(originalPath).text())
+				.replace(/^updated_date:[^\r\n]*\r?\n/m, "")
+				.replace(/^<!-- SECTION:[A-Z_]+:(?:BEGIN|END) -->\n/gm, ""),
+		).toBe(source.replace("status: proposed", "status: accepted"));
 	});
 
 	it("refuses a preserved merge that would restore cleared document tags", async () => {

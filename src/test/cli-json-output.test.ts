@@ -163,6 +163,7 @@ describe("CLI JSON output", () => {
 					title: "Use stable JSON",
 					status: "accepted",
 					date: "2026-07-12",
+					supersededBy: null,
 				},
 			],
 		});
@@ -321,6 +322,7 @@ describe("CLI JSON output", () => {
 			title: "Use stable JSON",
 			status: "accepted",
 			date: "2026-07-12",
+			supersededBy: null,
 		});
 		for (const entry of output.results) {
 			expect(entry.score).toBeUndefined();

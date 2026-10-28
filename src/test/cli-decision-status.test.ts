@@ -18,9 +18,12 @@ const TODAY = new Date().toISOString().slice(0, 10);
 
 const REFUSAL = "Cannot save decision-1:";
 
-// Legacy migration may add marker lines; every other source byte must still match.
+// Changed records gain updated_date; legacy migration adds markers. Every other source byte must match.
+function withoutUpdatedDate(content: string): string {
+	return content.replace(/^updated_date:[^\r\n]*\r?\n/m, "");
+}
 function withoutDecisionMarkers(content: string): string {
-	return content
+	return withoutUpdatedDate(content)
 		.replace(/\r?\n<!-- SECTION:([A-Z_]+):BEGIN -->\r?\n<!-- SECTION:\1:END -->$/, "")
 		.replace(/\r?\n<!-- SECTION:(?:CONTEXT|DECISION|CONSEQUENCES|ALTERNATIVES):END -->$/, "")
 		.replace(/^<!-- SECTION:(?:CONTEXT|DECISION|CONSEQUENCES|ALTERNATIVES):(?:BEGIN|END) -->\r?\n/gm, "");
@@ -228,7 +231,9 @@ describe("changing a decision's status from the CLI", () => {
 
 		// A status that YAML would read as something else is quoted the way `decision create` quotes it.
 		expect((await changeStatus("decision-1", "see #12")).exitCode).toBe(0);
-		expect(await readFile(filepath, "utf8")).toBe(asCreated.replace("status: accepted", "status: 'see #12'"));
+		expect(withoutUpdatedDate(await readFile(filepath, "utf8"))).toBe(
+			asCreated.replace("status: accepted", "status: 'see #12'"),
+		);
 		expect(await listed()).toBe("decision-1 - Use Postgres (see #12)");
 
 		// A long status is stored over several lines, and still changes back to a one-line status.
@@ -237,7 +242,7 @@ describe("changing a decision's status from the CLI", () => {
 		expect((await changeStatus("decision-1", longStatus)).exitCode).toBe(0);
 		expect(await listed()).toBe(`decision-1 - Use Postgres (${longStatus})`);
 		expect((await cli(...CHANGE_STATUS, "decision-1", STATUS_FLAG, "accepted", "--plain")).exitCode).toBe(0);
-		expect(await readFile(filepath, "utf8")).toBe(asCreated);
+		expect(withoutUpdatedDate(await readFile(filepath, "utf8"))).toBe(asCreated);
 	});
 
 	it("exits non-zero and changes no file when the decision does not exist", async () => {
@@ -330,13 +335,13 @@ describe("changing a decision's status from the CLI", () => {
 		expect(await snapshotDecisions()).toEqual(before);
 	});
 
-	it("requires a status", async () => {
+	it("requires an edit field and refuses an empty status", async () => {
 		await cli("decision", "create", "Use Postgres", "-s", "accepted");
 		const before = await snapshotDecisions();
 
 		for (const result of [await cli(...CHANGE_STATUS, "decision-1"), await changeStatus("decision-1", "")]) {
 			expect(result.exitCode).toBe(1);
-			expect(result.stderr.toString()).toContain("Status is required.");
+			expect(result.stderr.toString()).toContain("Provide --status with non-empty text or --superseded-by.");
 		}
 		expect(await snapshotDecisions()).toEqual(before);
 	});
@@ -381,19 +386,18 @@ describe("changing a decision's status from the CLI", () => {
 		// parser's and move whenever another decision command or option is added.
 		const groupHelp = (await cli("decision", "--help")).stdout.toString();
 		expect(groupHelp).toContain(`${CHANGE_STATUS[1]} [options] <decisionId>`);
-		expect(groupHelp).toContain("change the status of a decision");
+		expect(groupHelp).toContain("change decision status or replacement link");
 
 		const help = (await cli(...CHANGE_STATUS, "--help")).stdout.toString();
 		expect(help).toContain(`Usage: backlog ${command} [options] <decisionId>`);
 		expect(help).toContain(`${STATUS_FLAG}, --status <status>`);
 		expect(help).toContain("set decision status (free-form)");
 		expect(help).toContain("Input schema:");
+		expect(help).toContain("Required fields:\n  - decisionId: Decision ID - Decision to update");
+		expect(help).toContain("Optional fields:\n  - status: String - New decision status; free-form");
+		expect(help).toContain("  - plain: Boolean - Use plain text output");
 		expect(help).toContain(
-			"Required fields:\n  - decisionId: Decision ID - Decision to update\n  - status: String - New decision status; free-form",
-		);
-		expect(help).toContain("Optional fields:\n  - plain: Boolean - Use plain text output");
-		expect(help).toContain(
-			"Writes:\n  - Updates decision status; legacy sections gain markers in place and other content is preserved",
+			"Writes:\n  - Updates named decision fields and updated_date when the record changes; preserves other content",
 		);
 		expect(help).toContain("Output:\n  - Updated decision ID");
 		expect(help).toContain(`Examples:\n  backlog ${command} decision-1 ${STATUS_FLAG} superseded`);
