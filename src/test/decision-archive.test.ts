@@ -42,7 +42,7 @@ describe("archived decisions in core and storage", () => {
 	});
 
 	it("archives, restores and deletes through the shared functions, refusing with typed errors", async () => {
-		await core.createDecisionWithTitle("Use Bun");
+		await core.createDecisionFromInput({ title: "Use Bun" });
 		await core.createTaskFromInput({
 			title: "Names the file",
 			documentation: ["backlog/decisions/decision-1 - Use-Bun.md"],
@@ -71,7 +71,7 @@ describe("archived decisions in core and storage", () => {
 	});
 
 	it("refuses a taken destination with a typed error and leaves both files alone", async () => {
-		await core.createDecisionWithTitle("Same name");
+		await core.createDecisionFromInput({ title: "Same name" });
 		const original = await readFile(decisionsPath("decision-1 - Same-name.md"), "utf8");
 		await mkdir(archivePath(), { recursive: true });
 		await writeFile(archivePath("decision-1 - Same-name.md"), original.replace("id: decision-1", "id: decision-9"));
@@ -83,8 +83,8 @@ describe("archived decisions in core and storage", () => {
 	});
 
 	it("lists archived decisions apart and resolves an ID over both folders", async () => {
-		await core.createDecisionWithTitle("Stays");
-		await core.createDecisionWithTitle("Goes to the archive");
+		await core.createDecisionFromInput({ title: "Stays" });
+		await core.createDecisionFromInput({ title: "Goes to the archive" });
 		await core.archiveContentRecord("decision", "decision-2");
 
 		expect((await core.filesystem.listDecisions()).map((decision) => decision.id)).toEqual(["decision-1"]);
@@ -110,7 +110,7 @@ describe("archived decisions in core and storage", () => {
 	});
 
 	it("refuses every save of an archived decision and writes no file", async () => {
-		await core.createDecisionWithTitle("Read-only while archived");
+		await core.createDecisionFromInput({ title: "Read-only while archived" });
 		await core.archiveContentRecord("decision", "decision-1");
 		const archivedFile = archivePath("decision-1 - Read-only-while-archived.md");
 		const before = await readFile(archivedFile, "utf8");
@@ -132,8 +132,8 @@ describe("archived decisions in core and storage", () => {
 	});
 
 	it("takes an archived decision out of the content store and puts a restored one back", async () => {
-		await core.createDecisionWithTitle("Stays");
-		await core.createDecisionWithTitle("Moves");
+		await core.createDecisionFromInput({ title: "Stays" });
+		await core.createDecisionFromInput({ title: "Moves" });
 		// This Core runs no watchers, so only the operations themselves can update the store.
 		const store = await core.getContentStore();
 		expect(store.getDecisions().map((decision) => decision.id)).toEqual(["decision-1", "decision-2"]);
@@ -149,8 +149,8 @@ describe("archived decisions in core and storage", () => {
 	});
 
 	it("counts archived decisions in the core ID allocator as well", async () => {
-		await core.createDecisionWithTitle("Stays");
-		await core.createDecisionWithTitle("Goes to the archive");
+		await core.createDecisionFromInput({ title: "Stays" });
+		await core.createDecisionFromInput({ title: "Goes to the archive" });
 		await core.archiveContentRecord("decision", "decision-2");
 
 		// This allocator writes the prefix in upper case; the number is what the archive must reserve.
@@ -159,7 +159,7 @@ describe("archived decisions in core and storage", () => {
 
 	describe("removeArchivedContentRecordFile for a decision", () => {
 		it("refuses a decision that is not archived and removes nothing", async () => {
-			const active = await core.createDecisionWithTitle("Active");
+			const active = await core.createDecisionFromInput({ title: "Active" });
 
 			const refused = core.filesystem.removeArchivedContentRecordFile("decision", {
 				id: active.id,
@@ -173,7 +173,7 @@ describe("archived decisions in core and storage", () => {
 		});
 
 		it("refuses a file that another decision took the place of", async () => {
-			await core.createDecisionWithTitle("Listed first");
+			await core.createDecisionFromInput({ title: "Listed first" });
 			await core.archiveContentRecord("decision", "decision-1");
 			const archived = await core.getDecision("decision-1");
 			if (!archived) throw new Error("Expected the archived decision");
@@ -204,7 +204,7 @@ describe("archived decisions in core and storage", () => {
 		});
 
 		it.skipIf(isWindows())("removes a link as a link and leaves the file it points to", async () => {
-			await core.createDecisionWithTitle("Linked");
+			await core.createDecisionFromInput({ title: "Linked" });
 			await core.archiveContentRecord("decision", "decision-1");
 			const target = join(TEST_DIR, "kept.md");
 			await rename(archivePath("decision-1 - Linked.md"), target);

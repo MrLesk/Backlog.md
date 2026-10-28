@@ -1490,7 +1490,7 @@ export class BacklogServer {
 		const { title } = await req.json();
 
 		try {
-			const decision = await this.core.createDecisionWithTitle(title);
+			const decision = await this.core.createDecisionFromInput({ title });
 			return Response.json(decision, { status: 201 });
 		} catch (error) {
 			console.error("Error creating decision:", error);
