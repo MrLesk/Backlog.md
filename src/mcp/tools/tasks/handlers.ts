@@ -240,19 +240,23 @@ export class TaskHandlers {
 			filters.labelMatch = "all";
 		}
 
+		// The working copy alone unless the project routes this read through the cross-branch index
+		// (`cli_reads_active_branches`), where a task shows the status the board shows for it. Read
+		// from the config this handler already loaded.
+		const includeCrossBranch = config?.cliReadsActiveBranches === true;
 		let tasks = await this.core.queryTasks({
 			query: args.search,
 			filters: Object.keys(filters).length > 0 ? filters : undefined,
-			includeCrossBranch: false,
+			includeCrossBranch,
 		});
 
 		if (args.ready) {
 			// The same shared verdict `task list --ready` filters on, resolved against the whole
 			// corpus rather than the tasks the filters above left.
-			tasks = (await loadTaskListItems(this.core, tasks)).filter((task) => task.isReady);
+			tasks = (await loadTaskListItems(this.core, tasks, { includeCrossBranch })).filter((task) => task.isReady);
 		}
 
-		const filteredByLabels = tasks.filter((task) => isWorkingCopyTask(task));
+		const filteredByLabels = includeCrossBranch ? tasks : tasks.filter((task) => isWorkingCopyTask(task));
 
 		if (filteredByLabels.length === 0) {
 			return {

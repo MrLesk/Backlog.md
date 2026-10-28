@@ -127,6 +127,15 @@ function selectLifecycleRecord(records: TaskIdentityRecord[]): TaskIdentityRecor
 	})[0];
 }
 
+/**
+ * The copy of a task the board shows. Under `most_progressed` the configured strategy decides
+ * first: the copy with the furthest status wins, so a status that only a feature branch carries is
+ * shown, which is what `check_active_branches` reads branches to find. The working copy then wins a
+ * tie of status (and under `most_recent`, where no status rank applies, it wins outright as before):
+ * its time is the file's `updated_date` while a branch copy's time is a commit date, so comparing
+ * the two would hand every task an active branch touched to that branch's read-only copy. Among
+ * branch copies alone, the most recently modified wins.
+ */
 function selectTaskRecord(
 	records: TaskIdentityRecord[],
 	statuses: string[],
@@ -134,13 +143,13 @@ function selectTaskRecord(
 ): TaskIdentityRecord | undefined {
 	const candidates = records.filter((record) => record.task);
 	return [...candidates].sort((left, right) => {
-		if (Boolean(left.workingCopy) !== Boolean(right.workingCopy)) {
-			return left.workingCopy ? -1 : 1;
-		}
 		if (strategy === "most_progressed") {
 			const leftRank = Math.max(0, statuses.indexOf(left.task?.status ?? ""));
 			const rightRank = Math.max(0, statuses.indexOf(right.task?.status ?? ""));
 			if (leftRank !== rightRank) return rightRank - leftRank;
+		}
+		if (Boolean(left.workingCopy) !== Boolean(right.workingCopy)) {
+			return left.workingCopy ? -1 : 1;
 		}
 		const timeDifference = right.lastModified.getTime() - left.lastModified.getTime();
 		if (timeDifference !== 0) return timeDifference;

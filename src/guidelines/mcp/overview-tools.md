@@ -27,6 +27,7 @@ Mark finished work Done (or the configured final status) and leave it on the boa
 - `task_delete` — permanently delete an archived task and release its ID once no other branch or worktree still holds the task. Deleting takes two steps: `task_archive`, then `task_delete`. It removes the dependencies and references other tasks and drafts hold to the task and names the tasks and drafts it changed. A task that is not archived, or whose subtasks still exist as tasks or as drafts, is not deleted.
 - `task_list` and `task_search` accept configured task types with OR semantics; `task_search` also accepts `modifiedFiles` for case-insensitive substring filtering against project-root-relative modified file paths
 - `task_list` and `task_search` also accept configured `project` values with OR semantics for monorepo-style backlogs; the field is absent from both tool schemas when no `projects:` list is configured
+- `task_list` reads the working copy only, unless the project config sets `cli_reads_active_branches: true`; then it reports each task's status as the board does, across active branches, and lists a task that exists only on another branch
 - `task_edit` accepts `commentsAppend` and optional `commentAuthor` to append task discussion or review comments
 - Comment bodies may contain Markdown, but standalone `---` lines are reserved as comment delimiters
 - `document_list`, `document_view`, `document_create`, `document_update`, `document_search`

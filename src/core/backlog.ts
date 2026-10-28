@@ -1485,6 +1485,17 @@ export class Core {
 		}
 	}
 
+	/**
+	 * Whether the reads that stay on the working copy by default (the command-line `task list`,
+	 * `task view` and `task <id>`, and the MCP `task_list`) read through the cross-branch index
+	 * instead, so a status only an active branch carries is reported there as the board reports it.
+	 * Off unless `cli_reads_active_branches` is set, which keeps those reads fast by default.
+	 */
+	async cliReadsActiveBranches(): Promise<boolean> {
+		const config = await this.filesystem.loadConfig();
+		return config?.cliReadsActiveBranches === true;
+	}
+
 	async loadTaskById(taskId: string, options: TaskReadOptions = {}): Promise<Task | null> {
 		return options.includeCrossBranch === false
 			? await this.loadWorkingCopyTask(taskId, false)

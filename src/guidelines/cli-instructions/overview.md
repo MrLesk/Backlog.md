@@ -18,6 +18,8 @@ For long lists, use `--max-count` and `--skip`, follow the printed `Next` comman
 
 For scripts, `task list`, `task view`, `task <id>`, `draft list`, `decision list`, and `search` accept versioned `--json` output instead of `--plain`. `task list --json --watch` emits complete replacement responses; read successive JSON values, not individual lines. Filters and local scope are unchanged; intermediate edits may be coalesced. Restart for a fresh snapshot.
 
+`task list`, `task view` and `task <id>` read the working copy only, unless the project config sets `cli_reads_active_branches: true`; then they report a task's status as the board does, across active branches.
+
 ### Required Guides
 
 Read the matching guide before taking these actions; this overview does not replace it:

@@ -366,6 +366,8 @@ Run `backlog config` with no arguments to launch the interactive wizard (the sam
 
 For filesystem-only projects (`backlog init --no-git`), the saved config forces `checkActiveBranches=false`, `remoteOperations=false`, and `autoCommit=false` so CLI, Web, and MCP local-file workflows do not depend on a Git repository.
 
+The board, the web UI and the MCP `task_view` read task status across active branches when `checkActiveBranches` is on, so a task moved to In Progress on a feature branch shows as In Progress there. The command-line `task list`, `task view` and `task <id>` and the MCP `task_list` read the working copy alone by default, which keeps them fast. Set `cli_reads_active_branches: true` in the config file (or `backlog config set cliReadsActiveBranches true`) to route those reads through the same cross-branch index, so they report the status the board reports; each such read then costs what a board read costs.
+
 ### Definition of Done defaults
 
 Set project-wide DoD items with `backlog config` (or during `backlog init` advanced setup), in the Web UI (Settings → Definition of Done Defaults), or by editing the project config file directly:
