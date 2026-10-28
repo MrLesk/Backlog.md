@@ -118,7 +118,7 @@ describe("archived decisions in core and storage", () => {
 		if (!archived) throw new Error("Expected the archived decision");
 
 		const update = await core
-			.updateDecisionFromContent("decision-1", "---\ntitle: Changed\n---\n")
+			.updateDecisionFromInput("decision-1", { title: "Changed" })
 			.catch((error: unknown) => error);
 		const save = await core.createDecision({ ...archived, title: "Changed" }).catch((error: unknown) => error);
 

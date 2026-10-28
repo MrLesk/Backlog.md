@@ -9,6 +9,7 @@ import type { SearchService } from "../core/search-service.ts";
 import { getTaskStatistics } from "../core/statistics.ts";
 import { loadTaskDetail } from "../core/task-detail.ts";
 import { isCreateLockError, isTaskLockError } from "../file-system/operations.ts";
+import { AmbiguousDecisionSectionError } from "../markdown/structured-sections.ts";
 import { BacklogToolError } from "../mcp/errors/mcp-errors.ts";
 import { MilestoneHandlers } from "../mcp/tools/milestones/handlers.ts";
 import {
@@ -1499,13 +1500,14 @@ export class BacklogServer {
 	}
 
 	private async handleUpdateDecision(req: Request, decisionId: string): Promise<Response> {
-		const content = await req.text();
-
 		try {
-			await this.core.updateDecisionFromContent(decisionId, content);
+			const input = await req.json();
+			await this.core.updateDecisionFromInput(decisionId, input);
 			return Response.json({ success: true });
 		} catch (error) {
-			if (isAmbiguousIdError(error) || isTaskLockError(error)) {
+			if (error instanceof SyntaxError)
+				return Response.json({ error: "Invalid JSON decision update" }, { status: 400 });
+			if (isAmbiguousIdError(error) || isTaskLockError(error) || error instanceof AmbiguousDecisionSectionError) {
 				return Response.json({ error: error.message }, { status: 409 });
 			}
 			// Core refused the save, for example because the decision is archived. Its message is the answer.

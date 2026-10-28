@@ -57,7 +57,8 @@ describe("BacklogServer with an archived decision", () => {
 
 		const response = await fetch(api("/api/decisions/decision-1"), {
 			method: "PUT",
-			body: "---\nid: decision-1\ntitle: Must not change\n---\n\n## Context\n\nNew context\n",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Must not change", context: "New context" }),
 		});
 
 		expect(response.status).toBe(400);

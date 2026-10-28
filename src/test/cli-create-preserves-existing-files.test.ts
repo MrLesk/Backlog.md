@@ -343,7 +343,7 @@ describe("a title change moves only the file the record was loaded from", () => 
 	it("decision: renames its own file and keeps another record that shares its number", async () => {
 		const other = await createGuideAndRecordSharingItsNumber(DECISION);
 
-		await new Core(TEST_DIR).updateDecisionFromContent("decision-1", "---\ntitle: Renamed\n---\n", false);
+		await new Core(TEST_DIR).updateDecisionFromInput("decision-1", { title: "Renamed" }, false);
 
 		expect(await readFolder(recordsDir(DECISION))).toEqual({
 			[fileName(DECISION, 1, "Other")]: other,
@@ -354,7 +354,7 @@ describe("a title change moves only the file the record was loaded from", () => 
 	it("decision: keeps the usual file name when the stored ID is written in upper case", async () => {
 		await createFirstWithIdInOtherLetterCase(DECISION);
 
-		await new Core(TEST_DIR).updateDecisionFromContent("decision-1", "---\ntitle: Retitled\n---\n", false);
+		await new Core(TEST_DIR).updateDecisionFromInput("decision-1", { title: "Retitled" }, false);
 
 		// The one file is still named decision-1 and the stored ID stays as it was written.
 		expect(await readFolder(recordsDir(DECISION))).toEqual({

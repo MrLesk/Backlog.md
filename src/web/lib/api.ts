@@ -4,6 +4,7 @@ import type { TaskDetail } from "../../core/task-detail.ts";
 import type {
 	BacklogConfig,
 	Decision,
+	DecisionUpdateInput,
 	Document,
 	Milestone,
 	SearchPriorityFilter,
@@ -542,13 +543,13 @@ export class ApiClient {
 		return response.json();
 	}
 
-	async updateDecision(id: string, content: string): Promise<void> {
+	async updateDecision(id: string, input: DecisionUpdateInput): Promise<void> {
 		const response = await fetch(`${API_BASE}/decisions/${encodeURIComponent(id)}`, {
 			method: "PUT",
 			headers: {
-				"Content-Type": "text/plain",
+				"Content-Type": "application/json",
 			},
-			body: content,
+			body: JSON.stringify(input),
 		});
 		if (!response.ok) {
 			throw await toApiError(response, "Failed to update decision");

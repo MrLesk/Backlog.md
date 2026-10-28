@@ -67,6 +67,17 @@ describe("decision creation", () => {
 			),
 		);
 		expect(contents[1]).toBe(contents[0]);
+		for (const section of ["CONTEXT", "DECISION", "CONSEQUENCES"]) {
+			expect(contents[0]).toContain(`<!-- SECTION:${section}:BEGIN -->\n<!-- SECTION:${section}:END -->`);
+		}
+		const listed = await (await fetch(`http://127.0.0.1:${server.getPort()}/api/decisions`)).json();
+		expect(listed).toHaveLength(2);
+		expect(
+			listed.every(
+				(decision: { context: string; decision: string; consequences: string }) =>
+					decision.context === "" && decision.decision === "" && decision.consequences === "",
+			),
+		).toBe(true);
 		expect(decisions.every((decision) => decision.context === "" && decision.decision === "")).toBe(true);
 	});
 

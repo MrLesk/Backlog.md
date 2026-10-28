@@ -1,5 +1,5 @@
-import { mkdir, rename as moveFile, readFile, stat, unlink } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative } from "node:path";
+import { mkdir, rename as moveFile, readFile, realpath, stat, unlink } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import {
 	ARCHIVED_TASK_DIRECTORIES,
 	DEFAULT_DIRECTORIES,
@@ -15,9 +15,13 @@ import {
 	newTaskLockError,
 } from "../file-system/operations.ts";
 import { type GitBranchTip, type GitIndexEntry, GitOperations } from "../git/operations.ts";
-import { FrontmatterReferenceError, parseFrontmatter } from "../markdown/frontmatter.ts";
-import { extractSection, parseTask } from "../markdown/parser.ts";
-import { assertSectionInputHasNoMarkerLines, assertValidChecklistMarks } from "../markdown/structured-sections.ts";
+import { FrontmatterReferenceError } from "../markdown/frontmatter.ts";
+import { parseTask } from "../markdown/parser.ts";
+import {
+	assertSectionInputHasNoMarkerLines,
+	assertValidChecklistMarks,
+	DECISION_SECTION_KEYS,
+} from "../markdown/structured-sections.ts";
 import {
 	type AcceptanceCriterion,
 	type BacklogConfig,
@@ -25,6 +29,7 @@ import {
 	type ContentRecordKind,
 	type Decision,
 	type DecisionCreateInput,
+	type DecisionUpdateInput,
 	DOCUMENT_TYPE_VALUES,
 	type Document,
 	type DocumentCreateInput,
@@ -4427,47 +4432,75 @@ export class Core {
 	}
 
 	async createDecision(decision: Decision, autoCommit?: boolean): Promise<void> {
+		// Validate configuration and commit feasibility before a write can change the record.
+		const commit = await this.shouldAutoCommit(autoCommit);
+		if (commit) {
+			const root = await this.git.getRepositoryRoot();
+			let target = decision.path ? this.fs.contentRecordFilePath("decision", decision) : this.fs.decisionsDir;
+			try {
+				target = await realpath(target);
+			} catch (error) {
+				if (decision.path || (error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+				target = join(await realpath(this.fs.backlogDir), "decisions");
+			}
+			const pathFromRoot = root ? relative(await realpath(root), target) : "..";
+			if (isAbsolute(pathFromRoot) || pathFromRoot === ".." || pathFromRoot.startsWith(`..${sep}`)) {
+				throw new RecordRefusedError(
+					`Cannot auto-commit decision ${decision.id}: its content is outside the Git repository. Disable auto-commit before editing this file: backlog config set autoCommit false`,
+				);
+			}
+		}
 		const { filepath, movedFrom } = await this.fs.saveDecision(decision).catch(refuseBrokenFrontmatterReference);
-
-		if (await this.shouldAutoCommit(autoCommit)) {
-			await this.commitWrittenFile(`backlog: Add decision ${decision.id}`, movedFrom ? [movedFrom] : [], filepath);
+		if (commit) {
+			await this.commitWrittenFile(
+				`backlog: ${decision.path ? "Update" : "Add"} decision ${decision.id}`,
+				movedFrom ? [movedFrom] : [],
+				filepath,
+			);
 		}
 	}
 
-	/**
-	 * Change a decision in the decisions folder from its Markdown. An archived decision is read-only:
-	 * the update is refused with `ContentRecordArchivedError` and no file is written. The web save
-	 * updates through this method.
-	 */
-	async updateDecisionFromContent(decisionId: string, content: string, autoCommit?: boolean): Promise<void> {
+	/** Apply a partial decision update after resolving its identity again under the record lock. */
+	async updateDecisionFromInput(
+		decisionId: string,
+		input: DecisionUpdateInput,
+		autoCommit?: boolean,
+	): Promise<Decision> {
+		if (!input || typeof input !== "object" || Array.isArray(input)) {
+			throw new RecordRefusedError("Decision update must be a JSON object.");
+		}
+		const allowed = new Set<string>(["title", "status", ...DECISION_SECTION_KEYS]);
+		for (const [key, value] of Object.entries(input)) {
+			if (!allowed.has(key) || (value !== undefined && typeof value !== "string")) {
+				throw new RecordRefusedError(
+					`Invalid decision field: ${key}. Expected text for title, status, context, decision, consequences or alternatives.`,
+				);
+			}
+		}
+		if (input.title !== undefined && !input.title.trim())
+			throw new RecordRefusedError("Decision title cannot be empty.");
+		if (input.status !== undefined && !input.status) throw new RecordRefusedError("Decision status cannot be empty.");
+		for (const key of DECISION_SECTION_KEYS) {
+			try {
+				assertSectionInputHasNoMarkerLines(input[key], key);
+			} catch (error) {
+				throw new RecordRefusedError((error as Error).message);
+			}
+		}
 		const target = await this.getDecision(decisionId);
-		if (!target) throw new Error(decisionNotFoundMessage(decisionId));
+		if (!target) throw new Error(`Decision ${decisionId} not found`);
 		return await this.fs.withContentRecordLock("decision", target, async () => {
-			const existingDecision = await this.getDecision(decisionId);
-			if (!existingDecision) {
-				throw new Error(decisionNotFoundMessage(decisionId));
-			}
-			if (existingDecision.archived) {
-				throw new ContentRecordArchivedError("decision", existingDecision.id);
-			}
-
-			// Parse the markdown content to extract the decision data
-			const frontmatter = parseFrontmatter(content, ["date"]).data as Partial<
-				Pick<Decision, "title" | "status" | "date">
-			>;
-
-			const updatedDecision = {
-				...existingDecision,
-				title: frontmatter.title || existingDecision.title,
-				status: frontmatter.status || existingDecision.status,
-				date: frontmatter.date || existingDecision.date,
-				context: extractSection(content, "Context") ?? existingDecision.context,
-				decision: extractSection(content, "Decision") ?? existingDecision.decision,
-				consequences: extractSection(content, "Consequences") ?? existingDecision.consequences,
-				alternatives: extractSection(content, "Alternatives") ?? existingDecision.alternatives,
+			const existing = await this.getDecision(decisionId);
+			if (!existing) throw new Error(`Decision ${decisionId} not found`);
+			if (existing.archived) throw new ContentRecordArchivedError("decision", existing.id);
+			const fields = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+			const updated: Decision = {
+				...existing,
+				...fields,
+				status: (input.status ?? existing.status) as Decision["status"],
 			};
-
-			await this.createDecision(updatedDecision, autoCommit);
+			await this.createDecision(updated, autoCommit);
+			return (await this.getDecision(updated.id)) ?? updated;
 		});
 	}
 
@@ -4486,31 +4519,6 @@ export class Core {
 
 			await this.createDecision(decision, autoCommit);
 			return decision;
-		});
-	}
-
-	/**
-	 * Changes the status of an existing decision and leaves the rest of its file as it is. Returns the
-	 * decision's ID. Resolves active and archived IDs together; archived decisions are read-only.
-	 * Storage refuses a status that cannot be replaced without changing other content.
-	 */
-	async updateDecisionStatus(decisionId: string, status: string, autoCommit?: boolean): Promise<string> {
-		const target = await this.getDecision(decisionId);
-		if (!target) throw new Error(`Decision ${decisionId} not found`);
-		return await this.fs.withContentRecordLock("decision", target, async () => {
-			const decision = await this.getDecision(decisionId);
-			if (!decision) {
-				throw new Error(`Decision ${decisionId} not found`);
-			}
-			if (decision.archived) {
-				throw new ContentRecordArchivedError("decision", decision.id);
-			}
-			const filepath = await this.fs.updateDecisionStatus(decision, status);
-
-			if (await this.shouldAutoCommit(autoCommit)) {
-				await this.commitWrittenFile(`backlog: Update decision ${decision.id}`, [], filepath);
-			}
-			return decision.id;
 		});
 	}
 

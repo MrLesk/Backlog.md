@@ -1,9 +1,10 @@
+import { DECISION_SECTION_KEYS, getDecisionSections, stripDecisionSectionMarkers } from '../../markdown/structured-sections';
 import { useState, useEffect, memo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiClient, isAmbiguousIdConflict } from '../lib/api';
 import MDEditor from '@uiw/react-md-editor';
 import MermaidMarkdown from './MermaidMarkdown';
-import { type Decision } from '../../types';
+import { type Decision, type DecisionUpdateInput } from '../../types';
 import AmbiguousIdNotice from './AmbiguousIdNotice';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { SuccessToast } from './SuccessToast';
@@ -35,7 +36,7 @@ const MarkdownEditor = memo(function MarkdownEditor({
 		// Preview mode - just show the rendered markdown without editor UI
 			return (
 				<div className="prose prose-sm !max-w-none w-full p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden" data-color-mode={theme}>
-					<MermaidMarkdown source={value} />
+					<MermaidMarkdown source={stripDecisionSectionMarkers(value)} />
 				</div>
 			);
 	}
@@ -217,7 +218,14 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 			} else {
 				// Update existing decision
 				if (!id) return;
-				await apiClient.updateDecision(addDecisionPrefix(id), content);
+				const sections = getDecisionSections(content);
+				const previousSections = getDecisionSections(originalContent);
+				const input: DecisionUpdateInput = {};
+				if (decisionTitle !== originalDecisionTitle) input.title = decisionTitle;
+				for (const key of DECISION_SECTION_KEYS) {
+					if ((sections[key] ?? '') !== (previousSections[key] ?? '')) input[key] = sections[key] ?? '';
+				}
+				await apiClient.updateDecision(addDecisionPrefix(id), input);
 				// Refresh data from parent
 				await onRefreshData();
 				// Show success toast

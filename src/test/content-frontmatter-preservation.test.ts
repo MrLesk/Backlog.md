@@ -166,14 +166,21 @@ describe("document and decision unknown frontmatter", () => {
 		for (const context of ["First context", "Second context"]) {
 			const response = await fetch(`http://127.0.0.1:${port}/api/decisions/decision-1`, {
 				method: "PUT",
-				body: `---\ntitle: Renamed\ndate: '2026-02-03'\nstatus: accepted\n---\n## Context\n\n${context}\n\n## Decision\n\nNew decision\n\n## Consequences\n\nNew consequences`,
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					title: "Renamed",
+					status: "accepted",
+					context,
+					decision: "New decision",
+					consequences: "New consequences",
+				}),
 			});
 			expect(response.status).toBe(200);
 			const stored = await Bun.file(movedPath).text();
 			expect(stored).toContain(METADATA);
 			expect(parseDecision(stored)).toMatchObject({
 				title: "Renamed",
-				date: "2026-02-03",
+				date: "2026-01-01",
 				status: "accepted",
 				context,
 				decision: "New decision",
@@ -258,14 +265,19 @@ describe("document and decision unknown frontmatter", () => {
 		const port = await startServer();
 		const response = await fetch(`http://127.0.0.1:${port}/api/decisions/decision-1`, {
 			method: "PUT",
-			body: "---\ntitle: Changed\n---\n## Context\n\nChanged\n",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Changed", context: "Changed" }),
 		});
 		expect(response.status).toBe(400);
-		expect((await response.json()).error).toContain("Cannot save decision-1: the update would break a YAML reference");
+		expect((await response.json()).error).toContain(
+			"Cannot save decision-1: the update would change preserved metadata or break a YAML reference",
+		);
 		expect(await Bun.file(originalPath).bytes()).toEqual(originalBytes);
 		expect(await readdir(filesystem.decisionsDir)).toEqual([filename]);
 		await $`bun ${CLI_PATH} decision edit decision-1 -s accepted`.cwd(root).quiet();
-		expect(await Bun.file(originalPath).text()).toBe(source.replace("status: proposed", "status: accepted"));
+		expect((await Bun.file(originalPath).text()).replace(/^<!-- SECTION:[A-Z_]+:(?:BEGIN|END) -->\n/gm, "")).toBe(
+			source.replace("status: proposed", "status: accepted"),
+		);
 	});
 
 	it("refuses a preserved merge that would restore cleared document tags", async () => {
