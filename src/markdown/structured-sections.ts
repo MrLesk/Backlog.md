@@ -1583,6 +1583,28 @@ function decisionSectionRanges(content: string): DecisionSectionRange[] {
 	return ranges;
 }
 
+function assertUniqueDecisionSections(ranges: DecisionSectionRange[]): void {
+	const seen = new Set<DecisionSectionKey>();
+	for (const { key } of ranges) {
+		if (seen.has(key)) throw new AmbiguousDecisionSectionError(getConfig(key).title);
+		seen.add(key);
+	}
+}
+
+/** Raw editors must validate structure before extraction can hide a pasted delimiter or duplicate section. */
+export function assertDecisionEditorStructure(original: string, edited: string): void {
+	const markerLines = (source: string) =>
+		source
+			.split("\n")
+			.map((line) => line.trimEnd())
+			.filter((line) => SECTION_SENTINEL_LINE_REGEX.test(line))
+			.join("\n");
+	if (markerLines(original) !== markerLines(edited)) {
+		throw new Error("Keep decision section marker lines unchanged and edit only the section text.");
+	}
+	assertUniqueDecisionSections(decisionSectionRanges(edited));
+}
+
 /** Read section fields without exposing the stored marker lines. Duplicate headings are refused on write. */
 export function getDecisionSections(content: string): Partial<Record<DecisionSectionKey, string>> {
 	const sections: Partial<Record<DecisionSectionKey, string>> = {};
@@ -1613,13 +1635,13 @@ export function updateDecisionSections(
 	newline: "\n" | "\r\n",
 ): string {
 	const ranges = decisionSectionRanges(content);
+	assertUniqueDecisionSections(ranges);
 	const edits: Array<{ start: number; end: number; text: string }> = [];
 	let appended = "";
 	for (const key of DECISION_SECTION_KEYS) {
 		const value = updates[key];
 		assertSectionInputHasNoMarkerLines(value, key);
 		const matching = ranges.filter((range) => range.key === key);
-		if (matching.length > 1) throw new AmbiguousDecisionSectionError(getConfig(key).title);
 		const range = matching[0];
 		const body = value === undefined ? undefined : value.replace(/\r\n/g, "\n").replace(/\n/g, newline);
 		const terminated = (text: string) => (text && !text.endsWith("\n") ? text + newline : text);

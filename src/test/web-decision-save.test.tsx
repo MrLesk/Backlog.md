@@ -23,7 +23,7 @@ afterEach(() => {
 	}
 });
 
-it("shows marked decisions and saves only changed section fields as JSON", async () => {
+it.each(["valid", "extra-marker", "duplicate-heading"])("saves valid edits and refuses malformed section structure: %s", async (mode) => {
 	dom = new JSDOM("<div id='root'></div>", { url: "http://localhost" });
 	(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 	globalThis.window = dom.window as unknown as Window & typeof globalThis;
@@ -67,10 +67,18 @@ it("shows marked decisions and saves only changed section fields as JSON", async
 	}
 	const textarea = container.querySelector("textarea");
 	expect(textarea).not.toBeNull();
-	await act(async () => {
-		setNativeInputValue(textarea!, record.rawContent.replace("Old context", "New context"));
-	});
+	const edited = mode === "extra-marker"
+		? record.rawContent.replace("Old context", "New context\n<!-- SECTION:CONTEXT:END -->\nTail that must not be lost")
+		: mode === "duplicate-heading" ? `${record.rawContent}\n## Context\n\nSecond context`
+		: record.rawContent.replace("Old context", "New context");
+	await act(async () => { setNativeInputValue(textarea!, edited); });
 	await click("Save");
+	if (mode !== "valid") {
+		expect(writes).toHaveLength(0);
+		expect(container.querySelector('[role="alert"]')?.textContent).toContain(mode === "extra-marker" ? "marker" : "Context");
+		expect(container.querySelector("textarea")?.value).toBe(edited);
+		return;
+	}
 	expect(container.textContent).toContain("New context");
 	expect(container.textContent).toContain("Review next year.");
 	expect(container.textContent).not.toContain("SECTION:");

@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-10-11 19:08'
-updated_date: '2026-10-28T22:13:00Z'
+updated_date: '2026-10-28T22:20:00Z'
 labels:
   - bug
 dependencies:
@@ -105,6 +105,10 @@ Approved by Alex on 2026-10-28. Reuse task marker parsing and validation in the 
 BACK-693 is merged. BACK-640 remains open for its broader scope; the existing getDecision lookup already resolves active and archived identity together and refuses duplicates. Use that behavior, as approved, without expanding this task into a repository-wide identity rewrite. The external-link auto-commit ruling was explicitly approved in this chat on 2026-10-28.
 
 Validation: the original HTTP regression run failed 15 cases before implementation. 278 related tests passed across 13 files, including unchanged task-section tests. Two unfinished-fence regressions failed first and now pass. Final HTTP/frontmatter/CLI-status run: 59 passing tests; prewrite config/external-link tests: 3 passing; browser save/archive/Markdown DOM run: 80 passing. Type checking (bun run check:types, current package/CI command replacing the stale tsc DoD wording), Biome and CLI compilation passed. The compiled browser preview was inspected visually; the existing save control is covered by the DOM test. Cold simplicity and full-context complexity reviews completed; quoted/multiline title, body separator and CRLF findings were fixed and rechecked. No remaining supported local review findings.
+
+Codex PR review #1164 found that a pasted standalone marker in the raw browser editor could be parsed away before JSON validation, truncating the context. Reopened to reject marker-structure changes before field extraction and show the refusal while keeping the edited text. This is a supported content-loss case within the approved scope.
+
+Addressed Codex review discussion_r4406660595: raw browser saves now check the stored marker sequence and duplicate managed headings before section extraction. Refusals remain visible in the editor and keep the entered text. The extra-marker and duplicate-heading DOM cases failed before the fix; all 86 affected browser/HTTP tests now pass, with types and Biome passing.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
