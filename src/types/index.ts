@@ -210,6 +210,11 @@ export interface TaskListFilter {
 	labelMatch?: LabelMatchMode;
 }
 
+export interface DecisionCreateInput {
+	title: string;
+	status?: string;
+}
+
 export interface Decision {
 	id: string;
 	title: string;

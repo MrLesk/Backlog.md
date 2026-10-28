@@ -143,6 +143,6 @@ describe("stored UTC timestamps", () => {
 		expect((await core.filesystem.loadTask(task.id))?.createdDate).toBe("2026-10-19T00:00:00Z");
 		const doc = await core.createDocumentFromInput({ title: "Midnight guide" });
 		expect(doc.createdDate).toBe("2026-10-19T00:00:00Z");
-		expect((await core.createDecisionWithTitle("Midnight choice")).date).toBe("2026-10-19T00:00:00Z");
+		expect((await core.createDecisionFromInput({ title: "Midnight choice" })).date).toBe("2026-10-19T00:00:00Z");
 	});
 });

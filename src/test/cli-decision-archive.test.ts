@@ -33,7 +33,7 @@ const archivePath = (...segments: string[]) => join(TEST_DIR, "backlog", "archiv
 
 /** Create a decision through core, as `backlog decision create` does, and return its file name. */
 async function createDecision(title: string): Promise<string> {
-	const decision = await new Core(TEST_DIR).createDecisionWithTitle(title);
+	const decision = await new Core(TEST_DIR).createDecisionFromInput({ title });
 	return `${decision.id} - ${title.replaceAll(" ", "-")}.md`;
 }
 

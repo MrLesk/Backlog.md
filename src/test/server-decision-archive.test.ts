@@ -30,8 +30,8 @@ describe("BacklogServer with an archived decision", () => {
 		TEST_DIR = await createTestDirOutsideRepository("server-decision-archive");
 		const core = new Core(TEST_DIR);
 		await initializeFilesystemTestProject(core, "Server Decision Archive");
-		await core.createDecisionWithTitle("Retired runbook policy");
-		await core.createDecisionWithTitle("Current runbook policy");
+		await core.createDecisionFromInput({ title: "Retired runbook policy" });
+		await core.createDecisionFromInput({ title: "Current runbook policy" });
 		expect(await core.archiveContentRecord("decision", "decision-1")).not.toBeNull();
 		archivedFile = join(TEST_DIR, "backlog", "archive", "decisions", "decision-1 - Retired-runbook-policy.md");
 

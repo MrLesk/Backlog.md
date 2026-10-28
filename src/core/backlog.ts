@@ -24,6 +24,7 @@ import {
 	type ContentRecord,
 	type ContentRecordKind,
 	type Decision,
+	type DecisionCreateInput,
 	DOCUMENT_TYPE_VALUES,
 	type Document,
 	type DocumentCreateInput,
@@ -4466,22 +4467,22 @@ export class Core {
 		await this.createDecision(updatedDecision, autoCommit);
 	}
 
-	async createDecisionWithTitle(title: string, autoCommit?: boolean): Promise<Decision> {
-		const id = await generateNextDecisionId(this);
+	async createDecisionFromInput(input: DecisionCreateInput, autoCommit?: boolean): Promise<Decision> {
+		return await this.withCreateLock(async () => {
+			const decision: Decision = {
+				id: await generateNextDecisionId(this),
+				title: input.title,
+				date: formatUtcTimestamp(),
+				status: (input.status || "proposed") as Decision["status"],
+				context: "",
+				decision: "",
+				consequences: "",
+				rawContent: "",
+			};
 
-		const decision: Decision = {
-			id,
-			title,
-			date: formatUtcTimestamp(),
-			status: "proposed",
-			context: "[Describe the context and problem that needs to be addressed]",
-			decision: "[Describe the decision that was made]",
-			consequences: "[Describe the consequences of this decision]",
-			rawContent: "",
-		};
-
-		await this.createDecision(decision, autoCommit);
-		return decision;
+			await this.createDecision(decision, autoCommit);
+			return decision;
+		});
 	}
 
 	/**

@@ -47,8 +47,8 @@ beforeEach(async () => {
 	await core.createDocumentFromInput({ title: "A document", content: "" });
 	await core.createDocumentFromInput({ title: "An archived document", content: "" });
 	expect(await core.archiveContentRecord("document", "doc-2")).not.toBeNull();
-	await core.createDecisionWithTitle("A decision");
-	await core.createDecisionWithTitle("An archived decision");
+	await core.createDecisionFromInput({ title: "A decision" });
+	await core.createDecisionFromInput({ title: "An archived decision" });
 	expect(await core.archiveContentRecord("decision", "decision-2")).not.toBeNull();
 	await $`git add -A`.cwd(TEST_DIR).quiet();
 	await $`git commit -m "Set up the project"`.cwd(TEST_DIR).quiet().nothrow();

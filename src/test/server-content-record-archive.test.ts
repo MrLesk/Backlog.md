@@ -54,7 +54,7 @@ const KINDS = [
 		cliCommand: "backlog decision",
 		file: "decision-1 - Retired-runbook.md",
 		noun: "Decision",
-		create: (core: Core, title: string) => core.createDecisionWithTitle(title).then((decision) => decision.id),
+		create: (core: Core, title: string) => core.createDecisionFromInput({ title }).then((decision) => decision.id),
 	},
 ] as const;
 

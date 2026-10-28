@@ -58,7 +58,6 @@ import type { CallToolResult } from "./mcp/types.ts";
 import {
 	type BacklogConfig,
 	type ContentRecordKind,
-	type Decision,
 	DOCUMENT_TYPE_VALUES,
 	type Document as DocType,
 	type DocumentSearchResult,
@@ -92,7 +91,6 @@ import {
 } from "./utils/duplicate-detection.ts";
 import { AmbiguousIdError, isAmbiguousIdError } from "./utils/entity-id.ts";
 import { findBacklogRoot } from "./utils/find-backlog-root.ts";
-import { generateNextDecisionId } from "./utils/id-generators.ts";
 import {
 	addListWindowOptions,
 	LIST_WINDOW_HELP_FIELDS,
@@ -152,7 +150,6 @@ import { sectionTasks, sortTasks, TASK_SORT_FIELDS } from "./utils/task-sorting.
 import { formatValidTaskTypeValues, getTaskTypeValues, resolveTaskTypeValues } from "./utils/task-type-config.ts";
 import { getTerminalStatus } from "./utils/terminal-status.ts";
 import { formatUtcDateForDisplay } from "./utils/utc-date-display.ts";
-import { formatUtcTimestamp } from "./utils/utc-timestamp.ts";
 import { getVersion } from "./utils/version.ts";
 
 type IntegrationMode = "mcp" | "cli" | "none";
@@ -5098,19 +5095,8 @@ addHelpSchema(decisionCmd.command("create <title>"), {
 	.action(async (title: string, options) => {
 		const cwd = await requireProjectRoot();
 		const core = new Core(cwd);
-		const id = await generateNextDecisionId(core);
-		const decision: Decision = {
-			id,
-			title: title as string,
-			date: formatUtcTimestamp(),
-			status: (options.status || "proposed") as Decision["status"],
-			context: "",
-			decision: "",
-			consequences: "",
-			rawContent: "",
-		};
-		await core.createDecision(decision);
-		console.log(`Created decision ${id}`);
+		const decision = await core.createDecisionFromInput({ title, status: options.status });
+		console.log(`Created decision ${decision.id}`);
 	});
 
 addHelpSchema(decisionCmd.command("edit <decisionId>"), {
