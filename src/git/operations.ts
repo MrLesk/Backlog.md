@@ -931,6 +931,27 @@ export class GitOperations {
 		return stdout.split("\0").filter(Boolean);
 	}
 
+	/**
+	 * The blob id of every file under `path` in `ref`'s tree, by path. One `ls-tree` per tree,
+	 * so a caller can tell a copy identical to one it already holds from a changed one without
+	 * reading either.
+	 */
+	async listTreeBlobs(ref: string, path: string): Promise<Map<string, string>> {
+		const blobs = new Map<string, string>();
+		if (!(await this.isRepository())) {
+			return blobs;
+		}
+		const { stdout } = await this.execGit(["ls-tree", "-r", "-z", ref, "--", path], { readOnly: true });
+		for (const record of stdout.split("\0")) {
+			const tab = record.indexOf("\t");
+			if (tab < 0) continue;
+			const [, type, oid] = record.slice(0, tab).split(" ");
+			if (type !== "blob" || !oid) continue;
+			blobs.set(record.slice(tab + 1), oid);
+		}
+		return blobs;
+	}
+
 	async hashFile(filePath: string): Promise<string | null> {
 		await this.loadConfigIfNeeded();
 		if (this.config?.filesystemOnly) {

@@ -58,6 +58,15 @@ export async function commitSamePathBranchTaskVariant(
 }
 
 /**
+ * A fake branch tree for a test double's `listTreeBlobs`: each path gets a blob id unique to the
+ * commit, so copies on different commits never read as identical to one another or to a working
+ * copy, which keeps every branch copy hydrated the way it was before blob ids existed.
+ */
+export function treeBlobs(commit: string, ...paths: string[]): Map<string, string> {
+	return new Map(paths.map((path) => [path, `${commit}:${path}`]));
+}
+
+/**
  * Sleep utility for tests that need to wait
  */
 export function sleep(ms: number): Promise<void> {

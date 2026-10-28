@@ -234,7 +234,7 @@ describe("Core shared task corpus regressions", () => {
 			listRecentBranches: git.listRecentBranches.bind(git),
 			listRecentRemoteBranches: git.listRecentRemoteBranches.bind(git),
 			resolveCommit: git.resolveCommit.bind(git),
-			listFilesInTree: git.listFilesInTree.bind(git),
+			listTreeBlobs: git.listTreeBlobs.bind(git),
 			getBranchLastModifiedMap: git.getBranchLastModifiedMap.bind(git),
 			showFile: git.showFile.bind(git),
 		};
@@ -268,9 +268,9 @@ describe("Core shared task corpus regressions", () => {
 			counts.resolveCommit += 1;
 			return await originals.resolveCommit(...args);
 		};
-		git.listFilesInTree = async (...args) => {
+		git.listTreeBlobs = async (...args) => {
 			counts.trees += 1;
-			return await originals.listFilesInTree(...args);
+			return await originals.listTreeBlobs(...args);
 		};
 		git.getBranchLastModifiedMap = async (...args) => {
 			counts.histories += 1;
@@ -290,7 +290,7 @@ describe("Core shared task corpus regressions", () => {
 			git.listRecentBranches = originals.listRecentBranches;
 			git.listRecentRemoteBranches = originals.listRecentRemoteBranches;
 			git.resolveCommit = originals.resolveCommit;
-			git.listFilesInTree = originals.listFilesInTree;
+			git.listTreeBlobs = originals.listTreeBlobs;
 			git.getBranchLastModifiedMap = originals.getBranchLastModifiedMap;
 			git.showFile = originals.showFile;
 		}

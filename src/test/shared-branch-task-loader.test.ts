@@ -1,11 +1,13 @@
 import { describe, expect, it } from "bun:test";
+import { createHash } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import { BranchTaskLoader } from "../core/task-loader.ts";
 import type { GitBranchTip, GitOperations } from "../git/operations.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
 import { pinTimeZone } from "./pin-timezone.ts";
-import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
+import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup, treeBlobs } from "./test-utils.ts";
 
 pinTimeZone("Asia/Taipei");
 
@@ -46,13 +48,19 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 }
 
 describe("shared immutable branch task loading", () => {
-	it("keeps newer local UTC updates ahead of older branch timestamps in either storage format", async () => {
+	it("reads a newer local copy's branch twin only under most_progressed, in either storage format", async () => {
 		const path = "backlog/tasks/task-1 - Local.md";
-		for (const strategy of ["most_recent", "most_progressed"] as const) {
+		// most_recent: the local copy is newer than the branch's last commit, so the branch copy cannot
+		// win and is not read. most_progressed: the branch copy may carry a status further along
+		// whatever the dates say, so it is read once and the identity index compares the two.
+		for (const [strategy, expectedReads] of [
+			["most_recent", 0],
+			["most_progressed", 1],
+		] as const) {
 			for (const updatedDate of ["2026-10-19 11:00", "2026-10-19T11:00:00Z"]) {
 				let reads = 0;
 				const git = {
-					listFilesInTree: async () => [path],
+					listTreeBlobs: async (commit: string) => treeBlobs(commit, path),
 					getBranchLastModifiedMap: async () => new Map([[path, new Date("2026-10-19T10:30:00Z")]]),
 					showFile: async () => {
 						reads++;
@@ -70,7 +78,7 @@ describe("shared immutable branch task loading", () => {
 					updatedDate,
 					filePath: `/tmp/mixed-utc/${path}`,
 				};
-				await new BranchTaskLoader(git).load(
+				const result = await new BranchTaskLoader(git).load(
 					[
 						{ name: "main", commit: "0".repeat(40), current: true },
 						{ name: "feature/older", commit: "1".repeat(40), current: false },
@@ -79,10 +87,125 @@ describe("shared immutable branch task loading", () => {
 					[local],
 					false,
 				);
-				expect(reads).toBe(0);
+				expect(reads).toBe(expectedReads);
+				expect(result.entries.filter((entry) => entry.task?.title === "Older branch")).toHaveLength(expectedReads);
 			}
 		}
 	});
+	it("hydrates every branch copy that differs from the working copy, and none that matches it", async () => {
+		// The Decision 4 case on a remote-only checkout: main's own copy on the remote was edited
+		// after the feature branch's last commit, so it is the newest copy and identical to the
+		// working copy; the feature branch's older copy carries In Progress. The newest copy must
+		// not speak for the others, and the identical copy must not be read at all.
+		const projectRoot = createUniqueTestDir("blob-id-hydration");
+		const path = "backlog/tasks/task-1 - Shared.md";
+		const mainCommit = "a".repeat(40);
+		const featureCommit = "b".repeat(40);
+		const workingCopy = taskMarkdown("TASK-1", "Working copy");
+		const featureCopy = taskMarkdown("TASK-1", "Feature copy").replace("status: To Do", "status: In Progress");
+		const blobIdOf = (content: string) =>
+			createHash("sha1")
+				.update(`blob ${Buffer.byteLength(content)}\0`)
+				.update(content)
+				.digest("hex");
+		try {
+			await mkdir(join(projectRoot, "backlog/tasks"), { recursive: true });
+			await writeFile(join(projectRoot, path), workingCopy);
+			const reads: string[] = [];
+			const git = {
+				listTreeBlobs: async (commit: string) =>
+					new Map([[path, blobIdOf(commit === mainCommit ? workingCopy : featureCopy)]]),
+				getBranchLastModifiedMap: async (commit: string) =>
+					new Map([[path, new Date(commit === mainCommit ? "2026-10-21T12:00:00Z" : "2026-10-20T10:00:00Z")]]),
+				showFile: async (commit: string) => {
+					reads.push(commit);
+					return commit === mainCommit ? workingCopy : featureCopy;
+				},
+			} as unknown as GitOperations;
+			const local: Task = {
+				id: "TASK-1",
+				title: "Working copy",
+				status: "To Do",
+				assignee: [],
+				labels: [],
+				dependencies: [],
+				createdDate: "2026-08-10",
+				updatedDate: "2026-10-21 12:00",
+				filePath: join(projectRoot, path),
+			};
+			const tips: GitBranchTip[] = [
+				{ name: "main", commit: "0".repeat(40), current: true },
+				{ name: "origin/main", commit: mainCommit, current: false },
+				{ name: "origin/feature", commit: featureCommit, current: false },
+			];
+
+			const result = await new BranchTaskLoader(git).load(tips, config, [local], false);
+			expect(reads).toEqual([featureCommit]);
+			expect(
+				result.entries.filter((entry) => entry.task?.status === "In Progress").map((entry) => entry.branch),
+			).toEqual(["origin/feature"]);
+
+			// With only the identical copy on the remote, nothing is read.
+			reads.length = 0;
+			await new BranchTaskLoader(git).load(tips.slice(0, 2), config, [local], false);
+			expect(reads).toEqual([]);
+		} finally {
+			await safeCleanup(projectRoot);
+		}
+	});
+
+	it("hydrates an active copy and an archived copy that share a blob, one per lifecycle", async () => {
+		// An archive is a move, so a branch that archived the task carries the same blob as a branch
+		// that still holds it active. With archived copies included, both are read: the archived
+		// copy must not take the blob's one slot from the active copy on the other branch.
+		const activePath = "backlog/tasks/task-1 - Shared.md";
+		const archivedPath = "backlog/archive/tasks/task-1 - Shared.md";
+		const activeCommit = "c".repeat(40);
+		const archivedCommit = "d".repeat(40);
+		const sharedBlob = "e".repeat(40);
+		const reads: string[] = [];
+		const git = {
+			listTreeBlobs: async (commit: string) =>
+				new Map([[commit === activeCommit ? activePath : archivedPath, sharedBlob]]),
+			getBranchLastModifiedMap: async (commit: string) =>
+				new Map([
+					[
+						commit === activeCommit ? activePath : archivedPath,
+						new Date(commit === activeCommit ? "2026-10-20T10:00:00Z" : "2026-10-21T10:00:00Z"),
+					],
+				]),
+			showFile: async (commit: string) => {
+				reads.push(commit);
+				return taskMarkdown("TASK-1", commit === activeCommit ? "Still active" : "Archived elsewhere");
+			},
+		} as unknown as GitOperations;
+		const local: Task = {
+			id: "TASK-1",
+			title: "Working copy",
+			status: "To Do",
+			assignee: [],
+			labels: [],
+			dependencies: [],
+			createdDate: "2026-08-10",
+			filePath: "/tmp/shared-blob-lifecycles/does-not-exist.md",
+		};
+		const result = await new BranchTaskLoader(git).load(
+			[
+				{ name: "main", commit: "0".repeat(40), current: true },
+				{ name: "origin/feature/active", commit: activeCommit, current: false },
+				{ name: "origin/feature/archived", commit: archivedCommit, current: false },
+			],
+			config,
+			[local],
+			true,
+		);
+		expect(reads.sort()).toEqual([activeCommit, archivedCommit].sort());
+		expect(result.entries.map((entry) => `${entry.type}:${entry.task?.title}`).sort()).toEqual([
+			"archived:Archived elsewhere",
+			"task:Still active",
+		]);
+	});
+
 	it("builds the Git-free working-copy corpus through lifecycle identity resolution", async () => {
 		const core = new Core("/tmp/working-copy-task-corpus-test");
 		const active: Task = {
@@ -118,9 +241,9 @@ describe("shared immutable branch task loading", () => {
 		const historyCalls = new Map<string, number>();
 		const showCalls = new Map<string, number>();
 		const git = {
-			listFilesInTree: async (commit: string) => {
+			listTreeBlobs: async (commit: string) => {
 				treeCalls.set(commit, (treeCalls.get(commit) ?? 0) + 1);
-				return commit === sharedCommit ? [sharedPath] : [changedPath];
+				return treeBlobs(commit, commit === sharedCommit ? sharedPath : changedPath);
 			},
 			getBranchLastModifiedMap: async (commit: string) => {
 				historyCalls.set(commit, (historyCalls.get(commit) ?? 0) + 1);
@@ -209,9 +332,9 @@ describe("shared immutable branch task loading", () => {
 				{ name: "main", commit: "0".repeat(40), current: true },
 				{ name: "feature/fallback", commit: branchCommit, current: false },
 			];
-			core.git.listFilesInTree = async () => {
+			core.git.listTreeBlobs = async (commit) => {
 				treeCalls += 1;
-				return [branchPath];
+				return treeBlobs(commit, branchPath);
 			};
 			core.git.getBranchLastModifiedMap = async () => {
 				historyCalls += 1;
@@ -223,13 +346,16 @@ describe("shared immutable branch task loading", () => {
 			};
 			core.git.getRepositoryRoot = async () => null;
 
+			// most_progressed reads the branch copy once so its status can be compared; the working
+			// copy still wins the tie of status.
 			expect((await core.queryTasks()).map((task) => task.title)).toEqual(["Working copy"]);
 			expect({ treeCalls, historyCalls, hydrationCalls }).toEqual({
 				treeCalls: 1,
 				historyCalls: 1,
-				hydrationCalls: 0,
+				hydrationCalls: 1,
 			});
 
+			// The working copy is gone; the cached branch copy stands in without a second read.
 			workingCopyTasks = [];
 			expect((await core.queryTasks()).map((task) => task.title)).toEqual(["Branch fallback"]);
 			expect({ treeCalls, historyCalls, hydrationCalls }).toEqual({
@@ -266,10 +392,10 @@ describe("shared immutable branch task loading", () => {
 				{ name: "feature/good", commit: goodCommit, current: false },
 				{ name: "feature/flaky", commit: flakyCommit, current: false },
 			];
-			core.git.listFilesInTree = async (commit) => {
+			core.git.listTreeBlobs = async (commit) => {
 				treeCalls.set(commit, (treeCalls.get(commit) ?? 0) + 1);
 				if (commit === flakyCommit && flakyFailures-- > 0) throw new Error("tree temporarily unavailable");
-				return [commit === goodCommit ? goodPath : flakyPath];
+				return treeBlobs(commit, commit === goodCommit ? goodPath : flakyPath);
 			};
 			core.git.getBranchLastModifiedMap = async (commit) => {
 				historyCalls.set(commit, (historyCalls.get(commit) ?? 0) + 1);
@@ -383,7 +509,7 @@ describe("shared immutable branch task loading", () => {
 		const createGit = (onHistory?: () => void) =>
 			({
 				getCurrentBranch: async () => "main",
-				listFilesInTree: async () => [path],
+				listTreeBlobs: async (commit: string) => treeBlobs(commit, path),
 				getBranchLastModifiedMap: async (_commit: string, _dir: string, since?: number | Date) => {
 					onHistory?.();
 					return since instanceof Date && fileModified < since ? new Map() : new Map([[path, fileModified]]);
@@ -420,7 +546,7 @@ describe("shared immutable branch task loading", () => {
 		const path = "backlog/tasks/task-1 - Feature.md";
 		const git = {
 			getCurrentBranch: async () => "blank",
-			listFilesInTree: async () => [path],
+			listTreeBlobs: async (commit: string) => treeBlobs(commit, path),
 			getBranchLastModifiedMap: async () => new Map([[path, new Date("2026-08-10T00:00:00Z")]]),
 			showFile: async () => taskMarkdown("TASK-1", "Feature task"),
 		} as unknown as GitOperations;
@@ -473,7 +599,7 @@ describe("shared immutable branch task loading", () => {
 			let currentBranch = "blank";
 			core.git.listRecentBranchTips = async () => [{ name: "feature/task", commit: featureCommit, current: false }];
 			core.git.getCurrentBranch = async () => currentBranch;
-			core.git.listFilesInTree = async () => [path];
+			core.git.listTreeBlobs = async (commit) => treeBlobs(commit, path);
 			core.git.getBranchLastModifiedMap = async () => new Map([[path, new Date("2026-08-10T00:00:00Z")]]);
 			core.git.showFile = async () => taskMarkdown("TASK-1", "Feature task");
 			core.git.getRepositoryRoot = async () => null;
@@ -512,7 +638,7 @@ describe("shared immutable branch task loading", () => {
 				{ name: "main", commit: "0".repeat(40), current: true },
 				{ name: "feature/task", commit: featureCommit, current: false },
 			];
-			core.git.listFilesInTree = async () => [path];
+			core.git.listTreeBlobs = async (commit) => treeBlobs(commit, path);
 			core.git.getBranchLastModifiedMap = async (_commit, _dir, since) => {
 				historyCalls += 1;
 				return since instanceof Date && fileModified < since ? new Map() : new Map([[path, fileModified]]);
@@ -865,7 +991,7 @@ describe("shared immutable branch task loading", () => {
 			{ name: "main", commit: "0".repeat(40), current: true },
 			{ name: "feature/active", commit: branchCommit, current: false },
 		];
-		core.git.listFilesInTree = async () => [branchPath];
+		core.git.listTreeBlobs = async (commit) => treeBlobs(commit, branchPath);
 		core.git.getBranchLastModifiedMap = async () => new Map([[branchPath, new Date("2026-08-09T00:00:00Z")]]);
 		core.git.showFile = async () => taskMarkdown("TASK-1", "Older branch state");
 		core.git.getRepositoryRoot = async () => null;
@@ -1071,12 +1197,12 @@ describe("shared immutable branch task loading", () => {
 		]);
 		const scanCompletionOrder: string[] = [];
 		const git = {
-			listFilesInTree: async (commit: string) => {
+			listTreeBlobs: async (commit: string) => {
 				started.get(commit)?.resolve();
 				await releases.get(commit)?.promise;
 				scanCompletionOrder.push(commit);
 				completed.get(commit)?.resolve();
-				return [path];
+				return treeBlobs(commit, path);
 			},
 			getBranchLastModifiedMap: async () => new Map([[path, new Date("2026-08-10T00:00:00Z")]]),
 			showFile: async (commit: string) => {
@@ -1148,9 +1274,9 @@ describe("shared immutable branch task loading", () => {
 			branchEnumerationCalls += 1;
 			return [];
 		};
-		core.git.listFilesInTree = async (commit) => {
+		core.git.listTreeBlobs = async (commit) => {
 			treeCalls.set(commit, (treeCalls.get(commit) ?? 0) + 1);
-			return commit === oldCommit ? [oldPath] : [newPath];
+			return treeBlobs(commit, commit === oldCommit ? oldPath : newPath);
 		};
 		core.git.getBranchLastModifiedMap = async (commit) => {
 			historyCalls.set(commit, (historyCalls.get(commit) ?? 0) + 1);
