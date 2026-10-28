@@ -36,8 +36,9 @@ import {
 	resolveBacklogDirectory,
 	resolveBacklogDirectoryFromRootConfig,
 } from "../utils/backlog-directory.ts";
-import { decisionIdsEqual, findDecisionById } from "../utils/decision-id.ts";
+import { decisionIdKey, decisionIdsEqual, findDecisionById } from "../utils/decision-id.ts";
 import {
+	documentIdKey,
 	documentIdsEqual,
 	documentNotFoundMessage,
 	findDocumentById,
@@ -822,8 +823,16 @@ export class FileSystem {
 		return await this.withEntityFileLock("draft", reference.canonicalId, reference.filePath, fn);
 	}
 
+	/** Updates and archive operations share one lock for each document or decision identity. */
+	async withContentRecordLock<T>(kind: ContentRecordKind, record: ContentRecord, fn: () => Promise<T>): Promise<T> {
+		if (process.env.USE_GLOBAL_TASK_ID_LOCK?.toLowerCase() === "false") return await fn();
+		const key = kind === "document" ? documentIdKey(record.id) : decisionIdKey(record.id);
+		if (!key || !record.path) throw new Error(`Cannot lock ${kind} ${record.id}: its identity or path is missing.`);
+		return await this.withEntityFileLock(kind, key, this.contentRecordFilePath(kind, record), fn);
+	}
+
 	private async withEntityFileLock<T>(
-		scope: "task" | "draft",
+		scope: "task" | "draft" | ContentRecordKind,
 		entityId: string,
 		filePath: string,
 		fn: () => Promise<T>,

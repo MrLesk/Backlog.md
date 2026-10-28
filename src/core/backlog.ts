@@ -4440,31 +4440,35 @@ export class Core {
 	 * updates through this method.
 	 */
 	async updateDecisionFromContent(decisionId: string, content: string, autoCommit?: boolean): Promise<void> {
-		const existingDecision = await this.getDecision(decisionId);
-		if (!existingDecision) {
-			throw new Error(decisionNotFoundMessage(decisionId));
-		}
-		if (existingDecision.archived) {
-			throw new ContentRecordArchivedError("decision", existingDecision.id);
-		}
+		const target = await this.getDecision(decisionId);
+		if (!target) throw new Error(decisionNotFoundMessage(decisionId));
+		return await this.fs.withContentRecordLock("decision", target, async () => {
+			const existingDecision = await this.getDecision(decisionId);
+			if (!existingDecision) {
+				throw new Error(decisionNotFoundMessage(decisionId));
+			}
+			if (existingDecision.archived) {
+				throw new ContentRecordArchivedError("decision", existingDecision.id);
+			}
 
-		// Parse the markdown content to extract the decision data
-		const frontmatter = parseFrontmatter(content, ["date"]).data as Partial<
-			Pick<Decision, "title" | "status" | "date">
-		>;
+			// Parse the markdown content to extract the decision data
+			const frontmatter = parseFrontmatter(content, ["date"]).data as Partial<
+				Pick<Decision, "title" | "status" | "date">
+			>;
 
-		const updatedDecision = {
-			...existingDecision,
-			title: frontmatter.title || existingDecision.title,
-			status: frontmatter.status || existingDecision.status,
-			date: frontmatter.date || existingDecision.date,
-			context: extractSection(content, "Context") ?? existingDecision.context,
-			decision: extractSection(content, "Decision") ?? existingDecision.decision,
-			consequences: extractSection(content, "Consequences") ?? existingDecision.consequences,
-			alternatives: extractSection(content, "Alternatives") ?? existingDecision.alternatives,
-		};
+			const updatedDecision = {
+				...existingDecision,
+				title: frontmatter.title || existingDecision.title,
+				status: frontmatter.status || existingDecision.status,
+				date: frontmatter.date || existingDecision.date,
+				context: extractSection(content, "Context") ?? existingDecision.context,
+				decision: extractSection(content, "Decision") ?? existingDecision.decision,
+				consequences: extractSection(content, "Consequences") ?? existingDecision.consequences,
+				alternatives: extractSection(content, "Alternatives") ?? existingDecision.alternatives,
+			};
 
-		await this.createDecision(updatedDecision, autoCommit);
+			await this.createDecision(updatedDecision, autoCommit);
+		});
 	}
 
 	async createDecisionFromInput(input: DecisionCreateInput, autoCommit?: boolean): Promise<Decision> {
@@ -4491,19 +4495,23 @@ export class Core {
 	 * Storage refuses a status that cannot be replaced without changing other content.
 	 */
 	async updateDecisionStatus(decisionId: string, status: string, autoCommit?: boolean): Promise<string> {
-		const decision = await this.getDecision(decisionId);
-		if (!decision) {
-			throw new Error(`Decision ${decisionId} not found`);
-		}
-		if (decision.archived) {
-			throw new ContentRecordArchivedError("decision", decision.id);
-		}
-		const filepath = await this.fs.updateDecisionStatus(decision, status);
+		const target = await this.getDecision(decisionId);
+		if (!target) throw new Error(`Decision ${decisionId} not found`);
+		return await this.fs.withContentRecordLock("decision", target, async () => {
+			const decision = await this.getDecision(decisionId);
+			if (!decision) {
+				throw new Error(`Decision ${decisionId} not found`);
+			}
+			if (decision.archived) {
+				throw new ContentRecordArchivedError("decision", decision.id);
+			}
+			const filepath = await this.fs.updateDecisionStatus(decision, status);
 
-		if (await this.shouldAutoCommit(autoCommit)) {
-			await this.commitWrittenFile(`backlog: Update decision ${decision.id}`, [], filepath);
-		}
-		return decision.id;
+			if (await this.shouldAutoCommit(autoCommit)) {
+				await this.commitWrittenFile(`backlog: Update decision ${decision.id}`, [], filepath);
+			}
+			return decision.id;
+		});
 	}
 
 	async createDocument(doc: Document, autoCommit?: boolean, subPath = ""): Promise<void> {
@@ -4570,37 +4578,41 @@ export class Core {
 	 * through this method, so they refuse with that one message.
 	 */
 	async updateDocumentFromInput(input: DocumentUpdateInput, autoCommit?: boolean): Promise<Document> {
-		const existingDoc = await this.getDocument(input.id);
-		if (!existingDoc) {
-			throw new Error(documentNotFoundMessage(input.id));
-		}
-		if (existingDoc.archived) {
-			throw new ContentRecordArchivedError("document", existingDoc.id);
-		}
+		const target = await this.getDocument(input.id);
+		if (!target) throw new Error(documentNotFoundMessage(input.id));
+		return await this.fs.withContentRecordLock("document", target, async () => {
+			const existingDoc = await this.getDocument(input.id);
+			if (!existingDoc) {
+				throw new Error(documentNotFoundMessage(input.id));
+			}
+			if (existingDoc.archived) {
+				throw new ContentRecordArchivedError("document", existingDoc.id);
+			}
 
-		const normalizedTitle = input.title?.trim();
-		if (input.title !== undefined && !normalizedTitle) {
-			throw new Error("Document title cannot be empty.");
-		}
+			const normalizedTitle = input.title?.trim();
+			if (input.title !== undefined && !normalizedTitle) {
+				throw new Error("Document title cannot be empty.");
+			}
 
-		const tags = input.tags !== undefined ? normalizeStringList(input.tags) : existingDoc.tags;
-		const type = normalizeDocumentTypeInput(input.type) ?? existingDoc.type;
-		const subPath =
-			input.path === undefined
-				? getDocumentSubPathFromRelativePath(existingDoc.path)
-				: normalizeDocumentSubPath(input.path);
-		const updatedDoc: Document = {
-			...existingDoc,
-			id: normalizeDocumentId(existingDoc.id),
-			title: normalizedTitle ?? existingDoc.title,
-			type,
-			rawContent: input.content,
-			updatedDate: formatUtcTimestamp(),
-			tags: tags && tags.length > 0 ? tags : undefined,
-		};
+			const tags = input.tags !== undefined ? normalizeStringList(input.tags) : existingDoc.tags;
+			const type = normalizeDocumentTypeInput(input.type) ?? existingDoc.type;
+			const subPath =
+				input.path === undefined
+					? getDocumentSubPathFromRelativePath(existingDoc.path)
+					: normalizeDocumentSubPath(input.path);
+			const updatedDoc: Document = {
+				...existingDoc,
+				id: normalizeDocumentId(existingDoc.id),
+				title: normalizedTitle ?? existingDoc.title,
+				type,
+				rawContent: input.content ?? existingDoc.rawContent,
+				updatedDate: formatUtcTimestamp(),
+				tags: tags && tags.length > 0 ? tags : undefined,
+			};
 
-		await this.createDocument(updatedDoc, autoCommit, subPath);
-		return (await this.getDocument(existingDoc.id)) ?? updatedDoc;
+			await this.createDocument(updatedDoc, autoCommit, subPath);
+			return (await this.getDocument(existingDoc.id)) ?? updatedDoc;
+		});
 	}
 
 	/**
@@ -4640,7 +4652,7 @@ export class Core {
 	 * `AmbiguousIdError`. Every refusal is a `RecordRefusedError` with nothing moved: the record is
 	 * already where the move would take it, or a file is already at the destination path.
 	 *
-	 * Documents and decisions have no update lock yet, so this takes none.
+	 * The record is resolved again under the same lock used by updates, before any move or removal.
 	 */
 	private async moveContentRecord(
 		kind: ContentRecordKind,
@@ -4648,51 +4660,57 @@ export class Core {
 		direction: "archive" | "restore",
 		autoCommit?: boolean,
 	): Promise<ContentRecordChangeResult | null> {
-		const record = await this.loadContentRecordForChange(kind, id, direction);
-		if (!record) return null;
-		// Everything that only reads comes before the move: a config or a task file that cannot be
-		// read then stops the command while the record is still where it was.
-		const commitMove = await this.shouldAutoCommit(autoCommit);
-		const listedAsDocumentationBy = await this.listRecordsDocumenting([this.fs.contentRecordProjectPath(kind, record)]);
+		const target = await this.loadContentRecordForChange(kind, id, direction);
+		if (!target) return null;
+		return await this.fs.withContentRecordLock(kind, target, async () => {
+			const record = await this.loadContentRecordForChange(kind, id, direction);
+			if (!record) return null;
+			// Everything that only reads comes before the move: a config or a task file that cannot be
+			// read then stops the command while the record is still where it was.
+			const commitMove = await this.shouldAutoCommit(autoCommit);
+			const listedAsDocumentationBy = await this.listRecordsDocumenting([
+				this.fs.contentRecordProjectPath(kind, record),
+			]);
 
-		const movedRecord = direction === "archive" ? { ...record, archived: true } : withoutArchivedFlag(record);
-		const fromPath = this.fs.contentRecordFilePath(kind, record);
-		const toPath = this.fs.contentRecordFilePath(kind, movedRecord);
-		await this.moveRecordFile(
-			fromPath,
-			toPath,
-			() =>
-				new ContentRecordFileExistsError(
-					kind,
-					record.id,
-					direction,
-					this.fs.contentRecordProjectPath(kind, movedRecord),
-				),
-		);
-		// Lists and search read the content store, which holds the records of each folder. Without
-		// this, a long-running server would show the old state until its file watcher noticed.
-		const records = this.contentRecords(kind);
-		if (direction === "archive") records.leftFolder(record);
-		else records.reachedFolder(movedRecord);
+			const movedRecord = direction === "archive" ? { ...record, archived: true } : withoutArchivedFlag(record);
+			const fromPath = this.fs.contentRecordFilePath(kind, record);
+			const toPath = this.fs.contentRecordFilePath(kind, movedRecord);
+			await this.moveRecordFile(
+				fromPath,
+				toPath,
+				() =>
+					new ContentRecordFileExistsError(
+						kind,
+						record.id,
+						direction,
+						this.fs.contentRecordProjectPath(kind, movedRecord),
+					),
+			);
+			// Lists and search read the content store, which holds the records of each folder. Without
+			// this, a long-running server would show the old state until its file watcher noticed.
+			const records = this.contentRecords(kind);
+			if (direction === "archive") records.leftFolder(record);
+			else records.reachedFolder(movedRecord);
 
-		if (commitMove) {
-			// The file is moved from here on. A commit that fails says so, so that nobody runs the
-			// move a second time.
-			try {
-				const repoRoot = await this.git.stageFileMove(fromPath, toPath);
-				await this.git.commitFiles(
-					contentRecordCommitSubject(kind, direction, record.id),
-					[fromPath, toPath],
-					repoRoot,
-				);
-			} catch (error) {
-				const failure = contentRecordNotCommittedError(kind, direction, record.id, error);
-				// The browser archives documents and decisions, as it archives tasks. The tag tells it the
-				// record moved, so the page treats it as archived instead of offering the archive again.
-				throw direction === "archive" ? markRecordAlreadyMoved(failure, "archiveState") : failure;
+			if (commitMove) {
+				// The file is moved from here on. A commit that fails says so, so that nobody runs the
+				// move a second time.
+				try {
+					const repoRoot = await this.git.stageFileMove(fromPath, toPath);
+					await this.git.commitFiles(
+						contentRecordCommitSubject(kind, direction, record.id),
+						[fromPath, toPath],
+						repoRoot,
+					);
+				} catch (error) {
+					const failure = contentRecordNotCommittedError(kind, direction, record.id, error);
+					// The browser archives documents and decisions, as it archives tasks. The tag tells it the
+					// record moved, so the page treats it as archived instead of offering the archive again.
+					throw direction === "archive" ? markRecordAlreadyMoved(failure, "archiveState") : failure;
+				}
 			}
-		}
-		return { id: record.id, listedAsDocumentationBy };
+			return { id: record.id, listedAsDocumentationBy };
+		});
 	}
 
 	/**
@@ -4706,37 +4724,41 @@ export class Core {
 	 * `AmbiguousIdError`. A record that is not archived is refused with
 	 * `ContentRecordNotArchivedError` and nothing is removed.
 	 *
-	 * Documents and decisions have no update lock yet, so this takes none.
+	 * The record is resolved again under the same lock used by updates, before any move or removal.
 	 */
 	async deleteContentRecord(
 		kind: ContentRecordKind,
 		id: string,
 		autoCommit?: boolean,
 	): Promise<ContentRecordChangeResult | null> {
-		const record = await this.loadContentRecordForChange(kind, id, "delete");
-		if (!record) return null;
-		// Everything that only reads comes before the removal, as for a move.
-		const commitRemoval = await this.shouldAutoCommit(autoCommit);
-		const activeRecord = withoutArchivedFlag(record);
-		const activePath = this.fs.contentRecordFilePath(kind, activeRecord);
-		const listedAsDocumentationBy = await this.listRecordsDocumenting([
-			this.fs.contentRecordProjectPath(kind, record),
-			this.fs.contentRecordProjectPath(kind, activeRecord),
-		]);
+		const target = await this.loadContentRecordForChange(kind, id, "delete");
+		if (!target) return null;
+		return await this.fs.withContentRecordLock(kind, target, async () => {
+			const record = await this.loadContentRecordForChange(kind, id, "delete");
+			if (!record) return null;
+			// Everything that only reads comes before the removal, as for a move.
+			const commitRemoval = await this.shouldAutoCommit(autoCommit);
+			const activeRecord = withoutArchivedFlag(record);
+			const activePath = this.fs.contentRecordFilePath(kind, activeRecord);
+			const listedAsDocumentationBy = await this.listRecordsDocumenting([
+				this.fs.contentRecordProjectPath(kind, record),
+				this.fs.contentRecordProjectPath(kind, activeRecord),
+			]);
 
-		const removedPath = await this.fs.removeArchivedContentRecordFile(kind, record);
+			const removedPath = await this.fs.removeArchivedContentRecordFile(kind, record);
 
-		if (commitRemoval) {
-			// An archive made without a commit can leave the active-path deletion pending.
-			const changedPaths = [removedPath, activePath];
-			try {
-				for (const path of changedPaths) await this.stageChangedPath(path);
-				await this.git.commitFiles(contentRecordCommitSubject(kind, "delete", record.id), changedPaths);
-			} catch (error) {
-				throw contentRecordNotCommittedError(kind, "delete", record.id, error);
+			if (commitRemoval) {
+				// An archive made without a commit can leave the active-path deletion pending.
+				const changedPaths = [removedPath, activePath];
+				try {
+					for (const path of changedPaths) await this.stageChangedPath(path);
+					await this.git.commitFiles(contentRecordCommitSubject(kind, "delete", record.id), changedPaths);
+				} catch (error) {
+					throw contentRecordNotCommittedError(kind, "delete", record.id, error);
+				}
 			}
-		}
-		return { id: record.id, listedAsDocumentationBy };
+			return { id: record.id, listedAsDocumentationBy };
+		});
 	}
 
 	/**

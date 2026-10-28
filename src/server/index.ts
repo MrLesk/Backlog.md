@@ -1237,7 +1237,7 @@ export class BacklogServer {
 			this.broadcastDataUpdated();
 			return Response.json({ success: true });
 		} catch (error) {
-			if (isAmbiguousIdError(error)) {
+			if (isAmbiguousIdError(error) || isTaskLockError(error)) {
 				return Response.json({ error: error.message }, { status: 409 });
 			}
 			if (error instanceof RecordRefusedError) {
@@ -1423,7 +1423,7 @@ export class BacklogServer {
 			if (error instanceof SyntaxError) {
 				return Response.json({ error: "Invalid request payload" }, { status: 400 });
 			}
-			if (isAmbiguousIdError(error)) {
+			if (isAmbiguousIdError(error) || isTaskLockError(error)) {
 				return Response.json({ error: error.message }, { status: 409 });
 			}
 			// Core refused the save, for example because the document is archived. Its message is the answer.
@@ -1505,7 +1505,7 @@ export class BacklogServer {
 			await this.core.updateDecisionFromContent(decisionId, content);
 			return Response.json({ success: true });
 		} catch (error) {
-			if (isAmbiguousIdError(error)) {
+			if (isAmbiguousIdError(error) || isTaskLockError(error)) {
 				return Response.json({ error: error.message }, { status: 409 });
 			}
 			// Core refused the save, for example because the decision is archived. Its message is the answer.
