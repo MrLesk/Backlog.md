@@ -11,6 +11,8 @@ on:
       - 'scripts/smoke-compiled-build.ts'
       - 'scripts/smoke-packaged-build.cjs'
       - 'scripts/smoke-browser-build.cjs'
+      - 'scripts/smoke-console-build.ts'
+      - 'scripts/prepare-console-driver.cjs'
       - 'backlog/attachments/back-794/blessed-aot.patch'
 
 permissions:
@@ -146,6 +148,10 @@ jobs:
             brew install expect
           fi
           command -v expect
+      - name: Prepare verified Windows console driver
+        if: runner.os == 'Windows'
+        run: node scripts/prepare-console-driver.cjs
+        shell: bash
       - name: Prepare verified experimental native compiler
         run: node scripts/prepare-bun-runtime.cjs --aot
         shell: bash
@@ -171,6 +177,9 @@ jobs:
             "$BACKLOG_BUILD_EXECUTABLE_PATH" scripts/build.ts
             bun scripts/smoke-compiled-build.ts "$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE" "$VERSION"
             node scripts/smoke-packaged-build.cjs "$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE" "$VERSION"
+            if [[ "$RUNNER_OS" == Windows ]]; then
+              bun scripts/smoke-console-build.ts "$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE"
+            fi
             if [[ -n "${BACKLOG_BROWSER_DRIVER:-}" ]]; then
               node scripts/smoke-browser-build.cjs "$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE"
             fi
@@ -187,5 +196,6 @@ jobs:
           path: |
             dist/aot-*/${{ matrix.binary }}
             dist/aot-*/${{ matrix.binary }}.browser-*.png
+            dist/aot-*/${{ matrix.binary }}.tui-*.svg
             tmp/tui-interactive-transcripts/*.log
           if-no-files-found: error

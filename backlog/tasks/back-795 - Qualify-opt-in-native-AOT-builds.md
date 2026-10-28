@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-10-28T00:07:00Z'
-updated_date: '2026-10-28T00:35:00Z'
+updated_date: '2026-10-28T00:39:00Z'
 labels: []
 dependencies: []
 references:
@@ -21,6 +21,8 @@ modified_files:
   - scripts/ci-trust.test.cjs
   - scripts/smoke-packaged-build.cjs
   - scripts/smoke-browser-build.cjs
+  - scripts/prepare-console-driver.cjs
+  - scripts/smoke-console-build.ts
 ordinal: 403000
 ---
 
@@ -54,6 +56,8 @@ Extend the existing executable TLS bootstrap regression to the new workflow so e
 Reuse all four existing interactive PTY suites against each compiled native artifact on POSIX via TUI_TEST_CLI_PATH and an empty TUI_TEST_CLI_RUNTIME. Provision expect explicitly and require it, so the gate cannot silently skip. This extends the user-required real terminal qualification without duplicating interaction assertions; preserve transcripts. Windows console interaction remains a separate gate.
 
 Extend the compiled consumer qualification with a real Chromium interaction on Linux x64. Existing smoke verifies HTML/assets but never executes React. Using pinned Playwright1.62.1 outside product dependencies, open the board, create a task in the UI, edit its description, verify persisted CLI state, then edit its title through CLI and require the browser watcher to refresh. Retain screenshots and assert graceful browser-server SIGTERM exit0. This covers the user-required browser and native watching flows without changing UI behavior.
+
+Use the same verified tui-test0.1.1 Windows console driver proven by the Groma native setup for Windows x64 and ARM64 Backlog artifacts. Reuse patched-Node downloading and archive digest validation, with x64 driver emulation on ARM documented. Exercise board task selection/Enter details/Escape/q, then restart and send actual Ctrl+C; assert actual PTY process exit0 for both sessions and retain screenshots. This closes the explicitly open Windows console gate without adding a shipped node-pty dependency.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -68,4 +72,6 @@ All four existing real-PTY suites pass on the compiled AOT+trim Linux artifact:1
 Native run40608007904 on1070bedb6c7f5405e2770989cab330f34df97519 passes all six targets in BOTH modes. Every POSIX host(Linux x64/arm64 andmacOS x64/arm64) additionally passes11 real-PTY tests/53assertions per mode, no skips. Windows x64/arm64 pass full compiled smoke and actual-artifact Node launcher. Browser interaction gate added for Linux x64 with pinned Playwright1.62.1; pending native run because scratch Chromium CDN download is unavailable(previous verified environment limitation). It checks actual React task creation/editing, CLI persistence, watcher refresh and SIGTERM0, retains screenshots. Types/Biome and existing executable-trust4tests pass; no UI product code changed. Windows actual console remains open; fork app write access/publication prerequisite unchanged.
 
 First Chromium run40609233416 renders the actual board and performs create/open/edit/save, then the harness queries edited text while the asynchronous save is still in editor mode: Playwright strict locator finds the editor textarea and its code mirror. Correct by awaiting the preview-mode Edit button before asserting visible saved content; retain exact CLI persistence, watch refresh, JavaScript errors and shutdown assertions. This is a consumer-test synchronization correction, not a demonstrated product failure.
+
+Added native Windows console gate using pinned verified tui-test0.1.1. It checks board ordering through actual second-row Down/Enter details, Escape/q, fresh restart and real Ctrl+C; requires PTY process exit0, captures SVGs. Windows ARM64 uses the x64 driver under emulation, product remains native ARM64. Reused existing patched-Node download/guard functions rather than introducing another HTTPS implementation. Local types/Biome and executable-trust4tests pass; Windows interaction itself requires native CI. No shipped node-pty dependency added.
 <!-- SECTION:NOTES:END -->

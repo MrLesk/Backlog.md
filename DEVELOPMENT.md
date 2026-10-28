@@ -348,6 +348,10 @@ a task in the actual React UI, verifies CLI persistence, watches a CLI title
 change appear in the browser, captures screenshots and requires graceful server
 shutdown. This gate is pending qualification.
 
-Artifacts are experimental. Windows console interaction/shutdown remains open.
-Passing this qualification alone is not shipping approval. The workflow
-publishes nothing.
+Windows runners additionally use the verified tui-test 0.1.1 console driver
+for board navigation/details, q and actual Ctrl+C. The ARM64 product uses the
+x64 driver under emulation. Console screenshots are retained; results remain
+pending.
+
+Artifacts are experimental. Passing this qualification alone is not shipping
+approval. The workflow publishes nothing.
