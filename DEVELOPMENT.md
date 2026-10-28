@@ -302,3 +302,42 @@ provenance automatically. Follow the steps below to keep the setup healthy.
    package's **Provenance** tab or by running `npm view <package> --json | jq '.dist.provenance'`.
 
 [← Back to README](README.md)
+
+## Experimental native AOT qualification
+
+Releases continue to use the checksum-verified Bun 1.4.4 bytecode build. Opt in
+through the actual Tailwind build with a verified experimental compiler:
+
+```sh
+BACKLOG_BUILD_AOT=1 /path/to/verified/bun scripts/build.ts
+BACKLOG_BUILD_AOT=1 BACKLOG_BUILD_TRIM=1 /path/to/verified/bun scripts/build.ts
+```
+
+`BACKLOG_BUILD_TRIM=1` also works independently with bytecode. Requested flags
+must be supported by the running compiler. Experimental builds embed that same
+compiler; omit `BACKLOG_BUILD_EXECUTABLE_PATH` locally. Bundle-only output cannot
+request AOT or trim. Embedded version and all web assets use the normal build.
+
+Run `node scripts/prepare-bun-runtime.cjs --aot` using patched Node.js 26.12.1 or
+later to download the pinned native compiler. It verifies archive SHA-256,
+executable SHA-256 and revision. The manifest records Buildkite build 133944 and
+full commit d260d7d51ba4280c836a600df2123f42986c8669 for all six release hosts.
+In Actions it sets BACKLOG_BUILD_EXECUTABLE_PATH and PATH. Stable pins remain
+unchanged.
+
+The separate native qualification workflow uses native Linux x64/arm64,
+macOS x64/arm64 and Windows x64/arm64 runners. Both AOT modes run the existing
+compiled smoke outside the source checkout: help/version, init, task CRUD/YAML,
+web HTML/Tailwind CSS/JS/favicon, MCP tools/resources and a failed-write exit.
+
+The installed neo-neo-bblessed@1.0.10 still causes AOT to parse binary terminfo
+as JavaScript. BACK-794 preserves its tested patch in
+`backlog/attachments/back-794/blessed-aot.patch`. Qualification explicitly checks
+out the package's no-node-pty source at 44da73176e983718d4fcce993e092ac636ad9740,
+applies that patch and builds its dist. This is an unpublished qualification
+prerequisite, not a lockfile update or npm release. Replace it with the approved
+npm version after fork review and publication.
+
+Artifacts are experimental. Full native terminal interaction, console shutdown,
+browser interaction and npm launcher behavior remain separate gates. Passing
+this smoke alone is not shipping approval. The workflow publishes nothing.

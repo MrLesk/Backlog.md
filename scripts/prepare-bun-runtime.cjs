@@ -1,6 +1,6 @@
 // Download with Node's patched TLS verifier, then verify the release digest before extraction.
 const { createHash } = require("node:crypto");
-const { appendFileSync, chmodSync, mkdirSync, writeFileSync } = require("node:fs");
+const { appendFileSync, chmodSync, mkdirSync, readFileSync, writeFileSync } = require("node:fs");
 const https = require("node:https");
 const { setGlobalProxyFromEnv } = require("node:http");
 const { tmpdir } = require("node:os");
@@ -20,7 +20,7 @@ const assets = {
 
 function download(url, redirects = 0) {
 	return new Promise((resolve, reject) => {
-		const request = https.get(url, (response) => {
+		const request = https.get(url, { headers: { "User-Agent": "backlog-runtime-verifier" } }, (response) => {
 			if ([301, 302, 303, 307, 308].includes(response.statusCode)) {
 				response.resume();
 				const destination = new URL(response.headers.location, url);
@@ -46,23 +46,38 @@ function download(url, redirects = 0) {
 	});
 }
 
-async function main() {
+function requirePatchedNode() {
 	const [major, minor, patch] = process.versions.node.split(".").map(Number);
 	if (major < 26 || (major === 26 && (minor < 12 || (minor === 12 && patch < 1)))) {
 		throw new Error("Use patched Node.js 26.12.1 or later");
 	}
+}
+
+function verifyAotCompiler(executable, artifact, revision) {
+	if (createHash("sha256").update(readFileSync(executable)).digest("hex") !== artifact.binarySha256) {
+		throw new Error("AOT compiler binary checksum mismatch");
+	}
+	const result = spawnSync(executable, ["--revision"], { encoding: "utf8" });
+	if (result.status !== 0 || result.stdout.trim() !== revision) throw new Error("AOT compiler revision mismatch");
+}
+
+async function main() {
+	requirePatchedNode();
 	if (process.env.BUN_VERSION && process.env.BUN_VERSION !== version) {
 		throw new Error("Update the verified Bun release digests together with BUN_VERSION");
 	}
-	// Honor explicitly configured HTTPS proxies while retaining Node's TLS verification.
 	setGlobalProxyFromEnv();
 	const host = `bun-${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`;
-	const target = process.argv[2] ?? host;
-	if (!Object.hasOwn(assets, target)) throw new Error(`Unsupported Bun target: ${target}`);
-	const [asset, checksum] = assets[target];
-	const bytes = await download(`https://github.com/oven-sh/bun/releases/download/bun-v${version}/${asset}`);
+	const aot = process.argv[2] === "--aot" ? require("./aot-compiler.json") : undefined;
+	const target = aot ? host : (process.argv[2] ?? host);
+	const nativeArtifact = aot?.artifacts[target];
+	if (aot ? !nativeArtifact : !Object.hasOwn(assets, target)) throw new Error(`Unsupported Bun target: ${target}`);
+	const [asset, checksum] = nativeArtifact ? [nativeArtifact.artifact, nativeArtifact.archiveSha256] : assets[target];
+	const bytes = await download(
+		nativeArtifact?.url ?? `https://github.com/oven-sh/bun/releases/download/bun-v${version}/${asset}`,
+	);
 	if (createHash("sha256").update(bytes).digest("hex") !== checksum) throw new Error("Bun release checksum mismatch");
-	const directory = path.join(process.env.RUNNER_TEMP ?? tmpdir(), `backlog-bun-${version}`, target);
+	const directory = path.join(process.env.RUNNER_TEMP ?? tmpdir(), `backlog-bun-${aot ? aot.commit : version}`, target);
 	mkdirSync(directory, { recursive: true });
 	const archive = path.join(directory, asset);
 	const executable = path.join(directory, target.includes("windows") ? "bun.exe" : "bun");
@@ -81,9 +96,10 @@ async function main() {
 	);
 	if (extracted.status !== 0) throw new Error("Could not extract the verified Bun executable");
 	chmodSync(executable, 0o755);
+	if (nativeArtifact) verifyAotCompiler(executable, nativeArtifact, aot.revision);
 	if (process.env.GITHUB_ENV) appendFileSync(process.env.GITHUB_ENV, `BACKLOG_BUILD_EXECUTABLE_PATH=${executable}\n`);
 	if (target === host && process.env.GITHUB_PATH) appendFileSync(process.env.GITHUB_PATH, `${directory}\n`);
-	console.log(`Verified Bun ${version} for ${target}: ${executable}`);
+	console.log(`Verified Bun ${aot?.revision ?? version} for ${target}: ${executable}`);
 }
 
 main().catch((error) => {
