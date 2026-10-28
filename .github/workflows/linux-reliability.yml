@@ -1,0 +1,112 @@
+name: Linux reliability reproduction
+
+# Investigation only: no scheduled runs or default-branch behavior.
+on:
+  push:
+    branches: [tasks/back-797-linux-reliability]
+    paths:
+      - scripts/reproduce-linux-reliability.py
+      - .github/workflows/linux-reliability.yml
+
+permissions:
+  contents: read
+
+env:
+  NODE_OPTIONS: --use-openssl-ca
+  NODE_USE_SYSTEM_CA: '0'
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [pipe, memory]
+    steps:
+      -
+        name: Exclude compromised certificate trust before networking
+        shell: bash
+        run: |
+          node <<'NODE'
+          // Prepare filtered trust for subsequent network steps.
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const tls = require('node:tls');
+          const { X509Certificate, createHash } = require('node:crypto');
+          const blocked = new Set(["0a6c2b2ca5b364207954171987ac9d2178561569d8205457e77ca90c32ede282", "43bffa19d6ef651451f6841e019931e96f6f2eaeff28ab4b6f1ce4576de2717b", "49dd353dc2b919a3770645117d0e60c16115e7d1bc259eefe734b00ea434fe5f", "5c0660a2b164910d8ff589c18e14552e9e0ec237dcefe2cb736d41a4811f81a0", "63ecefee431d49523bc1136c4e72d0206a477086caf606cd5cf025686c109cf8", "8d417db2dd8bf5e3084d1e3f196d583849d81bdd4c00c70b9d39369e96b8c782", "92c063d67e8f14db71d288e11266ffdaf69cbf115f7bab14f3bc2f68d25e0e30", "bd153ed7b0434f6886b17bce8bbe84ed340c7132d702a8f4fa318f756ecbd6f3", "c619e4780ed8e0abeda24ad732567de4383a7ea941338f6d1a7d1b49ac792fe9", "e0254c7fcdc265e2f0f8a428dabb75ab4ae039b4872d62f5ee57f0877d5a8a41", "ebed6475c2c2d80fcb199f3fe8dd6e6b3ce60b77eb15d4e42c3dec0c6f5b5105", "ec4ffa1ad0ac88081314b7aaffef6a91f97cd57291bb5ba686c5415f5eb4f6b6"]);
+          if (Object.keys(process.env).some(key => key.toUpperCase() === 'GIT_SSL_NO_VERIFY' && process.env[key] !== undefined)) {
+            throw new Error('Remove GIT_SSL_NO_VERIFY from the runner or workflow environment before continuing.');
+          }
+          const sources = [...tls.rootCertificates];
+          if (tls.getCACertificates) {
+            for (const source of ['default', 'system', 'extra']) sources.push(...tls.getCACertificates(source));
+          }
+          const certificates = new Map();
+          for (const pem of sources) {
+            const certificate = new X509Certificate(pem);
+            const key = createHash('sha256').update(certificate.publicKey.export({ type: 'spki', format: 'der' })).digest('hex');
+            if (!blocked.has(key)) certificates.set(certificate.fingerprint256, pem);
+          }
+          if (!certificates.size) throw new Error('Refusing an empty TLS trust bundle');
+          const file = path.join(process.env.RUNNER_TEMP, 'backlog-trusted-ca.pem');
+          const directory = path.join(process.env.RUNNER_TEMP, 'backlog-empty-ca-directory');
+          fs.writeFileSync(file, [...certificates.values()].join('\n') + '\n');
+          fs.mkdirSync(directory, { recursive: true });
+          // Git cannot isolate HTTPS-proxy CA directories; block that transport.
+          const proxyDirectory = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, 'backlog-proxy-trust-'));
+          const proxyMarker = path.join(proxyDirectory, 'unsupported-https-proxy');
+          fs.writeFileSync(proxyMarker, '', { mode: 0o600 });
+          const proxyCAFile = path.join(proxyMarker, 'unavailable.pem');
+          const settings = {
+            SSL_CERT_FILE: file, SSL_CERT_DIR: directory, NODE_EXTRA_CA_CERTS: file,
+            NODE_USE_SYSTEM_CA: '0', NODE_TLS_REJECT_UNAUTHORIZED: '1', GIT_SSL_CAINFO: file, GIT_SSL_CAPATH: directory, CURL_CA_BUNDLE: file,
+            GIT_PROXY_SSL_CAINFO: proxyCAFile, CARGO_HTTP_CAINFO: file, NPM_CONFIG_CAFILE: file, NIX_SSL_CERT_FILE: file,
+          };
+          const repository = new URL(`${process.env.GITHUB_SERVER_URL.replace(/\/+$/, '')}/${process.env.GITHUB_REPOSITORY}`);
+          if (repository.protocol !== 'https:' || repository.username || repository.password) throw new Error('Expected a credential-free HTTPS GitHub server.');
+          const git = [['http.schannelUseSSLCAInfo', 'true']];
+          for (const url of [repository.href, `${repository.href}.git`]) {
+            git.push([`http.${url}.sslVerify`, 'true'], [`http.${url}.schannelUseSSLCAInfo`, 'true']);
+          }
+          const rawCount = process.env.GIT_CONFIG_COUNT ?? '0';
+          const gitCount = Number(rawCount);
+          if (!/^(0|[1-9][0-9]*)$/.test(rawCount) || !Number.isSafeInteger(gitCount + git.length)) throw new Error('Invalid GIT_CONFIG_COUNT');
+          for (const [offset, [key, value]] of git.entries()) {
+            settings[`GIT_CONFIG_KEY_${gitCount + offset}`] = key;
+            settings[`GIT_CONFIG_VALUE_${gitCount + offset}`] = value;
+          }
+          settings.GIT_CONFIG_COUNT = String(gitCount + git.length);
+          const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
+          settings.GIT_CONFIG_PARAMETERS = [process.env.GIT_CONFIG_PARAMETERS,
+            ...git.map(([key, value]) => quote(key) + '=' + quote(value))].filter(Boolean).join(' ');
+          for (const [key, value] of Object.entries(settings)) {
+            if (/[\r\n]/.test(value)) throw new Error('TLS environment values must not contain newlines.');
+            fs.appendFileSync(process.env.GITHUB_ENV, `${key}=${value}\n`);
+          }
+          console.log(`Prepared ${certificates.size} trusted CAs with eMudhra incident keys excluded`);
+          NODE
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download and verify the published Linux x64 binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 2 --output "$RUNNER_TEMP/backlog" \
+            https://github.com/MrLesk/Backlog.md/releases/download/v1.55.3/backlog-bun-linux-x64
+          printf '%s  %s\n' c20d5c51aa95b66d5c89428927bb0a16dc7beb9110683d66387e0514925f274a "$RUNNER_TEMP/backlog" | sha256sum --check
+          chmod +x "$RUNNER_TEMP/backlog"
+      - name: Reproduce on native Linux x64
+        env:
+          PROBE_MODE: ${{ matrix.mode }}
+        run: |
+          python3 scripts/reproduce-linux-reliability.py \
+            --binary "$RUNNER_TEMP/backlog" --mode "$PROBE_MODE" \
+            --output "$RUNNER_TEMP/linux-reliability-$PROBE_MODE"
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: linux-reliability-${{ matrix.mode }}
+          path: ${{ runner.temp }}/linux-reliability-${{ matrix.mode }}/
+          retention-days: 14
