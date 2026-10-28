@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-10-28T00:07:00Z'
-updated_date: '2026-10-28T00:10:00Z'
+updated_date: '2026-10-28T00:18:00Z'
 labels: []
 dependencies: []
 references:
@@ -49,10 +49,16 @@ Native AOT currently requires a scratch wrapper and a manually patched terminal 
 Add explicit AOT and independent trim flags to the actual Tailwind build, rejecting unsupported flags, bundle-only output and a different embedded runtime. Reuse verified compiler preparation with all six native release hosts; preserve stable digests and TLS policy. A separate non-publishing CI workflow checks out exact no-node-pty source, applies BACK-794 preserved patch, builds the fork and stages its dist for qualification only. Run existing full compiled smoke in both modes and package launcher checks outside the checkout. Record native outcomes and unreleased dependency/terminal interaction gates. Existing smoke covers the known binary-data and asset failures; add no duplicate unit tests.
 
 Extend the existing executable TLS bootstrap regression to the new workflow so experimental downloads preserve the repository trust policy; no new test layer.
+
+Reuse all four existing interactive PTY suites against each compiled native artifact on POSIX via TUI_TEST_CLI_PATH and an empty TUI_TEST_CLI_RUNTIME. Provision expect explicitly and require it, so the gate cannot silently skip. This extends the user-required real terminal qualification without duplicating interaction assertions; preserve transcripts. Windows console interaction remains a separate gate.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 Implemented independent opt-in build flags and native qualification for all six release targets. Existing stable compiler/archive pins and TLS policy remain intact. Darwin x64 Buildkite133944 archive additionally downloaded and verified against published SHA1 and SHA256; extracted compiler SHA256 recorded. Local types and Biome pass after formatting; existing full compiled smoke passes AOT and AOT+trim with the exact BACK-794 patched dependency. New actual-artifact Node launcher layout smoke passes both modes (version/init/create/JSON list/nonzero failure). Existing launcher and packaging tests:21 pass; executable trust regression now covers the AOT workflow:4 pass. Workflow checks out exact no-node-pty head and applies preserved patch for qualification only; no npm dependency update/publication. Native CI pending. Latest Bun PR45631 merged 2026-10-27T23:50:42Z; official bun-pr downloaded head000968de8e5a99f0d171868c7d3e714c9700e4af from build134059, revision1.4.4-canary.1+000968de8, Linux SHA256c2c17501f6fe3d93333e55275a755de178d2ac83948ca49bcd965d65dc975115. Minimal Groma pm reproducer still fails untrimmed and keep-install with exit70; keep-cli passes. Backlog matrix remains on verified six-host d260 pin pending broader new-compiler qualification.
+
+Native qualification run40607048907 on81aa510 passes full compiled smoke and actual-artifact Node launcher checks in BOTH AOT modes on all six existing release targets:Linux x64/arm64,macOS x64/arm64,Windows x64/arm64. Stable CI40607048685 compile smoke across release targets plus Windows/macOS unit profiles also pass; Linux full/Nix still running when recorded. Local default stable build+full compiled smoke pass; unsupported stable AOT/trim flags, bundle-only experimental output and mismatched runtime all reject correctly. Extending the native workflow to run the existing four POSIX PTY suites against artifacts; no source product behavior change. Full Windows console and browser interactions remain open.
+
+All four existing real-PTY suites pass on the compiled AOT+trim Linux artifact:11 tests,53 assertions,47.40s. This exercises live task edits, removed-task neighbor selection, editor handoff twice, readiness initial render, all task ordering options and real xterm shift-arrow multi-move. Reused existing harness through artifact override; no test assertions changed. The native workflow now provisions expect explicitly and runs these suites on all four POSIX hosts in both modes; preserves transcripts. Windows console remains separate.
 <!-- SECTION:NOTES:END -->

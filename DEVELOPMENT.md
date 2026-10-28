@@ -338,6 +338,11 @@ applies that patch and builds its dist. This is an unpublished qualification
 prerequisite, not a lockfile update or npm release. Replace it with the approved
 npm version after fork review and publication.
 
-Artifacts are experimental. Full native terminal interaction, console shutdown,
-browser interaction and npm launcher behavior remain separate gates. Passing
-this smoke alone is not shipping approval. The workflow publishes nothing.
+On POSIX, the workflow also runs the four existing real-PTY suites against
+each native artifact, including editor handoff, readiness filtering, board moves
+and task ordering. Transcripts are retained. The Node launcher is checked in
+the published package layout against the actual artifact.
+
+Artifacts are experimental. Windows console interaction/shutdown and full browser
+interaction remain separate gates. Passing this qualification alone is not
+shipping approval. The workflow publishes nothing.

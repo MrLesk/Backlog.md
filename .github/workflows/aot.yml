@@ -134,6 +134,17 @@ jobs:
           npm ci --ignore-scripts
           npm run build
           cp dist/* ../node_modules/neo-neo-bblessed/dist/
+      - name: Prepare real POSIX terminal tests
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            sudo apt-get update
+            sudo apt-get install -y expect
+          elif ! command -v expect; then
+            brew install expect
+          fi
+          command -v expect
       - name: Prepare verified experimental native compiler
         run: node scripts/prepare-bun-runtime.cjs --aot
         shell: bash
@@ -150,10 +161,17 @@ jobs:
             "$BACKLOG_BUILD_EXECUTABLE_PATH" scripts/build.ts
             bun scripts/smoke-compiled-build.ts "$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE" "$VERSION"
             node scripts/smoke-packaged-build.cjs "$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE" "$VERSION"
+            if [[ "$RUNNER_OS" != Windows ]]; then
+              RUN_INTERACTIVE_TUI_TESTS=1 TUI_TEST_CLI_RUNTIME='' \
+                TUI_TEST_CLI_PATH="$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE" \
+                bash scripts/run-tui-interactive-tests.sh
+            fi
           done
       - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: experimental-aot-${{ matrix.target }}
-          path: dist/aot-*/${{ matrix.binary }}
+          path: |
+            dist/aot-*/${{ matrix.binary }}
+            tmp/tui-interactive-transcripts/*.log
           if-no-files-found: error
