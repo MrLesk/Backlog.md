@@ -4,8 +4,8 @@ title: Add a TUI yank menu for task references
 status: In Progress
 assignee:
   - '@codex'
-created_date: '2026-10-04 09:03'
-updated_date: '2026-10-04 12:43'
+created_date: 2026-10-04 09:03
+updated_date: '2026-10-28T09:04:00Z'
 labels: []
 dependencies: []
 references:
@@ -13,6 +13,9 @@ references:
     https://github.com/jesseduffield/lazygit/blob/master/docs/keybindings/Keybindings_en.md
   - >-
     https://docs.github.com/en/repositories/working-with-files/using-files/getting-permanent-links-to-files
+modified_files:
+  - src/test/board-tui-move.test.ts
+  - src/test/github-file-url.test.ts
 type: feature
 ordinal: 337000
 ---
@@ -46,6 +49,8 @@ When working across repositories that each have their own backlog, task IDs alon
 
 <!-- SECTION:PLAN:BEGIN -->
 1. Keep the shared TUI chooser and its Y/R/A actions; add a GitHub URL action with a distinct shortcut, available only when the origin URL is a supported GitHub remote and a current branch exists. 2. Build the file URL from the remote, current branch, and repository-relative task path, encoding branch and path segments for a valid GitHub blob URL. 3. Reuse the chooser from the board, board task detail popup, and task list under their modal guards; update help/footer and add URL construction and availability coverage.
+
+Rebase PR #1054 onto upstream main containing the Groma fix, run focused regression tests and repository checks, then push with an explicit force-with-lease and monitor architecture CI.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -56,4 +61,6 @@ Implemented a shared TUI copy-reference chooser for the board, board task detail
 Follow-up: added a conditional GitHub URL choice bound to G. It derives the link from origin, the local current branch, and the task path relative to the repository root; it is omitted when origin is not a supported github.com URL, the branch is unnamed, or the task path is outside the repository. GitHub branch/path separators are preserved while individual path segments are URL-encoded. Added URL builder and chooser coverage. TypeScript and Biome checks pass; tests remain unrun.
 
 Final implementation: commits ca5ad1c9 (TUI yank chooser for task ID, repository-relative path, and machine-local absolute path) and dec91699 (conditional GitHub URL for the current branch). Validation: bunx tsc --noEmit and bun run check . passed; focused tests passed (31 tests across task-yank-popup.test.ts, github-file-url.test.ts, and git.test.ts). Full bun run test completed with 2,889 passed, 8 skipped, 1 failed, and 1 error; the reported failures were in unrelated TUI watcher/server API tests. Contribution review: task branch and both commit subjects follow the repository naming rules; the PR remains to be opened with a reference to BACK-707.
+
+Rebased PR #1054 onto upstream main 0e0d2967 on 2026-10-28 without conflicts. Updated URL test formatting for current Biome and made the board shortcut isolation test await the chooser and exercise M. Validation: 74 focused tests pass (47 chooser/URL/footer/help/board and 27 Git tests), full Biome check passes, and bun run check:types passes for 555 files. Git fixture tests were run with hooks disabled only in the test process to isolate a global identity guard.
 <!-- SECTION:NOTES:END -->
