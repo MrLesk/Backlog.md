@@ -346,12 +346,20 @@ the published package layout against the actual artifact.
 Linux x64 also drives Chromium with pinned Playwright 1.62.1, creates and edits
 a task in the actual React UI, verifies CLI persistence, watches a CLI title
 change appear in the browser, captures screenshots and requires graceful server
-shutdown. This gate is pending qualification.
+shutdown. Both AOT modes pass this gate in native run 40610164262.
 
 Windows runners additionally use the verified tui-test 0.1.1 console driver
 for board navigation/details, q and actual Ctrl+C. The ARM64 product uses the
-x64 driver under emulation. Console screenshots are retained; results remain
-pending.
+x64 driver under emulation. Both modes pass on Windows x64 and ARM64 in
+run 40610164262; console screenshots are retained.
 
 Artifacts are experimental. Passing this qualification alone is not shipping
 approval. The workflow publishes nothing.
+
+The release build uses the same six native runner architectures and checks the
+compiled product plus Node launcher before uploading an artifact. Its explicit
+`BACKLOG_BUILD_AOT` and `BACKLOG_BUILD_TRIM` defaults remain `0`. Changing either
+requires review and uses the pinned native compiler instead of the stable target
+runtime. Enable AOT only after the Blessed patch is reviewed, published with
+approval and consumed by the lockfile. Qualification currently applies that
+patch explicitly; the release job does not patch installed dependencies.

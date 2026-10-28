@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-10-28T00:07:00Z'
-updated_date: '2026-10-28T00:39:00Z'
+updated_date: '2026-10-28T01:04:00Z'
 labels: []
 dependencies: []
 references:
@@ -23,6 +23,7 @@ modified_files:
   - scripts/smoke-browser-build.cjs
   - scripts/prepare-console-driver.cjs
   - scripts/smoke-console-build.ts
+  - .github/workflows/release.yml
 ordinal: 403000
 ---
 
@@ -35,8 +36,8 @@ Native AOT currently requires a scratch wrapper and a manually patched terminal 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 Default build and release behavior remain unchanged; explicit AOT and trim modes use a matching supported compiler
-- [ ] #2 Both AOT modes pass the compiled product smoke on every supported native release target or identify concrete blockers
-- [ ] #3 Compiler provenance, terminal dependency prerequisite and qualification limits are reviewable without publishing a release
+- [x] #2 Both AOT modes pass the compiled product smoke on every supported native release target or identify concrete blockers
+- [x] #3 Compiler provenance, terminal dependency prerequisite and qualification limits are reviewable without publishing a release
 <!-- AC:END -->
 
 ## Definition of Done
@@ -58,6 +59,10 @@ Reuse all four existing interactive PTY suites against each compiled native arti
 Extend the compiled consumer qualification with a real Chromium interaction on Linux x64. Existing smoke verifies HTML/assets but never executes React. Using pinned Playwright1.62.1 outside product dependencies, open the board, create a task in the UI, edit its description, verify persisted CLI state, then edit its title through CLI and require the browser watcher to refresh. Retain screenshots and assert graceful browser-server SIGTERM exit0. This covers the user-required browser and native watching flows without changing UI behavior.
 
 Use the same verified tui-test0.1.1 Windows console driver proven by the Groma native setup for Windows x64 and ARM64 Backlog artifacts. Reuse patched-Node downloading and archive digest validation, with x64 driver emulation on ARM documented. Exercise board task selection/Enter details/Escape/q, then restart and send actual Ctrl+C; assert actual PTY process exit0 for both sessions and retain screenshots. This closes the explicitly open Windows console gate without adding a shipped node-pty dependency.
+
+Prepare release opt-in wiring with explicit AOT=0 and TRIM=0 defaults. Use the already-qualified six native runners and select the verified experimental pin only when reviewed flags are enabled. Gate artifact upload on existing full compiled smoke and actual-artifact Node launcher smoke. Preserve prepared tag/commit/version, TLS and publication jobs; do not dispatch a release.
+
+Validate the release runner change with an unpatched stable build and the exact pre-upload product/launcher smoke on every native host, before staging the Blessed qualification patch. This reuses existing checks and proves the default release path can execute natively on the new runners.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -74,4 +79,6 @@ Native run40608007904 on1070bedb6c7f5405e2770989cab330f34df97519 passes all six 
 First Chromium run40609233416 renders the actual board and performs create/open/edit/save, then the harness queries edited text while the asynchronous save is still in editor mode: Playwright strict locator finds the editor textarea and its code mirror. Correct by awaiting the preview-mode Edit button before asserting visible saved content; retain exact CLI persistence, watch refresh, JavaScript errors and shutdown assertions. This is a consumer-test synchronization correction, not a demonstrated product failure.
 
 Added native Windows console gate using pinned verified tui-test0.1.1. It checks board ordering through actual second-row Down/Enter details, Escape/q, fresh restart and real Ctrl+C; requires PTY process exit0, captures SVGs. Windows ARM64 uses the x64 driver under emulation, product remains native ARM64. Reused existing patched-Node download/guard functions rather than introducing another HTTPS implementation. Local types/Biome and executable-trust4tests pass; Windows interaction itself requires native CI. No shipped node-pty dependency added.
+
+Native run40610164262 on3f7c5f passes all six targets in both AOT modes, including Windows x64/ARM64 actual board selection/details/Escape/q and Ctrl+C with PTY exit0. All POSIX hosts pass11tests/53assertions per mode. Linux x64 Chromium create/edit/persistence/watch/SIGTERM0 passes; downloaded artifact12782277408, verified ZIP SHA256d572cc72ae7cd935d8033e7cc55c611515ccd68505173eb87bd6115909aed92e and visually reviewed board/edit PNGs. Regular CI40610164374 is fully green including Nix. QEMU IvyBridge(no AVX2) negative control official Bun1.3.13 exitsSIGILL while both Backlog AOT modes perform task CRUD; Groma trimmed/untrimmed plain-map checks also pass. Release prep now uses six native runners, explicit mode defaults0 and pre-upload compiled+Node launcher gates; TLS trust4tests, YAML/default-mode/shell validation and local stable product+launcher gates pass. Native qualification additionally checks an unpatched stable artifact before the Blessed patch, proving the default release path on each runner. No release dispatched; Blessed fork403/npm publication prerequisite remains.
 <!-- SECTION:NOTES:END -->

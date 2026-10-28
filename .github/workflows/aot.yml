@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/aot.yml'
+      - '.github/workflows/release.yml'
       - 'scripts/build.ts'
       - 'scripts/prepare-bun-runtime.cjs'
       - 'scripts/aot-compiler.json'
@@ -122,6 +123,17 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile --cafile "$SSL_CERT_FILE"
         shell: bash
+      - name: Check default release build on the native host
+        env:
+          BACKLOG_BUILD_TARGET: ${{ matrix.target }}
+          BACKLOG_BUILD_OUTFILE: dist/stable/${{ matrix.binary }}
+        shell: bash
+        run: |
+          node scripts/prepare-bun-runtime.cjs "${{ matrix.target }}"
+          bun scripts/build.ts
+          version="$(node -p 'require("./package.json").version')"
+          bun scripts/smoke-compiled-build.ts "$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE" "$version"
+          node scripts/smoke-packaged-build.cjs "$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE" "$version"
       # Qualification prerequisite only. Replace with the approved npm version
       # after BACK-794 lands and is published from no-node-pty.
       - uses: actions/checkout@v7.0.1
