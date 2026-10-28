@@ -94,8 +94,8 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --location --retry 2 --output "$RUNNER_TEMP/backlog" \
-            https://github.com/MrLesk/Backlog.md/releases/download/v1.55.3/backlog-bun-linux-x64
-          printf '%s  %s\n' c20d5c51aa95b66d5c89428927bb0a16dc7beb9110683d66387e0514925f274a "$RUNNER_TEMP/backlog" | sha256sum --check
+            https://github.com/MrLesk/Backlog.md/releases/download/v1.53.0/backlog-bun-linux-x64-baseline
+          printf '%s  %s\n' 4498537967de78a78c0df26f943145127584cb1404c484850b7c05adedafae00 "$RUNNER_TEMP/backlog" | sha256sum --check
           chmod +x "$RUNNER_TEMP/backlog"
       - name: Reproduce on native Linux x64
         env:

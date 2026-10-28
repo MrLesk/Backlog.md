@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-10-28T22:59:00Z'
-updated_date: '2026-10-28T23:03:00Z'
+updated_date: '2026-10-28T23:06:00Z'
 labels: []
 dependencies: []
 references:
@@ -49,3 +49,9 @@ Reproduce before selecting a fix, as requested by Alex. Download the current pub
 
 Local Docker startup failed before a Linux engine became available, including two UI inspection timeouts. Use a native Ubuntu x64 GitHub Actions runner instead. Add only a bounded diagnostic script and branch-scoped workflow, preserving the existing workflow trust bootstrap. The published binary runs directly on the Linux runner; a separate systemd service gives the browser its own cgroup with 3 GiB maximum and swap disabled. The Python load generator stays in the runner job cgroup and discards response bodies. Product code is unchanged.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Current-release pipe result: native Ubuntu 24.04 x86_64, Linux 7.0.0-1017-azure, published 1.55.3 asset SHA-256 c20d5c51aa95b66d5c89428927bb0a16dc7beb9110683d66387e0514925f274a. Open-pipe stderr was 1,373 bytes for the short title and 6,415 for the reported 5,000-character title. Closed stderr, merged closed output, and merged output with a one-line reader all exited naturally in 0.063-0.114 seconds; no TERM or KILL needed. The stdout control exited promptly with code 1. Current memory waves continue in run 40784704212. Run the same probes on the published 1.53.0 x64-baseline asset as a control, without altering product code or restarting the current memory process.
+<!-- SECTION:NOTES:END -->
