@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-10-11 19:08'
-updated_date: '2026-10-28T22:20:00Z'
+updated_date: '2026-10-28T22:31:00Z'
 labels:
   - bug
 dependencies:
@@ -50,6 +50,7 @@ modified_files:
   - src/types/index.ts
   - src/web/components/DecisionDetail.tsx
   - src/web/lib/api.ts
+  - src/test/server-documents-endpoint.test.ts
 type: bug
 ordinal: 355000
 ---
@@ -109,6 +110,8 @@ Validation: the original HTTP regression run failed 15 cases before implementati
 Codex PR review #1164 found that a pasted standalone marker in the raw browser editor could be parsed away before JSON validation, truncating the context. Reopened to reject marker-structure changes before field extraction and show the refusal while keeping the edited text. This is a supported content-loss case within the approved scope.
 
 Addressed Codex review discussion_r4406660595: raw browser saves now check the stored marker sequence and duplicate managed headings before section extraction. Refusals remain visible in the editor and keep the entered text. The extra-marker and duplicate-heading DOM cases failed before the fix; all 86 affected browser/HTTP tests now pass, with types and Biome passing.
+
+Full Linux CI exposed two stale test assumptions after the approved API and serialization changes: the ambiguous-write fixture still sent plain text, and the uppercase-ID rename test required an incidental YAML field order. Updated the fixture to JSON and kept separate exact checks for the stored ID, title and sole filename. Both affected suites pass (39 tests); types and Biome pass. The production patch is unchanged. Rebased onto merged BACK-736 with an identical range-diff.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

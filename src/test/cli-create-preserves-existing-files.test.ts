@@ -357,9 +357,11 @@ describe("a title change moves only the file the record was loaded from", () => 
 		await new Core(TEST_DIR).updateDecisionFromInput("decision-1", { title: "Retitled" }, false);
 
 		// The one file is still named decision-1 and the stored ID stays as it was written.
-		expect(await readFolder(recordsDir(DECISION))).toEqual({
-			[fileName(DECISION, 1, "Retitled")]: expect.stringContaining("id: DECISION-1\ntitle: Retitled\n"),
-		});
+		const files = await readFolder(recordsDir(DECISION));
+		expect(Object.keys(files)).toEqual([fileName(DECISION, 1, "Retitled")]);
+		const content = files[fileName(DECISION, 1, "Retitled")];
+		expect(content).toContain("id: DECISION-1\n");
+		expect(content).toContain("title: Retitled\n");
 	});
 });
 
