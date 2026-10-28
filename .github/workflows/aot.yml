@@ -10,6 +10,7 @@ on:
       - 'scripts/aot-compiler.json'
       - 'scripts/smoke-compiled-build.ts'
       - 'scripts/smoke-packaged-build.cjs'
+      - 'scripts/smoke-browser-build.cjs'
       - 'backlog/attachments/back-794/blessed-aot.patch'
 
 permissions:
@@ -148,6 +149,15 @@ jobs:
       - name: Prepare verified experimental native compiler
         run: node scripts/prepare-bun-runtime.cjs --aot
         shell: bash
+      - name: Prepare pinned Chromium driver
+        if: matrix.target == 'bun-linux-x64'
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/backlog-browser"
+          cd "$RUNNER_TEMP/backlog-browser"
+          npm install --ignore-scripts --no-audit --no-fund playwright@1.62.1
+          node node_modules/playwright/cli.js install --with-deps chromium
+          echo "BACKLOG_BROWSER_DRIVER=$RUNNER_TEMP/backlog-browser/node_modules/playwright" >> "$GITHUB_ENV"
       - name: Build and smoke both native AOT modes
         env:
           BACKLOG_BUILD_TARGET: ${{ matrix.target }}
@@ -161,6 +171,9 @@ jobs:
             "$BACKLOG_BUILD_EXECUTABLE_PATH" scripts/build.ts
             bun scripts/smoke-compiled-build.ts "$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE" "$VERSION"
             node scripts/smoke-packaged-build.cjs "$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE" "$VERSION"
+            if [[ -n "${BACKLOG_BROWSER_DRIVER:-}" ]]; then
+              node scripts/smoke-browser-build.cjs "$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE"
+            fi
             if [[ "$RUNNER_OS" != Windows ]]; then
               RUN_INTERACTIVE_TUI_TESTS=1 TUI_TEST_CLI_RUNTIME='' \
                 TUI_TEST_CLI_PATH="$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE" \
@@ -173,5 +186,6 @@ jobs:
           name: experimental-aot-${{ matrix.target }}
           path: |
             dist/aot-*/${{ matrix.binary }}
+            dist/aot-*/${{ matrix.binary }}.browser-*.png
             tmp/tui-interactive-transcripts/*.log
           if-no-files-found: error

@@ -343,6 +343,11 @@ each native artifact, including editor handoff, readiness filtering, board moves
 and task ordering. Transcripts are retained. The Node launcher is checked in
 the published package layout against the actual artifact.
 
-Artifacts are experimental. Windows console interaction/shutdown and full browser
-interaction remain separate gates. Passing this qualification alone is not
-shipping approval. The workflow publishes nothing.
+Linux x64 also drives Chromium with pinned Playwright 1.62.1, creates and edits
+a task in the actual React UI, verifies CLI persistence, watches a CLI title
+change appear in the browser, captures screenshots and requires graceful server
+shutdown. This gate is pending qualification.
+
+Artifacts are experimental. Windows console interaction/shutdown remains open.
+Passing this qualification alone is not shipping approval. The workflow
+publishes nothing.
