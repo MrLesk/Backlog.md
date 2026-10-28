@@ -66,6 +66,8 @@ async function main() {
 		await dialog.getByRole("button", { name: "Edit", exact: true }).click();
 		await dialog.locator("textarea").first().fill("Edited through Chromium");
 		await dialog.getByRole("button", { name: "Save", exact: true }).click();
+		// Wait for preview mode before reading content shared with the editor mirror.
+		await dialog.getByRole("button", { name: "Edit", exact: true }).waitFor();
 		await dialog.getByText("Edited through Chromium", { exact: true }).waitFor();
 		const task = JSON.parse(cli(["task", "list", "--json"])).tasks.find(
 			(item) => item.title === "Browser-created native task",
