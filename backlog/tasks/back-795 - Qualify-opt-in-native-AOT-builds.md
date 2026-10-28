@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-10-28T00:07:00Z'
-updated_date: '2026-10-28T01:04:00Z'
+updated_date: '2026-10-28T01:14:00Z'
 labels: []
 dependencies: []
 references:
@@ -35,16 +35,16 @@ Native AOT currently requires a scratch wrapper and a manually patched terminal 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Default build and release behavior remain unchanged; explicit AOT and trim modes use a matching supported compiler
+- [x] #1 Default build and release behavior remain unchanged; explicit AOT and trim modes use a matching supported compiler
 - [x] #2 Both AOT modes pass the compiled product smoke on every supported native release target or identify concrete blockers
 - [x] #3 Compiler provenance, terminal dependency prerequisite and qualification limits are reviewable without publishing a release
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bun run check:types passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bun run check:types passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -81,4 +81,6 @@ First Chromium run40609233416 renders the actual board and performs create/open/
 Added native Windows console gate using pinned verified tui-test0.1.1. It checks board ordering through actual second-row Down/Enter details, Escape/q, fresh restart and real Ctrl+C; requires PTY process exit0, captures SVGs. Windows ARM64 uses the x64 driver under emulation, product remains native ARM64. Reused existing patched-Node download/guard functions rather than introducing another HTTPS implementation. Local types/Biome and executable-trust4tests pass; Windows interaction itself requires native CI. No shipped node-pty dependency added.
 
 Native run40610164262 on3f7c5f passes all six targets in both AOT modes, including Windows x64/ARM64 actual board selection/details/Escape/q and Ctrl+C with PTY exit0. All POSIX hosts pass11tests/53assertions per mode. Linux x64 Chromium create/edit/persistence/watch/SIGTERM0 passes; downloaded artifact12782277408, verified ZIP SHA256d572cc72ae7cd935d8033e7cc55c611515ccd68505173eb87bd6115909aed92e and visually reviewed board/edit PNGs. Regular CI40610164374 is fully green including Nix. QEMU IvyBridge(no AVX2) negative control official Bun1.3.13 exitsSIGILL while both Backlog AOT modes perform task CRUD; Groma trimmed/untrimmed plain-map checks also pass. Release prep now uses six native runners, explicit mode defaults0 and pre-upload compiled+Node launcher gates; TLS trust4tests, YAML/default-mode/shell validation and local stable product+launcher gates pass. Native qualification additionally checks an unpatched stable artifact before the Blessed patch, proving the default release path on each runner. No release dispatched; Blessed fork403/npm publication prerequisite remains.
+
+Final release-wiring native run40612890192 on d997c8f6554d8539b3cce94aef49f993bf52d53e passes all6 hosts: the unpatched stable default product+Node launcher gates pass first, then both patched-dependency AOT modes pass all compiled/PTY/browser/Windows console gates. Local final types/Biome and executable trust4tests pass. This qualifies release build preparation while flags remain0; it does not replace the approved published Blessed dependency prerequisite. Final PR remains draft and task stays In Progress while that shipping prerequisite is external.
 <!-- SECTION:NOTES:END -->
