@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { BranchTaskLoader } from "../core/task-loader.ts";
 import type { GitOperations } from "../git/operations.ts";
 import type { BacklogConfig } from "../types/index.ts";
+import { treeBlobs } from "./test-utils.ts";
 
 const config: BacklogConfig = {
 	projectName: "Branch loader resilience",
@@ -23,10 +24,10 @@ describe("BranchTaskLoader resilience", () => {
 		const taskPath = "backlog/tasks/task-17 - Healthy task.md";
 		const treeCalls = new Set<string>();
 		const git = {
-			listFilesInTree: async (commit: string) => {
+			listTreeBlobs: async (commit: string) => {
 				treeCalls.add(commit);
 				if (commit === badCommit) throw new Error("branch tree is unavailable");
-				if (commit === goodCommit) return [taskPath];
+				if (commit === goodCommit) return treeBlobs(commit, taskPath);
 				throw new Error(`unexpected commit ${commit}`);
 			},
 			getBranchLastModifiedMap: async (commit: string) => {
@@ -88,10 +89,10 @@ Loaded despite the neighboring branch failure.`;
 		let historyCalls = 0;
 		let blobCalls = 0;
 		const git = {
-			listFilesInTree: async (commit: string) => {
+			listTreeBlobs: async (commit: string) => {
 				expect(commit).toBe(featureCommit);
 				treeCalls += 1;
-				return [taskPath];
+				return treeBlobs(commit, taskPath);
 			},
 			getBranchLastModifiedMap: async (commit: string) => {
 				expect(commit).toBe(featureCommit);
@@ -148,9 +149,9 @@ Loaded after retrying the failed history query.`;
 		let historyCalls = 0;
 		let blobCalls = 0;
 		const git = {
-			listFilesInTree: async () => {
+			listTreeBlobs: async (commit: string) => {
 				treeCalls += 1;
-				return [taskPath];
+				return treeBlobs(commit, taskPath);
 			},
 			getBranchLastModifiedMap: async () => {
 				historyCalls += 1;
@@ -202,9 +203,9 @@ Loaded after retrying the failed blob read.`;
 		let historyCalls = 0;
 		let blobCalls = 0;
 		const git = {
-			listFilesInTree: async () => {
+			listTreeBlobs: async (commit: string) => {
 				treeCalls += 1;
-				return [taskPath];
+				return treeBlobs(commit, taskPath);
 			},
 			getBranchLastModifiedMap: async () => {
 				historyCalls += 1;

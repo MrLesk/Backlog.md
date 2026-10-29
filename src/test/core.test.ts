@@ -377,7 +377,7 @@ describe("Core", () => {
 			expect(mixedCase?.id).toBe("TASK-007");
 		});
 
-		it("returns the local task when merge policy selects a same-path padded ID variant", async () => {
+		it("returns the progressed branch copy when merge policy selects a same-path padded ID variant", async () => {
 			const config = await core.filesystem.loadConfig();
 			if (!config) {
 				throw new Error("Expected config to be loaded");
@@ -404,9 +404,9 @@ describe("Core", () => {
 			});
 
 			const loaded = await core.getTask("BACK-1");
-			expect(loaded?.id).toBe("BACK-1");
-			expect(loaded?.title).toBe("Local task version");
-			expect(loaded?.status).toBe("To Do");
+			expect(loaded?.id).toBe("BACK-001");
+			expect(loaded?.title).toBe("Progressed branch version");
+			expect(loaded?.status).toBe("Done");
 		});
 
 		it("fails closed when merge policy selects a padded ID variant at a different path", async () => {
@@ -733,27 +733,31 @@ describe("Core", () => {
 			await $`git switch main`.cwd(TEST_DIR).quiet();
 
 			const loaded = await new Core(nestedRoot).getTask("BACK-1");
-			expect(loaded?.id).toBe("BACK-1");
-			expect(loaded?.title).toBe("Nested local version");
+			expect(loaded?.id).toBe("BACK-001");
+			expect(loaded?.title).toBe("Nested branch version");
+			expect(loaded?.status).toBe("Done");
+			expect(loaded?.branch).toBe("nested-task-version");
 		});
 
-		it("keeps the working-copy task active when a branch archives the same padded identity path", async () => {
+		it("keeps the task active when a branch archives the same padded identity path", async () => {
 			await commitPaddedTaskArchivedOnBranch(core.filesystem.archiveTasksDir);
 
 			const tasks = await core.loadTasks();
 			const task = tasks.find((candidate) => candidate.id === "BACK-1" || candidate.id === "BACK-001");
-			expect(task?.id).toBe("BACK-1");
-			expect(task?.source).toBe("local");
+			expect(task?.id).toBe("BACK-001");
+			expect(task?.status).toBe("Done");
+			expect(task?.source).toBe("local-branch");
 			expect(await core.generateNextId()).toBe("BACK-2");
 		});
 
-		it("keeps the working-copy task active when a branch archived it into a leftover completed folder", async () => {
+		it("keeps the task active when a branch archived it into a leftover completed folder", async () => {
 			await commitPaddedTaskArchivedOnBranch(join(core.filesystem.backlogDir, "completed"));
 
 			const tasks = await core.loadTasks(undefined, undefined, { includeArchived: true });
 			const task = tasks.find((candidate) => candidate.id === "BACK-1" || candidate.id === "BACK-001");
-			expect(task?.id).toBe("BACK-1");
-			expect(task?.source).toBe("local");
+			expect(task?.id).toBe("BACK-001");
+			expect(task?.status).toBe("Done");
+			expect(task?.source).toBe("local-branch");
 		});
 
 		it("should resolve an exact legacy task ID without guessing", async () => {

@@ -738,12 +738,18 @@ describe("BacklogServer task SPA fallback", () => {
 		});
 	});
 
-	it("returns the local task when active origin/main has a padded version at the same path", async () => {
+	it("returns the progressed origin/main copy when it has a padded version at the same path", async () => {
 		await restartWithActiveRemoteCollision(true);
 
+		// most_progressed: origin/main's copy reached Done, so the detail view shows that copy, as the
+		// board does. Its branch source keeps the displayed version read-only in the browser.
 		const response = await request("/api/task/BACK-1");
 		expect(response.status).toBe(200);
-		expect(((await response.json()) as Task).title).toBe("Main collision task");
+		const task = (await response.json()) as Task;
+		expect(task.title).toBe("Remote same-path version");
+		expect(task.status).toBe("Done");
+		expect(task.source).toBe("remote");
+		expect(task.branch).toBe("main");
 	});
 
 	it("returns the local legacy task when an active branch changes the same task path", async () => {
@@ -1066,15 +1072,15 @@ describe("BacklogServer task SPA fallback", () => {
 			server as unknown as {
 				core: {
 					git: {
-						listFilesInTree: (ref: string, path: string) => Promise<string[]>;
+						listTreeBlobs: (ref: string, path: string) => Promise<Map<string, string>>;
 					};
 				};
 			}
 		).core.git;
-		const originalListFilesInTree = coreGit.listFilesInTree.bind(coreGit);
+		const originalListTreeBlobs = coreGit.listTreeBlobs.bind(coreGit);
 		let movedDuringScan = false;
-		coreGit.listFilesInTree = async (ref, path) => {
-			const files = await originalListFilesInTree(ref, path);
+		coreGit.listTreeBlobs = async (ref, path) => {
+			const files = await originalListTreeBlobs(ref, path);
 			if (!movedDuringScan && ref === collisionCommit) {
 				movedDuringScan = true;
 				await replaceCollisionBranchTask("BACK-100", "Moved during scan");
@@ -1092,7 +1098,7 @@ describe("BacklogServer task SPA fallback", () => {
 			expect(replacement.status).toBe(200);
 			expect(((await replacement.json()) as Task).title).toBe("Moved during scan");
 		} finally {
-			coreGit.listFilesInTree = originalListFilesInTree;
+			coreGit.listTreeBlobs = originalListTreeBlobs;
 		}
 	});
 });
