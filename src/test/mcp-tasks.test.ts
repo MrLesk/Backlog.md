@@ -49,6 +49,7 @@ function installCrossBranchTripwires(server: McpServer) {
 	const listRecentBranches = spyOn(server.gitOps, "listRecentBranches").mockRejectedValue(error);
 	const listRecentRemoteBranches = spyOn(server.gitOps, "listRecentRemoteBranches").mockRejectedValue(error);
 	const listFilesInTree = spyOn(server.gitOps, "listFilesInTree").mockRejectedValue(error);
+	const listTreeBlobs = spyOn(server.gitOps, "listTreeBlobs").mockRejectedValue(error);
 	const showFile = spyOn(server.gitOps, "showFile").mockRejectedValue(error);
 	const getRepositoryRoot = spyOn(server.gitOps, "getRepositoryRoot").mockRejectedValue(error);
 	const resolveCommit = spyOn(server.gitOps, "resolveCommit").mockRejectedValue(error);
@@ -61,6 +62,7 @@ function installCrossBranchTripwires(server: McpServer) {
 			expect(listRecentBranches).toHaveBeenCalledTimes(0);
 			expect(listRecentRemoteBranches).toHaveBeenCalledTimes(0);
 			expect(listFilesInTree).toHaveBeenCalledTimes(0);
+			expect(listTreeBlobs).toHaveBeenCalledTimes(0);
 			expect(showFile).toHaveBeenCalledTimes(0);
 			expect(getRepositoryRoot).toHaveBeenCalledTimes(0);
 			expect(resolveCommit).toHaveBeenCalledTimes(0);
@@ -72,6 +74,7 @@ function installCrossBranchTripwires(server: McpServer) {
 			listRecentBranches.mockRestore();
 			listRecentRemoteBranches.mockRestore();
 			listFilesInTree.mockRestore();
+			listTreeBlobs.mockRestore();
 			showFile.mockRestore();
 			getRepositoryRoot.mockRestore();
 			resolveCommit.mockRestore();

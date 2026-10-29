@@ -58,6 +58,13 @@ export async function commitSamePathBranchTaskVariant(
 }
 
 /**
+ * Give each mocked commit/path a distinct blob ID unless a test explicitly shares content.
+ */
+export function treeBlobs(commit: string, ...paths: string[]): Map<string, string> {
+	return new Map(paths.map((path) => [path, `${commit}:${path}`]));
+}
+
+/**
  * Sleep utility for tests that need to wait
  */
 export function sleep(ms: number): Promise<void> {

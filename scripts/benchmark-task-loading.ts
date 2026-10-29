@@ -374,7 +374,7 @@ function instrumentCore(core: Core): Instrumentation {
 	wrap(core.gitOps, "listRecentBranchTips", "branchTipSnapshots");
 	wrap(core.gitOps, "listRecentRemoteBranches", "remoteBranchEnumerations");
 	wrap(core.gitOps, "listRecentBranches", "localBranchEnumerations");
-	wrap(core.gitOps, "listFilesInTree", "treeIndexes");
+	wrap(core.gitOps, "listTreeBlobs", "treeIndexes");
 	wrap(core.gitOps, "getBranchLastModifiedMap", "historyScans");
 	wrap(core.gitOps, "resolveCommit", "refResolutions");
 	wrap(core.gitOps, "showFile", "taskHydrations");

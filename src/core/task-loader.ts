@@ -89,6 +89,8 @@ interface RemoteIndexEntry {
 	path: string; // "backlog/tasks/task-123 - title.md"
 	lastModified: Date;
 	commit: string;
+	/** The file's blob id in that commit: equal ids are identical copies. */
+	blobId: string;
 	stateEntry?: BranchTaskStateEntry;
 }
 
@@ -97,6 +99,7 @@ interface HydrationCandidate {
 	ref: string;
 	path: string;
 	commit: string;
+	blobId: string;
 	stateEntry?: BranchTaskStateEntry;
 }
 
@@ -105,6 +108,7 @@ interface CachedTaskTreeEntry {
 	path: string;
 	type: TaskDirectoryType | null;
 	lastModified: number;
+	blobId: string;
 }
 
 interface PinnedBranchRef {
@@ -116,7 +120,7 @@ interface PinnedBranchRef {
 
 interface HydrationOptions {
 	source: "local-branch" | "remote";
-	loadTask: (commit: string, path: string) => Promise<Task | null>;
+	loadTask: (commit: string, path: string, blobId: string) => Promise<Task | null>;
 }
 
 function logicalTaskPath(path: string, backlogDir: string): string {
@@ -179,6 +183,7 @@ function chooseIdentityHydrationCandidates(
 		ref: toRef(entry),
 		path: entry.path,
 		commit: entry.commit,
+		blobId: entry.blobId,
 		stateEntry: entry.stateEntry,
 	}));
 }
@@ -221,104 +226,77 @@ function normalizeLocalBranch(branch: string, currentBranch: string): string | n
 }
 
 /**
- * Hydrate tasks by fetching their content
- * Only call this for the "winner" tasks that we actually need
+ * Fetch the branch candidates needed by the identity index to choose a display version.
  */
-async function hydrateTasks(winners: HydrationCandidate[], options: HydrationOptions): Promise<boolean> {
+async function hydrateTasks(candidates: HydrationCandidate[], options: HydrationOptions): Promise<boolean> {
 	const CONCURRENCY = 8;
 	let i = 0;
 	let complete = true;
 
 	async function worker() {
-		while (i < winners.length) {
+		while (i < candidates.length) {
 			const idx = i++;
-			if (idx >= winners.length) break;
+			if (idx >= candidates.length) break;
 
-			const w = winners[idx];
-			if (!w) break;
+			const candidate = candidates[idx];
+			if (!candidate) break;
 
 			try {
-				const task = await options.loadTask(w.commit, w.path);
+				const task = await options.loadTask(candidate.commit, candidate.path, candidate.blobId);
 				if (task) {
 					task.source = options.source;
-					task.branch = options.source === "remote" ? w.ref.replace(/^origin\//, "") : w.ref;
-					if (w.stateEntry) w.stateEntry.task = task;
+					task.branch = options.source === "remote" ? candidate.ref.replace(/^origin\//, "") : candidate.ref;
+					if (candidate.stateEntry) candidate.stateEntry.task = task;
 				}
 			} catch (error) {
 				complete = false;
-				console.error(`Failed to hydrate task ${w.id} from ${w.ref}:${w.path}`, error);
+				console.error(`Failed to hydrate task ${candidate.id} from ${candidate.ref}:${candidate.path}`, error);
 			}
 		}
 	}
 
-	await Promise.all(Array.from({ length: Math.min(CONCURRENCY, winners.length) }, worker));
+	await Promise.all(Array.from({ length: Math.min(CONCURRENCY, candidates.length) }, worker));
 	return complete;
 }
 
-/**
- * Choose which remote tasks need to be hydrated based on strategy
- * Returns only the tasks that are newer or more progressed than local versions
- */
-function chooseWinners(
+/** Select the branch versions needed to resolve status, without guessing status from dates. */
+function chooseHydrationCandidates(
 	localById: Map<string, Task>,
-	remoteIndex: Map<string, RemoteIndexEntry[]>,
+	branchIndex: Map<string, RemoteIndexEntry[]>,
 	strategy: "most_recent" | "most_progressed",
 	toRef: (entry: RemoteIndexEntry) => string,
 ): HydrationCandidate[] {
-	const winners: HydrationCandidate[] = [];
-
-	for (const [id, entries] of remoteIndex) {
-		const local = localById.get(id);
-
-		if (!local) {
-			// No local version - take the newest remote
-			const best = selectPreferredIdentityEntry(entries);
-			winners.push({
-				id,
-				ref: toRef(best),
-				path: best.path,
-				commit: best.commit,
-				stateEntry: best.stateEntry,
-			});
-			continue;
-		}
-
-		// If strategy is "most_recent", only hydrate if any remote is newer
-		if (strategy === "most_recent") {
-			const localTs = local.updatedDate ? (parseStoredUtcDate(local.updatedDate)?.getTime() ?? Number.NaN) : 0;
-			const newestRemote = selectPreferredIdentityEntry(entries);
-
-			if (newestRemote.lastModified.getTime() > localTs) {
-				winners.push({
-					id,
-					ref: toRef(newestRemote),
-					path: newestRemote.path,
-					commit: newestRemote.commit,
-					stateEntry: newestRemote.stateEntry,
-				});
+	const candidates: HydrationCandidate[] = [];
+	for (const [id, entries] of branchIndex) {
+		let selected: RemoteIndexEntry[];
+		if (strategy === "most_progressed") {
+			// Keep every distinct version, including one that currently matches the working copy:
+			// a later local edit must still be compared with that immutable branch version.
+			const versions = new Map<string, RemoteIndexEntry>();
+			for (const entry of entries) {
+				const key = `${entry.path}\0${entry.blobId}`;
+				const current = versions.get(key);
+				if (!current || isPreferredIdentityEntry(entry, current)) versions.set(key, entry);
 			}
-			continue;
+			selected = [...versions.values()];
+		} else {
+			const local = localById.get(id);
+			const newest = selectPreferredIdentityEntry(entries);
+			const localTime = local?.updatedDate ? (parseStoredUtcDate(local.updatedDate)?.getTime() ?? Number.NaN) : 0;
+			selected = !local || newest.lastModified.getTime() > localTime ? [newest] : [];
 		}
-
-		// For "most_progressed", we might need to check if remote is newer
-		// to potentially have a more progressed status
-		const localTs = local.updatedDate ? (parseStoredUtcDate(local.updatedDate)?.getTime() ?? Number.NaN) : 0;
-		const maybeNewer = entries.some((e) => e.lastModified.getTime() > localTs);
-
-		if (maybeNewer) {
-			// Only hydrate the newest remote to check if it's more progressed
-			const newestRemote = selectPreferredIdentityEntry(entries);
-			winners.push({
+		for (const entry of selected) {
+			candidates.push({
 				id,
-				ref: toRef(newestRemote),
-				path: newestRemote.path,
-				commit: newestRemote.commit,
-				stateEntry: newestRemote.stateEntry,
+				ref: toRef(entry),
+				path: entry.path,
+				commit: entry.commit,
+				blobId: entry.blobId,
+				stateEntry: entry.stateEntry,
 			});
 		}
 	}
-
-	return winners;
+	return candidates;
 }
 
 /**
@@ -398,6 +376,7 @@ export class BranchTaskLoader {
 							path: cached.path,
 							lastModified,
 							commit: branchRef.commit,
+							blobId: cached.blobId,
 						};
 						if (cached.type) {
 							entry.stateEntry = {
@@ -435,29 +414,13 @@ export class BranchTaskLoader {
 				source === "remote"
 					? (entry: RemoteIndexEntry) => `origin/${entry.branch}`
 					: (entry: RemoteIndexEntry) => entry.branch;
-			let candidates: HydrationCandidate[];
-			if (localTasks.length > 0) {
-				candidates = chooseWinners(localById, index, strategy, toRef);
-			} else {
-				candidates = [];
-				for (const [id, entries] of index) {
-					const best = selectPreferredIdentityEntry(entries);
-					candidates.push({
-						id,
-						ref: toRef(best),
-						path: best.path,
-						commit: best.commit,
-						stateEntry: best.stateEntry,
-					});
-				}
-			}
-			return mergeHydrationCandidates(
-				candidates,
-				chooseIdentityHydrationCandidates(index, localTasks, backlogDir, toRef),
-			);
+			const candidates = chooseHydrationCandidates(localById, index, strategy, toRef);
+			return strategy === "most_progressed"
+				? candidates
+				: mergeHydrationCandidates(candidates, chooseIdentityHydrationCandidates(index, localTasks, backlogDir, toRef));
 		};
 
-		const loadTask = (commit: string, path: string) => this.loadCachedTask(commit, path);
+		const loadTask = (commit: string, path: string, blobId: string) => this.loadCachedTask(commit, path, blobId);
 		const hydrationResults = await Promise.all([
 			hydrateTasks(candidatesFor(remoteIndex, "remote"), { source: "remote", loadTask }),
 			hydrateTasks(candidatesFor(localIndex, "local-branch"), {
@@ -522,10 +485,10 @@ export class BranchTaskLoader {
 		if (cached) return await cached;
 
 		const promise = (async (): Promise<readonly CachedTaskTreeEntry[]> => {
-			const files = await this.git.listFilesInTree(commit, backlogDir);
-			if (files.length === 0) return [];
+			const blobs = await this.git.listTreeBlobs(commit, backlogDir);
+			if (blobs.size === 0) return [];
 			const lastModified = await this.git.getBranchLastModifiedMap(commit, backlogDir, historyCutoff);
-			return files.flatMap((path) => {
+			return [...blobs].flatMap(([path, blobId]) => {
 				const id = extractConfiguredTaskId(path, prefix);
 				if (!id) return [];
 				return [
@@ -534,6 +497,7 @@ export class BranchTaskLoader {
 						path,
 						type: getTaskTypeFromPath(path, backlogDir),
 						lastModified: (lastModified.get(path) ?? new Date(0)).getTime(),
+						blobId,
 					},
 				];
 			});
@@ -547,8 +511,9 @@ export class BranchTaskLoader {
 		}
 	}
 
-	private async loadCachedTask(commit: string, path: string): Promise<Task | null> {
-		const key = `${commit}\0${path}`;
+	private async loadCachedTask(commit: string, path: string, blobId: string): Promise<Task | null> {
+		// Identical blobs on different branches parse to the same task, so one read serves them all.
+		const key = blobId;
 		let cached = this.taskCache.get(key);
 		if (!cached) {
 			const promise = this.git.showFile(commit, path).then((content) => {
@@ -562,6 +527,8 @@ export class BranchTaskLoader {
 			cached = { commit, promise };
 			this.taskCache.set(key, cached);
 		}
+		// Associate a reused blob with this snapshot, even if the old owning commit disappeared.
+		cached.commit = commit;
 		try {
 			const task = await cached.promise;
 			return task ? structuredClone(task) : null;
