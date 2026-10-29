@@ -1,0 +1,213 @@
+name: Experimental native AOT qualification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/aot.yml'
+      - '.github/workflows/release.yml'
+      - 'scripts/build.ts'
+      - 'scripts/prepare-bun-runtime.cjs'
+      - 'scripts/aot-compiler.json'
+      - 'scripts/smoke-compiled-build.ts'
+      - 'scripts/smoke-packaged-build.cjs'
+      - 'scripts/smoke-browser-build.cjs'
+      - 'scripts/smoke-console-build.ts'
+      - 'scripts/prepare-console-driver.cjs'
+      - 'backlog/attachments/back-794/blessed-aot.patch'
+
+permissions:
+  contents: read
+
+env:
+  NODE_OPTIONS: --use-openssl-ca
+  NODE_USE_SYSTEM_CA: '0'
+  BUN_VERSION: 1.4.4
+
+jobs:
+  native:
+    name: native-${{ matrix.target }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: bun-linux-x64
+            binary: backlog
+          - runner: ubuntu-24.04-arm
+            target: bun-linux-arm64
+            binary: backlog
+          - runner: macos-15-intel
+            target: bun-darwin-x64
+            binary: backlog
+          - runner: macos-15
+            target: bun-darwin-arm64
+            binary: backlog
+          - runner: windows-latest
+            target: bun-windows-x64
+            binary: backlog.exe
+          - runner: windows-11-arm
+            target: bun-windows-arm64
+            binary: backlog.exe
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Exclude compromised certificate trust before networking
+        shell: bash
+        run: |
+          node <<'NODE'
+          // Prepare filtered trust for subsequent network steps.
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const tls = require('node:tls');
+          const { X509Certificate, createHash } = require('node:crypto');
+          const blocked = new Set(["0a6c2b2ca5b364207954171987ac9d2178561569d8205457e77ca90c32ede282", "43bffa19d6ef651451f6841e019931e96f6f2eaeff28ab4b6f1ce4576de2717b", "49dd353dc2b919a3770645117d0e60c16115e7d1bc259eefe734b00ea434fe5f", "5c0660a2b164910d8ff589c18e14552e9e0ec237dcefe2cb736d41a4811f81a0", "63ecefee431d49523bc1136c4e72d0206a477086caf606cd5cf025686c109cf8", "8d417db2dd8bf5e3084d1e3f196d583849d81bdd4c00c70b9d39369e96b8c782", "92c063d67e8f14db71d288e11266ffdaf69cbf115f7bab14f3bc2f68d25e0e30", "bd153ed7b0434f6886b17bce8bbe84ed340c7132d702a8f4fa318f756ecbd6f3", "c619e4780ed8e0abeda24ad732567de4383a7ea941338f6d1a7d1b49ac792fe9", "e0254c7fcdc265e2f0f8a428dabb75ab4ae039b4872d62f5ee57f0877d5a8a41", "ebed6475c2c2d80fcb199f3fe8dd6e6b3ce60b77eb15d4e42c3dec0c6f5b5105", "ec4ffa1ad0ac88081314b7aaffef6a91f97cd57291bb5ba686c5415f5eb4f6b6"]);
+          if (Object.keys(process.env).some(key => key.toUpperCase() === 'GIT_SSL_NO_VERIFY' && process.env[key] !== undefined)) {
+            throw new Error('Remove GIT_SSL_NO_VERIFY from the runner or workflow environment before continuing.');
+          }
+          const sources = [...tls.rootCertificates];
+          if (tls.getCACertificates) {
+            for (const source of ['default', 'system', 'extra']) sources.push(...tls.getCACertificates(source));
+          }
+          const certificates = new Map();
+          for (const pem of sources) {
+            const certificate = new X509Certificate(pem);
+            const key = createHash('sha256').update(certificate.publicKey.export({ type: 'spki', format: 'der' })).digest('hex');
+            if (!blocked.has(key)) certificates.set(certificate.fingerprint256, pem);
+          }
+          if (!certificates.size) throw new Error('Refusing an empty TLS trust bundle');
+          const file = path.join(process.env.RUNNER_TEMP, 'backlog-trusted-ca.pem');
+          const directory = path.join(process.env.RUNNER_TEMP, 'backlog-empty-ca-directory');
+          fs.writeFileSync(file, [...certificates.values()].join('\n') + '\n');
+          fs.mkdirSync(directory, { recursive: true });
+          // Git cannot isolate HTTPS-proxy CA directories; block that transport.
+          const proxyDirectory = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, 'backlog-proxy-trust-'));
+          const proxyMarker = path.join(proxyDirectory, 'unsupported-https-proxy');
+          fs.writeFileSync(proxyMarker, '', { mode: 0o600 });
+          const proxyCAFile = path.join(proxyMarker, 'unavailable.pem');
+          const settings = {
+            SSL_CERT_FILE: file, SSL_CERT_DIR: directory, NODE_EXTRA_CA_CERTS: file,
+            NODE_USE_SYSTEM_CA: '0', NODE_TLS_REJECT_UNAUTHORIZED: '1', GIT_SSL_CAINFO: file, GIT_SSL_CAPATH: directory, CURL_CA_BUNDLE: file,
+            GIT_PROXY_SSL_CAINFO: proxyCAFile, CARGO_HTTP_CAINFO: file, NPM_CONFIG_CAFILE: file, NIX_SSL_CERT_FILE: file,
+          };
+          const repository = new URL(`${process.env.GITHUB_SERVER_URL.replace(/\/+$/, '')}/${process.env.GITHUB_REPOSITORY}`);
+          if (repository.protocol !== 'https:' || repository.username || repository.password) throw new Error('Expected a credential-free HTTPS GitHub server.');
+          const git = [['http.schannelUseSSLCAInfo', 'true']];
+          for (const url of [repository.href, `${repository.href}.git`]) {
+            git.push([`http.${url}.sslVerify`, 'true'], [`http.${url}.schannelUseSSLCAInfo`, 'true']);
+          }
+          const rawCount = process.env.GIT_CONFIG_COUNT ?? '0';
+          const gitCount = Number(rawCount);
+          if (!/^(0|[1-9][0-9]*)$/.test(rawCount) || !Number.isSafeInteger(gitCount + git.length)) throw new Error('Invalid GIT_CONFIG_COUNT');
+          for (const [offset, [key, value]] of git.entries()) {
+            settings[`GIT_CONFIG_KEY_${gitCount + offset}`] = key;
+            settings[`GIT_CONFIG_VALUE_${gitCount + offset}`] = value;
+          }
+          settings.GIT_CONFIG_COUNT = String(gitCount + git.length);
+          const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
+          settings.GIT_CONFIG_PARAMETERS = [process.env.GIT_CONFIG_PARAMETERS,
+            ...git.map(([key, value]) => quote(key) + '=' + quote(value))].filter(Boolean).join(' ');
+          for (const [key, value] of Object.entries(settings)) {
+            if (/[\r\n]/.test(value)) throw new Error('TLS environment values must not contain newlines.');
+            fs.appendFileSync(process.env.GITHUB_ENV, `${key}=${value}\n`);
+          }
+          console.log(`Prepared ${certificates.size} trusted CAs with eMudhra incident keys excluded`);
+          NODE
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 26.12.1
+      - name: Install checksum-verified stable Bun
+        run: node scripts/prepare-bun-runtime.cjs
+        shell: bash
+      - name: Install dependencies
+        run: bun install --frozen-lockfile --cafile "$SSL_CERT_FILE"
+        shell: bash
+      - name: Check default release build on the native host
+        env:
+          BACKLOG_BUILD_TARGET: ${{ matrix.target }}
+          BACKLOG_BUILD_OUTFILE: dist/stable/${{ matrix.binary }}
+        shell: bash
+        run: |
+          node scripts/prepare-bun-runtime.cjs "${{ matrix.target }}"
+          bun scripts/build.ts
+          version="$(node -p 'require("./package.json").version')"
+          bun scripts/smoke-compiled-build.ts "$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE" "$version"
+          node scripts/smoke-packaged-build.cjs "$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE" "$version"
+      # Qualification prerequisite only. Replace with the approved npm version
+      # after BACK-794 lands and is published from no-node-pty.
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: MrLesk/neo-neo-blessed
+          ref: 44da73176e983718d4fcce993e092ac636ad9740
+          path: .aot-blessed
+      - name: Build exact terminal-data patch for qualification
+        shell: bash
+        run: |
+          git -C .aot-blessed apply "$GITHUB_WORKSPACE/backlog/attachments/back-794/blessed-aot.patch"
+          cd .aot-blessed
+          npm ci --ignore-scripts
+          npm run build
+          cp dist/* ../node_modules/neo-neo-bblessed/dist/
+      - name: Prepare real POSIX terminal tests
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            sudo apt-get update
+            sudo apt-get install -y expect
+          elif ! command -v expect; then
+            brew install expect
+          fi
+          command -v expect
+      - name: Prepare verified Windows console driver
+        if: runner.os == 'Windows'
+        run: node scripts/prepare-console-driver.cjs
+        shell: bash
+      - name: Prepare verified experimental native compiler
+        run: node scripts/prepare-bun-runtime.cjs --aot
+        shell: bash
+      - name: Prepare pinned Chromium driver
+        if: matrix.target == 'bun-linux-x64'
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/backlog-browser"
+          cd "$RUNNER_TEMP/backlog-browser"
+          npm install --ignore-scripts --no-audit --no-fund playwright@1.62.1
+          node node_modules/playwright/cli.js install --with-deps chromium
+          echo "BACKLOG_BROWSER_DRIVER=$RUNNER_TEMP/backlog-browser/node_modules/playwright" >> "$GITHUB_ENV"
+      - name: Build and smoke both native AOT modes
+        env:
+          BACKLOG_BUILD_TARGET: ${{ matrix.target }}
+          BACKLOG_BUILD_AOT: '1'
+        shell: bash
+        run: |
+          VERSION="$(node -p 'require("./package.json").version')"
+          for trim in 0 1; do
+            export BACKLOG_BUILD_TRIM="$trim"
+            export BACKLOG_BUILD_OUTFILE="dist/aot-$trim/${{ matrix.binary }}"
+            "$BACKLOG_BUILD_EXECUTABLE_PATH" scripts/build.ts
+            bun scripts/smoke-compiled-build.ts "$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE" "$VERSION"
+            node scripts/smoke-packaged-build.cjs "$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE" "$VERSION"
+            if [[ "$RUNNER_OS" == Windows ]]; then
+              bun scripts/smoke-console-build.ts "$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE"
+            fi
+            if [[ -n "${BACKLOG_BROWSER_DRIVER:-}" ]]; then
+              node scripts/smoke-browser-build.cjs "$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE"
+            fi
+            if [[ "$RUNNER_OS" != Windows ]]; then
+              RUN_INTERACTIVE_TUI_TESTS=1 TUI_TEST_CLI_RUNTIME='' \
+                TUI_TEST_CLI_PATH="$GITHUB_WORKSPACE/$BACKLOG_BUILD_OUTFILE" \
+                bash scripts/run-tui-interactive-tests.sh
+            fi
+          done
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: experimental-aot-${{ matrix.target }}
+          path: |
+            dist/aot-*/${{ matrix.binary }}
+            dist/aot-*/${{ matrix.binary }}.browser-*.png
+            dist/aot-*/${{ matrix.binary }}.tui-*.svg
+            tmp/tui-interactive-transcripts/*.log
+          if-no-files-found: error

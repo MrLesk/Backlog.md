@@ -1,0 +1,49 @@
+{
+	"build": 133944,
+	"commit": "d260d7d51ba4280c836a600df2123f42986c8669",
+	"revision": "1.4.4-canary.1+d260d7d51",
+	"artifacts": {
+		"bun-darwin-arm64": {
+			"artifact": "bun-darwin-aarch64.zip",
+			"url": "https://buildkite.com/organizations/bun/pipelines/bun/builds/133944/jobs/01a17f01-15c5-4f99-bd7e-e48714a9e1f4/artifacts/01a17f08-df81-4169-ba22-4f748982e9ad",
+			"archiveSha256": "04ae9b448300765392a44db1963e573815b6bfb90e6bbec67c16d1df20a0dac8",
+			"binarySha256": "5396da35b3c065c2895de075e151e046337f37313580760690504c5c2d612241",
+			"member": "bun-darwin-aarch64/bun"
+		},
+		"bun-linux-arm64": {
+			"artifact": "bun-linux-aarch64.zip",
+			"url": "https://buildkite.com/organizations/bun/pipelines/bun/builds/133944/jobs/01a17f01-15f2-42d6-a0ef-f0a8f582a61f/artifacts/01a17f08-cb0a-45fa-9e92-710d480cb2d7",
+			"archiveSha256": "2a8fb1c477411888cc3b2abeb92f23eb94716b8881a7333e63f0d2c141b73376",
+			"binarySha256": "2bdc8b0160332b6c97e1ddfda81b6c89b83de19dceb3f15c901ce272d950cd87",
+			"member": "bun-linux-aarch64/bun"
+		},
+		"bun-linux-x64": {
+			"artifact": "bun-linux-x64.zip",
+			"url": "https://buildkite.com/organizations/bun/pipelines/bun/builds/133944/jobs/01a17f01-15f7-4e68-90fb-fbff74c6fa28/artifacts/01a17f09-2e35-4c56-8c8a-3f58f918ed7f",
+			"archiveSha256": "69dead133fbdbc3e30d447f6bff23a048d1b8b3807e552f6eb6258ec975425a9",
+			"binarySha256": "0351f11e951302725230bc85c130a4c3dac9f1e52ca2d3515e3b23317758b9ab",
+			"member": "bun-linux-x64/bun"
+		},
+		"bun-windows-x64": {
+			"artifact": "bun-windows-x64.zip",
+			"url": "https://buildkite.com/organizations/bun/pipelines/bun/builds/133944/jobs/01a17f01-1613-4ec0-a3fb-2de691a6e41f/artifacts/01a17f0d-261b-41f9-bf3d-a41610d03e6f",
+			"archiveSha256": "db7466059a15c2ffe4b1cb024bd545fe0fd37095d7f5db8e9bed74a8382ea755",
+			"binarySha256": "ec7eaead638c911ea54b7b7dddd09d20b34272d39769988c2cb7449e7aa17195",
+			"member": "bun-windows-x64/bun.exe"
+		},
+		"bun-windows-arm64": {
+			"artifact": "bun-windows-aarch64.zip",
+			"url": "https://buildkite.com/organizations/bun/pipelines/bun/builds/133944/jobs/01a17f01-1615-4530-a1eb-9f03b14c0390/artifacts/01a17f08-4bf9-463e-8ffc-dcfc0677c3bd",
+			"archiveSha256": "f351de504a9f6881101559766b486b504fc215fa94ad5cc6af9f1d7632d04e85",
+			"binarySha256": "f33080eb76c93ce6ca67f3e1bfc7e0bfa05aa7508f43079ab0afa7a8e8905d6b",
+			"member": "bun-windows-aarch64/bun.exe"
+		},
+		"bun-darwin-x64": {
+			"artifact": "bun-darwin-x64.zip",
+			"url": "https://buildkite.com/organizations/bun/pipelines/bun/builds/133944/jobs/01a17f01-15dd-49e7-b792-755b3601c14b/artifacts/01a17f09-1d45-47e2-ab5f-8ba5539bdef7",
+			"archiveSha256": "9433a78b90cb969bc3a4d8c98182bc9f9d4f06072f624f4a2b261a9254b19188",
+			"binarySha256": "532eaf62345151fff42336d169a2e3f81ac1a6f6969ffede9d5083caaefc1f3a",
+			"member": "bun-darwin-x64/bun"
+		}
+	}
+}
