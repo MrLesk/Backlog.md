@@ -3318,12 +3318,17 @@ async function performEdit(target: EditCommandTarget, requestedIds: string[] | u
 	}
 
 	let normalizedPriority: string | undefined;
-	if (options.priority) {
-		const priority = await normalizeCliPriority(core, String(options.priority));
-		if (!priority) {
-			return;
+	if (options.priority !== undefined) {
+		const rawPriority = String(options.priority);
+		if (rawPriority.trim() === "") {
+			normalizedPriority = rawPriority;
+		} else {
+			const priority = await normalizeCliPriority(core, rawPriority);
+			if (!priority) {
+				return;
+			}
+			normalizedPriority = priority;
 		}
-		normalizedPriority = priority;
 	}
 
 	let ordinalValue: number | undefined;
@@ -3497,7 +3502,7 @@ async function performEdit(target: EditCommandTarget, requestedIds: string[] | u
 	if (canonicalStatus) {
 		editArgs.status = canonicalStatus;
 	}
-	if (normalizedPriority) {
+	if (normalizedPriority !== undefined) {
 		editArgs.priority = normalizedPriority;
 	}
 	if (options.type !== undefined) {
@@ -3676,7 +3681,7 @@ function configureEditCommand(cmd: Command) {
 			"replace all task labels (comma-separated or repeatable; cannot combine with --add-label/--remove-label)",
 			createMultiValueAccumulator(),
 		)
-		.option("--priority <priority>", "set task priority (configured priorities)")
+		.option("--priority <priority>", "set task priority (configured priorities; pass an empty value to clear)")
 		.option("--type <type>", "set task type (configured task types; pass an empty value to clear)")
 		.option("--project <project>", "set task project (configured projects; pass an empty value to clear)")
 		.option("--due-date <date>", "set due date (YYYY-MM-DD)")
@@ -3827,6 +3832,11 @@ const taskEditCommand = addHelpSchema(taskCmd.command("edit [taskIds...]"), {
 		{ name: "title", type: "String", description: "Replacement task title" },
 		{ name: "description", type: "Markdown", description: "Replacement description" },
 		{ name: "status", type: statusType, description: "Project task status; case-insensitive" },
+		{
+			name: "priority",
+			type: priorityType,
+			description: "Set task priority (configured priorities); pass an empty value to clear",
+		},
 		{ name: "type", type: taskType, description: "Replacement task type; case-insensitive" },
 		{
 			name: "project",
@@ -4288,7 +4298,11 @@ const draftEditCommand = addHelpSchema(draftCmd.command("edit [taskId]"), {
 		{ name: "add-label", type: "Comma-separated strings", description: "Add labels; repeatable" },
 		{ name: "remove-label", type: "Comma-separated strings", description: "Remove labels; repeatable" },
 		{ name: "clear-labels", type: "Boolean", description: "Remove all labels" },
-		{ name: "priority", type: "String", description: "Set priority (configured priorities)" },
+		{
+			name: "priority",
+			type: "String",
+			description: "Set priority (configured priorities); pass an empty value to clear",
+		},
 		{ name: "ordinal", type: "Number", description: "Set ordinal for custom ordering" },
 		{ name: "milestone", type: "String", description: "Assign to milestone by ID or title" },
 		{ name: "clear-milestone", type: "Boolean", description: "Clear the milestone assignment" },

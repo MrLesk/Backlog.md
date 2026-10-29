@@ -68,6 +68,19 @@ describe("CLI draft edit", () => {
 		expect(reloaded?.status).toBe("Draft");
 	});
 
+	it("clears draft priority when draft edit passes an explicit empty value", async () => {
+		const draft = await createDraft("Priority clear draft");
+		await $`bun ${CLI_PATH} draft edit ${draft.id} --priority high`.cwd(TEST_DIR).quiet();
+
+		const result = await $`bun ${CLI_PATH} draft edit ${draft.id} --priority ${""} --plain`
+			.cwd(TEST_DIR)
+			.nothrow()
+			.quiet();
+		expect(result.exitCode).toBe(0);
+		const core = new Core(TEST_DIR);
+		expect((await core.filesystem.loadDraft(draft.id))?.priority).toBeUndefined();
+	});
+
 	it("reports an unchanged no-flag edit without mutating the draft", async () => {
 		const draft = await createDraft("Untouched draft");
 		const draftFilePath = draft.filePath;
@@ -1009,5 +1022,6 @@ describe("draft identity edge cases", () => {
 		]) {
 			expect(output).toContain(flag);
 		}
+		expect(output).toContain("pass an empty value to clear");
 	});
 });
