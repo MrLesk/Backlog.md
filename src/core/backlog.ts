@@ -1971,7 +1971,7 @@ export class Core {
 	 *
 	 * Folder scanning by type:
 	 * - Task: /tasks and the archived task directories, cross-branch (if enabled), remote (if enabled)
-	 * - Draft: /drafts only
+	 * - Draft: /drafts and the archived drafts
 	 * - Document: /docs and the archived documents
 	 * - Decision: /decisions and the archived decisions
 	 */
