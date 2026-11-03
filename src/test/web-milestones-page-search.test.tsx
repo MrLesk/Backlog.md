@@ -176,7 +176,7 @@ describe("Web milestones page search", () => {
 		expect(document.activeElement).toBe(input);
 	});
 
-	it("renders milestone cards in ascending milestone ID order", () => {
+	it("renders milestone cards in the order of the milestone list", () => {
 		const container = renderPage();
 		const text = container.textContent ?? "";
 

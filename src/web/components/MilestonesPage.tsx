@@ -119,33 +119,17 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		});
 	}, [buckets, isSearchActive, searchQueryTrimmed, statuses]);
 
-	// Separate buckets into categories and sort by ID ascending
+	// Separate buckets into categories; each keeps the shared milestone order of the buckets
 	const { unassignedBucket, activeMilestones, completedMilestones } = useMemo(() => {
-		// Sort milestones by ID ascending (oldest first - preserves the natural phase/sequence order)
-		const sortByIdAsc = (a: MilestoneBucket, b: MilestoneBucket) => {
-			const aMilestone = a.milestone ?? "";
-			const bMilestone = b.milestone ?? "";
-			const aMatch = aMilestone.match(/^m-(\d+)/);
-			const bMatch = bMilestone.match(/^m-(\d+)/);
-			const aNum = aMatch?.[1] ? Number.parseInt(aMatch[1], 10) : Number.MAX_SAFE_INTEGER;
-			const bNum = bMatch?.[1] ? Number.parseInt(bMatch[1], 10) : Number.MAX_SAFE_INTEGER;
-			return aNum - bNum;
-		};
-
 		const unassigned = visibleBuckets.find((b) => b.isNoMilestone);
 		const activeWithTasks = visibleBuckets.filter((b) => !b.isNoMilestone && !b.isCompleted && b.total > 0);
 		const empty = visibleBuckets.filter((b) => !b.isNoMilestone && !b.isCompleted && b.total === 0);
 		const completed = visibleBuckets.filter((b) => !b.isNoMilestone && b.isCompleted);
 
-		// Sort each group by ID ascending, then combine (active with tasks first, then empty)
-		const sortedActive = [...activeWithTasks].sort(sortByIdAsc);
-		const sortedEmpty = [...empty].sort(sortByIdAsc);
-		const sortedCompleted = [...completed].sort(sortByIdAsc);
-
 		return {
 			unassignedBucket: unassigned,
-			activeMilestones: [...sortedActive, ...sortedEmpty],
-			completedMilestones: sortedCompleted,
+			activeMilestones: [...activeWithTasks, ...empty],
+			completedMilestones: completed,
 		};
 	}, [visibleBuckets]);
 	const removeReassignOptions = useMemo(() => {

@@ -445,7 +445,7 @@ export async function renderBoardTui(
 					.filter((milestone): milestone is string => Boolean(milestone && milestone.length > 0))
 					.map((milestone) => resolveMilestoneLabel(milestone)),
 			]),
-		).sort((a, b) => a.localeCompare(b));
+		);
 
 		let filterHeader: FilterHeader | null = null;
 		const hasActiveSharedFilters = () =>
@@ -1198,7 +1198,7 @@ export async function renderBoardTui(
 						.filter((milestone): milestone is string => Boolean(milestone && milestone.length > 0))
 						.map((milestone) => resolveMilestoneLabel(milestone)),
 				]),
-			).sort((a, b) => a.localeCompare(b));
+			);
 
 			if (taskCreationOpen) {
 				taskCreationPendingUpdate = true;
