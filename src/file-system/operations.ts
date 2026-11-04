@@ -72,6 +72,12 @@ import { sortByTaskId } from "../utils/task-sorting.ts";
 import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
 
 // Interface for task path resolution context
+/** The current checkout's active and archived tasks, read together. */
+export interface TaskListing {
+	activeTasks: Task[];
+	archivedTasks: Task[];
+}
+
 interface TaskPathContext {
 	filesystem: {
 		tasksDir: string;
@@ -990,10 +996,14 @@ export class FileSystem {
 		return movedFrom;
 	}
 
-	async loadTask(taskId: string): Promise<Task | null> {
+	/**
+	 * Resolve one task by identity. Pass `listing` when the caller already read the active and
+	 * archived tasks, so many lookups can share one read of the corpus.
+	 */
+	async loadTask(taskId: string, listing?: TaskListing): Promise<Task | null> {
 		try {
 			const tasksDir = await this.getTasksDir();
-			const [activeTasks, archivedTasks] = await Promise.all([this.listTasks(), this.listArchivedTasks()]);
+			const { activeTasks, archivedTasks } = listing ?? (await this.listTaskListing());
 			const identityMatches = [...activeTasks, ...archivedTasks].filter((task) => taskIdsEqual(taskId, task.id));
 			if (identityMatches.length > 1) {
 				throw new AmbiguousTaskIdError(
@@ -1159,6 +1169,12 @@ export class FileSystem {
 		}
 
 		return sortByTaskId(tasks);
+	}
+
+	/** Read the active and archived tasks that `loadTask` resolves identities against. */
+	async listTaskListing(): Promise<TaskListing> {
+		const [activeTasks, archivedTasks] = await Promise.all([this.listTasks(), this.listArchivedTasks()]);
+		return { activeTasks, archivedTasks };
 	}
 
 	/**
