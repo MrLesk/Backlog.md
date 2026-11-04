@@ -1982,7 +1982,11 @@ addHelpSchema(taskCmd.command("create [title]"), {
 		{ name: "type", type: taskType, description: "Task type; case-insensitive" },
 		{ name: "project", type: projectType, description: "Task project; case-insensitive" },
 		{ name: "due-date", type: "date", description: "Optional due date (YYYY-MM-DD)" },
-		{ name: "acceptanceCriteria", type: "Markdown list item text", description: "Repeat --ac for multiple criteria" },
+		{
+			name: "acceptanceCriteria",
+			type: "Single-line text",
+			description: "No line breaks; repeat --ac for multiple criteria",
+		},
 		{ name: "ordinal", type: "Integer", description: "Non-negative manual ordering value" },
 		{ name: "parent", type: "Task ID", description: "Existing parent task for subtasks; not a milestone ID" },
 		{
@@ -2020,10 +2024,14 @@ addHelpSchema(taskCmd.command("create [title]"), {
 	.option("--project <project>", "set task project (configured projects)")
 	.option("--due-date <date>", "set due date (YYYY-MM-DD)")
 	.option("--plain", "use plain text output after creating")
-	.option("--ac <criteria>", "add acceptance criteria (can be used multiple times)", createMultiValueAccumulator())
+	.option(
+		"--ac <criteria>",
+		"add single-line acceptance criteria (can be used multiple times; no line breaks)",
+		createMultiValueAccumulator(),
+	)
 	.option(
 		"--acceptance-criteria <criteria>",
-		"add acceptance criteria (can be used multiple times)",
+		"add single-line acceptance criteria (can be used multiple times; no line breaks)",
 		createMultiValueAccumulator(),
 	)
 	.option("--dod <item>", "add Definition of Done item (can be used multiple times)", createMultiValueAccumulator())
@@ -3696,7 +3704,11 @@ function configureEditCommand(cmd: Command) {
 			createMultiValueAccumulator(),
 		)
 		.option("--clear-labels", "remove all task labels (cannot combine with --label/--add-label/--remove-label)")
-		.option("--ac <criteria>", "add acceptance criteria (can be used multiple times)", createMultiValueAccumulator())
+		.option(
+			"--ac <criteria>",
+			"add single-line acceptance criteria (can be used multiple times; no line breaks)",
+			createMultiValueAccumulator(),
+		)
 		.option("--dod <item>", "add Definition of Done item (can be used multiple times)", createMultiValueAccumulator())
 		.option(
 			"--remove-ac <index>",
@@ -3730,7 +3742,7 @@ function configureEditCommand(cmd: Command) {
 		)
 		.option(
 			"--acceptance-criteria <criteria>",
-			"replace all acceptance criteria (can be used multiple times; commas are preserved); matching trimmed text keeps checks",
+			"replace all acceptance criteria (single-line values; can be used multiple times; commas are preserved); matching trimmed text keeps checks",
 			createMultiValueAccumulator(),
 		)
 		.option("--clear-ac", "remove all acceptance criteria (cannot combine with acceptance criteria mutation options)")
@@ -4292,11 +4304,15 @@ const draftEditCommand = addHelpSchema(draftCmd.command("edit [taskId]"), {
 		{ name: "ordinal", type: "Number", description: "Set ordinal for custom ordering" },
 		{ name: "milestone", type: "String", description: "Assign to milestone by ID or title" },
 		{ name: "clear-milestone", type: "Boolean", description: "Clear the milestone assignment" },
-		{ name: "ac", type: "Comma-separated strings", description: "Add acceptance criteria; repeatable" },
+		{
+			name: "ac",
+			type: "Single-line text",
+			description: "Add acceptance criteria; no line breaks; repeatable; commas are preserved",
+		},
 		{
 			name: "acceptance-criteria",
-			type: "Markdown list item text",
-			description: "Replace all acceptance criteria; repeatable; matching trimmed text keeps checks",
+			type: "Single-line text",
+			description: "Replace all acceptance criteria; no line breaks; repeatable; matching trimmed text keeps checks",
 		},
 		{ name: "clear-ac", type: "Boolean", description: "Remove all acceptance criteria" },
 		{ name: "remove-ac", type: "Integer", description: "Remove acceptance criterion by 1-based index; repeatable" },

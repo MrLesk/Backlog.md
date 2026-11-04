@@ -5,6 +5,7 @@ import { isCreateLockError, isTaskLockError } from "../../../file-system/operati
 import { isWorkingCopyTask, type SearchPriorityFilter, type Task, type TaskListFilter } from "../../../types/index.ts";
 import type { TaskEditArgs, TaskEditRequest } from "../../../types/task-edit-args.ts";
 import { formatAcceptanceCriteriaSummarySuffix } from "../../../ui/acceptance-criteria-progress.ts";
+import { normalizeAcceptanceCriterionText } from "../../../utils/acceptance-criteria.ts";
 import { formatDependencyCleanupMessage } from "../../../utils/dependency-graph.ts";
 import { formatDuplicateTaskIdWarning } from "../../../utils/duplicate-detection.ts";
 import {
@@ -120,7 +121,7 @@ export class TaskHandlers {
 
 			const acceptanceCriteria =
 				args.acceptanceCriteria
-					?.map((text) => String(text).trim())
+					?.map((text) => normalizeAcceptanceCriterionText(String(text)))
 					.filter((text) => text.length > 0)
 					.map((text) => ({ text, checked: false })) ?? undefined;
 

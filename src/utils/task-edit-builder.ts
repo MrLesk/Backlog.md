@@ -1,5 +1,6 @@
 import type { TaskUpdateInput } from "../types/index.ts";
 import type { TaskEditArgs } from "../types/task-edit-args.ts";
+import { normalizeAcceptanceCriterionText } from "./acceptance-criteria.ts";
 import { normalizeStringList } from "./task-builders.ts";
 
 function sanitizeStringArray(values: string[] | undefined): string[] | undefined {
@@ -26,7 +27,9 @@ function sanitizeAppend(values: string[] | undefined): string[] | undefined {
 
 function toAcceptanceCriteriaEntries(values: string[] | undefined) {
 	if (values === undefined) return undefined;
-	const trimmed = values.map((value) => String(value).trim()).filter((value) => value.length > 0);
+	const trimmed = values
+		.map((value) => normalizeAcceptanceCriterionText(String(value)))
+		.filter((value) => value.length > 0);
 	return trimmed.map((text) => ({ text }));
 }
 
@@ -198,7 +201,7 @@ export function buildTaskUpdateInput(args: TaskEditArgs): TaskUpdateInput {
 
 	if (Array.isArray(args.acceptanceCriteriaAdd) && args.acceptanceCriteriaAdd.length > 0) {
 		const additions = args.acceptanceCriteriaAdd
-			.map((text) => String(text).trim())
+			.map((text) => normalizeAcceptanceCriterionText(String(text)))
 			.filter((text) => text.length > 0)
 			.map((text) => ({ text, checked: false }));
 		if (additions.length > 0) {

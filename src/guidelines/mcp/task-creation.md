@@ -75,7 +75,7 @@ Create all tasks in the same session to maintain consistency and context.
 - Example `description`: "Finding anything means running three separate commands, and matches in the ones you skip are missed silently. One search command covers tasks, docs, and decisions."
 - Too thin: "Users can search tasks, docs, and decisions from one CLI command." states the change but not the need, so a future agent cannot weigh scope or alternatives
 
-**Acceptance criteria**: `acceptanceCriteria` is an array of strings; each item should be specific, testable, and independent (the WHAT)
+**Acceptance criteria**: `acceptanceCriteria` is an array of single-line strings; actual line breaks are rejected. Use separate entries for separate criteria. Each item should be specific, testable, and independent (the WHAT).
 - Keep each checklist item atomic (e.g., "Display saves when user presses Ctrl+S")
 - Include negative or edge scenarios when relevant
 - Capture testing expectations explicitly

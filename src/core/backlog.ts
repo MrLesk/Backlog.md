@@ -47,6 +47,7 @@ import {
 	type TaskListFilter,
 	type TaskUpdateInput,
 } from "../types/index.ts";
+import { normalizeAcceptanceCriterionText } from "../utils/acceptance-criteria.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
 import { decisionIdKey, decisionNotFoundMessage, findDecisionById } from "../utils/decision-id.ts";
 import { documentIdKey, documentNotFoundMessage, findDocumentById, normalizeDocumentId } from "../utils/document-id.ts";
@@ -2245,7 +2246,7 @@ export class Core {
 			? input.acceptanceCriteria
 					.map((criterion, index) => ({
 						index: index + 1,
-						text: String(criterion.text ?? "").trim(),
+						text: normalizeAcceptanceCriterionText(String(criterion.text ?? "")),
 						checked: Boolean(criterion.checked),
 					}))
 					.filter((criterion) => criterion.text.length > 0)
@@ -2899,7 +2900,7 @@ export class Core {
 			const unmatchedCriteria = [...acceptanceCriteria];
 			const sanitized = input.acceptanceCriteria
 				.map((criterion) => ({
-					text: String(criterion.text ?? "").trim(),
+					text: normalizeAcceptanceCriterionText(String(criterion.text ?? "")),
 					checked: criterion.checked,
 				}))
 				.filter((criterion) => criterion.text.length > 0)
@@ -2918,7 +2919,9 @@ export class Core {
 
 		if (input.addAcceptanceCriteria && input.addAcceptanceCriteria.length > 0) {
 			const additions = input.addAcceptanceCriteria
-				.map((criterion) => (typeof criterion === "string" ? criterion.trim() : String(criterion.text ?? "").trim()))
+				.map((criterion) =>
+					normalizeAcceptanceCriterionText(typeof criterion === "string" ? criterion : String(criterion.text ?? "")),
+				)
 				.filter((text) => text.length > 0);
 			let index =
 				acceptanceCriteria.length > 0 ? Math.max(...acceptanceCriteria.map((criterion) => criterion.index)) + 1 : 1;

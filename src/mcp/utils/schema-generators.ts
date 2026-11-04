@@ -243,9 +243,11 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 			},
 			acceptanceCriteria: {
 				type: "array",
+				description: "One single-line criterion per entry. Line breaks are not allowed.",
 				items: {
 					type: "string",
 					maxLength: 500,
+					preserveWhitespace: true,
 				},
 			},
 			definitionOfDoneAdd: {
@@ -456,18 +458,21 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 			acceptanceCriteriaSet: {
 				type: "array",
 				description:
-					"Replace all acceptance criteria. Matching trimmed text keeps its check state, even after reordering; duplicate texts match old entries in order, once each. New or reworded entries start unchecked, and omitted entries are removed.",
+					"Replace all acceptance criteria with one single-line criterion per entry; line breaks are not allowed. Matching trimmed text keeps its check state, even after reordering; duplicate texts match old entries in order, once each. New or reworded entries start unchecked, and omitted entries are removed.",
 				items: {
 					type: "string",
 					maxLength: 500,
+					preserveWhitespace: true,
 				},
 				maxItems: 50,
 			},
 			acceptanceCriteriaAdd: {
 				type: "array",
+				description: "Add one single-line criterion per entry. Line breaks are not allowed.",
 				items: {
 					type: "string",
 					maxLength: 500,
+					preserveWhitespace: true,
 				},
 				maxItems: 50,
 			},

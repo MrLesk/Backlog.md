@@ -2,6 +2,16 @@ import { describe, expect, it } from "bun:test";
 import { AcceptanceCriteriaManager, DefinitionOfDoneManager } from "../markdown/structured-sections.ts";
 
 describe("AcceptanceCriteriaManager", () => {
+	it.each(["First\nSecond", "First\rSecond", "First\r\nSecond", "\nFirst", "First\n", "\n"])(
+		"rejects line breaks in criterion text before writing: %j",
+		(text) => {
+			expect(() => AcceptanceCriteriaManager.updateContent("", [{ index: 1, checked: false, text }])).toThrow(
+				"single line",
+			);
+			expect(() => AcceptanceCriteriaManager.addCriteria("", [text])).toThrow("single line");
+		},
+	);
+
 	it("does not insert blank lines when adding new criteria (BACK-365)", () => {
 		// Start with existing content that has 2 criteria
 		const existingContent = `## Description

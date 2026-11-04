@@ -61,7 +61,8 @@ If you discover work that is outside the task's acceptance criteria, stop and as
 
 ### Replacing Acceptance Criteria
 
-`--acceptance-criteria` replaces the full list; repeat it for each item. Matching trimmed text keeps its check state,
+`--ac` adds a criterion; `--acceptance-criteria` replaces the full list. Each value must be a single line; actual line
+breaks are rejected. Repeat the chosen flag for separate criteria. Matching trimmed text keeps its check state,
 even after reordering. Duplicate text matches old entries in order, once per entry. New or reworded entries start
 unchecked, and omitted entries are removed. Use `--check-ac` or `--uncheck-ac` in a separate edit to change check states.
 

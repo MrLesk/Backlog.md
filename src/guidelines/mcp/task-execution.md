@@ -69,7 +69,8 @@ If new work appears during implementation that wasn't in the original acceptance
 
 ### Replacing Acceptance Criteria
 
-`acceptanceCriteriaSet` replaces the full list. Matching trimmed text keeps its check state, even after reordering.
+`acceptanceCriteriaAdd` adds criteria; `acceptanceCriteriaSet` replaces the full list. Each entry must be a single line;
+actual line breaks are rejected. Use separate entries for separate criteria. Matching trimmed text keeps its check state, even after reordering.
 Duplicate text matches old entries in order, once per entry. New or reworded entries start unchecked, and omitted
 entries are removed. `acceptanceCriteriaCheck` and `acceptanceCriteriaUncheck` refer to the resulting list.
 

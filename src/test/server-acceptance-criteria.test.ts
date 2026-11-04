@@ -23,6 +23,32 @@ describe("browser acceptance criteria replacement", () => {
 		await safeCleanup(testDir);
 	});
 
+	it("rejects line breaks before trimming on create and replacement", async () => {
+		const acceptanceCriteriaItems = [{ text: "First\r\n", checked: false }];
+		const created = await fetch(`http://127.0.0.1:${server.getPort()}/api/tasks`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Rejected", acceptanceCriteriaItems }),
+		});
+		expect(created.status).toBe(400);
+		expect(((await created.json()) as { error: string }).error).toContain("single line");
+		expect(await core.filesystem.listTasks()).toHaveLength(0);
+		const { task } = await core.createTaskFromInput({
+			title: "Keep",
+			acceptanceCriteria: [{ text: "Keep", checked: true }],
+		});
+		if (!task.filePath) throw new Error("Expected task file path");
+		const before = await Bun.file(task.filePath).text();
+		const edited = await fetch(`http://127.0.0.1:${server.getPort()}/api/tasks/${task.id}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Must not change", acceptanceCriteriaItems }),
+		});
+		expect(edited.status).toBe(400);
+		expect(((await edited.json()) as { error: string }).error).toContain("single line");
+		expect(await Bun.file(task.filePath).text()).toBe(before);
+	});
+
 	it("honors explicit true and false instead of inheriting matching checks", async () => {
 		const { task } = await core.createTaskFromInput({
 			title: "Browser checks",

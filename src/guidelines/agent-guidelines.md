@@ -216,6 +216,7 @@ Provide a concise summary of the task purpose and its goal. Explains the context
 ⚠️ **IMPORTANT: How AC Commands Work**
 
 - **Adding criteria (`--ac`)** accepts multiple flags: `--ac "First" --ac "Second"` ✅
+- Each criterion must be a single line. Actual line breaks are rejected; long text can still wrap in the browser.
 - **Checking/unchecking/removing** accept multiple flags too: `--check-ac 1 --check-ac 2` ✅
 - **Mixed operations** work in a single command: `--check-ac 1 --uncheck-ac 2 --remove-ac 3` ✅
 
