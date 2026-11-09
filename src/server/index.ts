@@ -991,7 +991,7 @@ export class BacklogServer {
 		const acceptanceCriteria = Array.isArray(payload.acceptanceCriteriaItems)
 			? payload.acceptanceCriteriaItems
 					.map((item: { text?: string; checked?: boolean }) => ({
-						text: String(item?.text ?? "").trim(),
+						text: String(item?.text ?? ""),
 						checked: Boolean(item?.checked),
 					}))
 					.filter((item: { text: string }) => item.text.length > 0)
@@ -1187,7 +1187,7 @@ export class BacklogServer {
 		if ("acceptanceCriteriaItems" in updates && Array.isArray(updates.acceptanceCriteriaItems)) {
 			updateInput.acceptanceCriteria = updates.acceptanceCriteriaItems
 				.map((item: { text?: string; checked?: boolean }) => ({
-					text: String(item?.text ?? "").trim(),
+					text: String(item?.text ?? ""),
 					checked: Boolean(item?.checked),
 				}))
 				.filter((item: { text: string }) => item.text.length > 0);

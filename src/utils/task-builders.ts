@@ -1,5 +1,6 @@
 import type { Core } from "../core/backlog.ts";
 import type { AcceptanceCriterion, Task } from "../types/index.ts";
+import { normalizeAcceptanceCriterionText } from "./acceptance-criteria.ts";
 import { buildDependencyGraph, findCycleThroughRoot } from "./dependency-graph.ts";
 import { AmbiguousIdError } from "./entity-id.ts";
 import { AmbiguousTaskIdError, canonicalTaskId, taskIdsEqual } from "./task-path.ts";
@@ -213,14 +214,14 @@ export function processAcceptanceCriteriaOptions(options: {
 	// Process --ac options
 	if (options.ac) {
 		const acCriteria = Array.isArray(options.ac) ? options.ac : [options.ac];
-		criteria.push(...acCriteria.map((c) => String(c).trim()).filter(Boolean));
+		criteria.push(...acCriteria.map((c) => normalizeAcceptanceCriterionText(String(c))).filter(Boolean));
 	}
 	// Process --acceptance-criteria options
 	if (options.acceptanceCriteria) {
 		const accCriteria = Array.isArray(options.acceptanceCriteria)
 			? options.acceptanceCriteria
 			: [options.acceptanceCriteria];
-		criteria.push(...accCriteria.map((c) => String(c).trim()).filter(Boolean));
+		criteria.push(...accCriteria.map((c) => normalizeAcceptanceCriterionText(String(c))).filter(Boolean));
 	}
 	return criteria;
 }

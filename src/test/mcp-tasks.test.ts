@@ -104,6 +104,33 @@ describe("MCP task tools (MVP)", () => {
 		if (errors.length > 1) throw new AggregateError(errors, "MCP server and fixture cleanup both failed");
 	});
 
+	it("rejects line breaks before trimming criteria on create, add and replace", async () => {
+		const acceptanceCriteria = ["\nFirst"];
+		const created = await mcpServer.testInterface.callTool({
+			params: { name: "task_create", arguments: { title: "Rejected", acceptanceCriteria } },
+		});
+		expect(created.isError).toBe(true);
+		expect(getText(created.content)).toContain("single line");
+		expect(await mcpServer.filesystem.listTasks()).toHaveLength(0);
+		const { task } = await mcpServer.createTaskFromInput({
+			title: "Keep",
+			acceptanceCriteria: [{ text: "Keep", checked: true }],
+		});
+		if (!task.filePath) throw new Error("Expected task file path");
+		const before = await Bun.file(task.filePath).text();
+		for (const field of ["acceptanceCriteriaAdd", "acceptanceCriteriaSet"]) {
+			const edited = await mcpServer.testInterface.callTool({
+				params: {
+					name: "task_edit",
+					arguments: { id: task.id, title: "Must not change", [field]: acceptanceCriteria },
+				},
+			});
+			expect(edited.isError).toBe(true);
+			expect(getText(edited.content)).toContain("single line");
+			expect(await Bun.file(task.filePath).text()).toBe(before);
+		}
+	});
+
 	it("creates and lists tasks", async () => {
 		const createResult = await mcpServer.testInterface.callTool({
 			params: {

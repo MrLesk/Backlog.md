@@ -1564,6 +1564,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                 criteria={definitionOfDone}
                 onChange={setDefinitionOfDone}
                 label="Definition of Done"
+                singleLine={false}
                 preserveIndices
                 disableToggle={isCreateMode}
               />

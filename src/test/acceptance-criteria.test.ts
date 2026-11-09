@@ -22,6 +22,30 @@ describe("Acceptance Criteria CLI", () => {
 		await safeCleanup(TEST_DIR);
 	});
 
+	it("rejects multiline criteria on create, add and replace without writing task changes", async () => {
+		const multiline = "First\nSecond";
+		const created = await $`bun ${CLI_PATH} task create "Rejected" --ac ${multiline}`.cwd(TEST_DIR).quiet().nothrow();
+		expect(created.exitCode).not.toBe(0);
+		expect(created.stderr.toString()).toContain("single line");
+		const core = new Core(TEST_DIR);
+		expect(await core.filesystem.listTasks()).toHaveLength(0);
+		const { task } = await core.createTaskFromInput({
+			title: "Unchanged",
+			acceptanceCriteria: [{ text: "Keep", checked: true }],
+		});
+		if (!task.filePath) throw new Error("Expected task file path");
+		const before = await Bun.file(task.filePath).text();
+		for (const flag of ["--ac", "--acceptance-criteria"]) {
+			const edited = await $`bun ${CLI_PATH} task edit ${task.id} --title "Must not change" ${flag} ${multiline}`
+				.cwd(TEST_DIR)
+				.quiet()
+				.nothrow();
+			expect(edited.exitCode).not.toBe(0);
+			expect(edited.stderr.toString()).toContain("single line");
+			expect(await Bun.file(task.filePath).text()).toBe(before);
+		}
+	});
+
 	describe("task create with acceptance criteria", () => {
 		it("should create task with single acceptance criterion using -ac", async () => {
 			const result = await $`bun ${CLI_PATH} task create "Test Task" --ac "Must work correctly"`.cwd(TEST_DIR).quiet();
@@ -312,11 +336,12 @@ describe("Acceptance Criteria CLI", () => {
 			expect(after).toContain("<!-- COMMENTS:BEGIN -->\n<!-- AC:END -->\n<!-- DOD:BEGIN -->\n<!-- COMMENTS:END -->");
 		});
 
-		it("documents replacement as repeatable without comma splitting", async () => {
+		it("documents single-line replacement as repeatable without comma splitting", async () => {
 			const result = await $`bun ${CLI_PATH} task edit --help`.cwd(TEST_DIR).quiet();
-			const output = result.stdout.toString();
+			const output = result.stdout.toString().replace(/\s+/g, " ");
 			expect(output).toContain("--acceptance-criteria <criteria>");
-			expect(output).toContain("replace all acceptance criteria (can be used");
+			expect(output).toContain("single-line values");
+			expect(output).toContain("can be used multiple times; commas are preserved");
 			expect(output).not.toContain("set acceptance criteria (comma-separated");
 			expect(output).toContain("--clear-ac");
 		});

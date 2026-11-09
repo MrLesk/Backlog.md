@@ -1,5 +1,6 @@
 import { fromMarkdown } from "mdast-util-from-markdown";
 import type { AcceptanceCriterion, TaskComment } from "../types/index.ts";
+import { normalizeAcceptanceCriterionText } from "../utils/acceptance-criteria.ts";
 import { getStructuredSectionTitles } from "./section-titles.ts";
 
 export type StructuredSectionKey = "description" | "implementationPlan" | "implementationNotes" | "finalSummary";
@@ -1014,6 +1015,9 @@ function formatChecklistSection(
 	existingBody?: string,
 	maskedRanges?: TextRange[],
 ): string {
+	if (definition === ACCEPTANCE_CRITERIA_DEFINITION) {
+		for (const criterion of criteria) normalizeAcceptanceCriterionText(criterion.text);
+	}
 	const effectiveMasks =
 		maskedRanges ?? (existingBody ? resolveChecklistSentinels(existingBody, definition).foreignRanges : []);
 	const body = composeChecklistBody(criteria, existingBody, effectiveMasks);
@@ -1444,7 +1448,7 @@ export class AcceptanceCriteriaManager {
 		const existing = AcceptanceCriteriaManager.parseAllCriteria(content);
 		let nextIndex = existing.length > 0 ? Math.max(...existing.map((c) => c.index)) + 1 : 1;
 		for (const text of newCriteria) {
-			existing.push({ checked: false, text: text.trim(), index: nextIndex++ });
+			existing.push({ checked: false, text: normalizeAcceptanceCriterionText(text), index: nextIndex++ });
 		}
 		return AcceptanceCriteriaManager.updateContent(content, existing);
 	}

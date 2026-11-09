@@ -108,6 +108,9 @@ If single quotes are not practical in your shell, escape each literal backtick b
 
 Acceptance criteria define the expected behavior, not implementation steps.
 
+Each criterion must be a single line: actual line breaks are rejected. Repeat `--ac` for separate criteria,
+for example `--ac "First" --ac "Second"`. Long text can wrap in the browser without adding line breaks to the task.
+
 Good criteria:
 
 - Are testable.

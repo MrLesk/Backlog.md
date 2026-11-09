@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { type AcceptanceCriterion } from "../../types";
+import { normalizeAcceptanceCriterionText } from "../../utils/acceptance-criteria.ts";
 
 interface Props {
   criteria: AcceptanceCriterion[];
@@ -7,6 +8,7 @@ interface Props {
   label?: string;
   preserveIndices?: boolean;
   disableToggle?: boolean;
+  singleLine?: boolean;
 }
 
 const AcceptanceCriteriaEditor: React.FC<Props> = ({
@@ -15,9 +17,11 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({
   label = "Acceptance Criteria",
   preserveIndices = false,
   disableToggle = false,
+  singleLine = true,
 }) => {
   const [criteria, setCriteria] = useState<AcceptanceCriterion[]>(initial || []);
   const [newCriterion, setNewCriterion] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   // Refs to auto-resize textareas
   const itemRefs = useRef<Record<number, HTMLTextAreaElement | null>>({});
@@ -51,13 +55,37 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({
     onChange(updated);
   };
 
+  const validateText = (text: string) => {
+    try {
+      if (singleLine) normalizeAcceptanceCriterionText(text);
+      setError(null);
+      return true;
+    } catch (error) {
+      setError((error as Error).message);
+      return false;
+    }
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (singleLine && event.key === "Enter" && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      validateText(event.currentTarget.value + "\n");
+    }
+  };
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!validateText(event.clipboardData.getData("text"))) event.preventDefault();
+  };
+
   const handleTextChange = (index: number, text: string) => {
+    if (!validateText(text)) return;
     const updated = criteria.map((c) => (c.index === index ? { ...c, text } : c));
     setCriteria(updated);
     onChange(updated);
   };
 
   const handleRemove = (index: number) => {
+    setError(null);
     const filtered = criteria.filter((c) => c.index !== index);
     const updated = preserveIndices ? filtered : filtered.map((c, i) => ({ ...c, index: i + 1 }));
     setCriteria(updated);
@@ -65,6 +93,7 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({
   };
 
   const handleAdd = () => {
+    if (!validateText(newCriterion)) return;
     const text = newCriterion.trim();
     if (!text) return;
     const nextIndex = preserveIndices
@@ -94,8 +123,11 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({
             <textarea
               ref={(el) => { itemRefs.current[c.index] = el; }}
               rows={1}
+              aria-label={`${label} item ${c.index}`}
               value={c.text}
               onChange={(e) => handleTextChange(c.index, e.target.value)}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               onInput={(e) => autoResize(e.currentTarget)}
               className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 resize-none overflow-hidden leading-5"
             />
@@ -112,8 +144,13 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({
           <textarea
             ref={newRef}
             rows={1}
+            aria-label={`New ${label} item`}
             value={newCriterion}
-            onChange={(e) => setNewCriterion(e.target.value)}
+            onChange={(e) => {
+              if (validateText(e.target.value)) setNewCriterion(e.target.value);
+            }}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             onInput={(e) => autoResize(e.currentTarget)}
             placeholder="New criterion"
             className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 resize-none overflow-hidden leading-5"
@@ -127,6 +164,7 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({
           </button>
         </li>
       </ul>
+      {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
     </div>
   );
 };
