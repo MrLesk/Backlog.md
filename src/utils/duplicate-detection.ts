@@ -82,11 +82,16 @@ export function detectDuplicateTaskIds(tasks: Task[]): DuplicateGroup[] {
 		.sort((left, right) => left.id.localeCompare(right.id, undefined, { numeric: true }));
 }
 
+/**
+ * The one duplicate-ID warning shown by the CLI and MCP. Its second and third lines describe what the CLI does
+ * while duplicates exist, so update them whenever that behavior changes.
+ */
 export function formatDuplicateTaskIdWarning(groups: DuplicateGroup[]): string {
 	const duplicateCount = groups.reduce((total, group) => total + group.tasks.length, 0);
 	const lines = [
 		`WARNING: ${groups.length} duplicate task ID ${groups.length === 1 ? "group affects" : "groups affect"} ${duplicateCount} files.`,
-		"Some task views may hide files and ID-based commands are blocked until the collision is repaired.",
+		"Until the duplicates are repaired, 'backlog task list', 'backlog search' and 'backlog board export' exit with an error, and their output may be incomplete.",
+		"A command that names an ID listed below is refused as ambiguous; commands that name other task IDs keep working.",
 	];
 	for (const group of groups) {
 		lines.push(`  ${group.id}:`);
