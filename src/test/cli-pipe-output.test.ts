@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { copyFile, mkdir, readFile, rm } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { Core } from "../index.ts";
 import { getTestCliPath } from "./test-cli.ts";
 import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup, withTimeout } from "./test-utils.ts";
@@ -88,6 +88,87 @@ describe("finite CLI output to a delayed pipe reader", () => {
 		} finally {
 			if (child.exitCode === null) child.kill("SIGKILL");
 			await child.exited;
+		}
+	});
+});
+
+describe("CLI output to a reader that closes early", () => {
+	const closedReaderDirectory = createUniqueTestDir("cli-closed-reader");
+	let taskFilePath = "";
+
+	/**
+	 * Runs the CLI in the fixture project. With `closeReaderFirst`, the reader of stdout goes away before
+	 * the CLI writes, like `backlog task view TASK-1 --json | true`; otherwise it reads everything.
+	 */
+	async function runCli(
+		args: string[],
+		{ closeReaderFirst }: { closeReaderFirst: boolean },
+	): Promise<{ exitCode: number; stderr: string }> {
+		const child = Bun.spawn(["bun", CLI, ...args], {
+			cwd: closedReaderDirectory,
+			stdin: "ignore",
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		const reader = closeReaderFirst ? child.stdout.cancel() : new Response(child.stdout).arrayBuffer();
+		try {
+			const [exitCode, stderr] = await withTimeout(
+				Promise.all([child.exited, new Response(child.stderr).text(), reader]),
+				`backlog ${args.join(" ")}`,
+				5_000,
+			);
+			return { exitCode, stderr };
+		} finally {
+			if (child.exitCode === null) child.kill("SIGKILL");
+			await child.exited;
+		}
+	}
+
+	beforeAll(async () => {
+		await mkdir(closedReaderDirectory, { recursive: true });
+		const core = new Core(closedReaderDirectory);
+		await initializeFilesystemTestProject(core, "Closed pipe reader");
+		taskFilePath = join(core.filesystem.tasksDir, "task-1.md");
+		// Every command's output is larger than a pipe buffer, so a reader that stayed open without
+		// reading would block the CLI and fail the test instead of letting it pass unnoticed.
+		await core.createTask(
+			{
+				id: "TASK-1",
+				filePath: taskFilePath,
+				title: `Task 1 ${"closed reader ".repeat(8_000)}`,
+				status: "To Do",
+				createdDate: "2026-09-27",
+				assignee: [],
+				labels: [],
+				dependencies: [],
+			},
+			false,
+		);
+		core.disposeContentStore();
+		core.disposeSearchService();
+	});
+
+	afterAll(async () => {
+		await safeCleanup(closedReaderDirectory);
+	});
+
+	it.each(["task view TASK-1 --json", "task list --plain", "search Task --plain"])(
+		"ends `backlog %s` with status 0 and no stderr",
+		async (command) => {
+			expect(await runCli(command.split(" "), { closeReaderFirst: true })).toEqual({ exitCode: 0, stderr: "" });
+		},
+	);
+
+	it("keeps the message and status of a command that already failed", async () => {
+		// With a duplicate task ID, `task list --plain` warns on stderr and sets status 1, then still prints the list.
+		const duplicatePath = join(dirname(taskFilePath), "task-1 - duplicate.md");
+		await copyFile(taskFilePath, duplicatePath);
+		try {
+			const completeRead = await runCli(["task", "list", "--plain"], { closeReaderFirst: false });
+			expect(completeRead.exitCode).toBe(1);
+			expect(await runCli(["task", "list", "--plain"], { closeReaderFirst: true })).toEqual(completeRead);
+		} finally {
+			await rm(duplicatePath);
 		}
 	});
 });

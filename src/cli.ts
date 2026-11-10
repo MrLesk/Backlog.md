@@ -906,6 +906,15 @@ if (process.platform === "win32") {
 	}
 }
 
+// When the reader of stdout goes away early, as in `backlog task view TASK-1 --json | head -1`, the next
+// stdout write fails with EPIPE. That is normal shell use and nobody is left to read the rest, so every
+// command ends quietly here with the status it has already set: 0 unless it reported a failure.
+// Other stdout errors, such as a full disk, still crash.
+process.stdout.on("error", (error: NodeJS.ErrnoException) => {
+	if (error.code !== "EPIPE") throw error;
+	process.exit();
+});
+
 // Auto-plain fallback for commands that otherwise launch interactive UIs.
 // Require both stdin and stdout to be TTY before attempting an interactive experience.
 const hasInteractiveTTY = Boolean(process.stdout.isTTY && process.stdin.isTTY);

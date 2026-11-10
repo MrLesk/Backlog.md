@@ -80,7 +80,8 @@ function registerStartCommand(mcpCmd: Command): void {
 					process.stdin.once("close", handleStdioClose);
 				}
 
-				const handlePipeError = (error: unknown) => {
+				// A closed stdout ends every CLI command, this server included, through the handler in src/cli.ts.
+				const handleStderrPipeError = (error: unknown) => {
 					const code =
 						error && typeof error === "object" && "code" in error
 							? String((error as { code?: string }).code ?? "")
@@ -89,8 +90,7 @@ function registerStartCommand(mcpCmd: Command): void {
 						void shutdown("EPIPE");
 					}
 				};
-				process.stdout.once("error", handlePipeError);
-				process.stderr.once("error", handlePipeError);
+				process.stderr.once("error", handleStderrPipeError);
 
 				process.once("SIGINT", () => shutdown("SIGINT"));
 				process.on("SIGTERM", () => shutdown("SIGTERM"));
