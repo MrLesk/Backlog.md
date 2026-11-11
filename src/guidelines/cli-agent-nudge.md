@@ -4,7 +4,7 @@
 
 This project uses Backlog.md for task and project management.
 
-**At the beginning of each conversation in this project, run `backlog instructions overview` before answering or taking action. Re-read it only if you have not read it yet in the current conversation.**
+**Run `backlog instructions overview` once per conversation, before the first action that touches tracked work.** A conversation touches tracked work when it names a task or is about to create, plan, update, or finalize a task. Answering a question, explaining code, debugging, reviewing a change, or committing needs no Backlog command; read the overview at the point such a conversation turns into tracked work.
 
 Use the overview to decide whether to search, read, create, or update Backlog tasks.
 
