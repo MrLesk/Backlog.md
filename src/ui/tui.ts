@@ -8,6 +8,7 @@
 import { stdin as input, stdout as output } from "node:process";
 import type { ProgramInterface, ScreenInterface, ScreenOptions } from "neo-neo-bblessed";
 import { screen as blessedScreen, box, program as createProgram } from "neo-neo-bblessed";
+import { openQuitConfirmPopup } from "./components/confirm-popup.ts";
 
 type ErrorConstructor = new () => unknown;
 
@@ -230,7 +231,7 @@ export async function promptText(message: string, defaultValue = ""): Promise<st
 }
 
 // Display long content in a scrollable viewer.
-export async function scrollableViewer(content: string): Promise<void> {
+export async function scrollableViewer(content: string, confirmExit = false): Promise<void> {
 	if (output.isTTY === false) {
 		console.log(content);
 		return;
@@ -259,7 +260,19 @@ export async function scrollableViewer(content: string): Promise<void> {
 
 		addScrollKeys(viewer, screen);
 
-		screen.key(["escape", "q", "C-c"], () => {
+		let confirmingQuit = false;
+		screen.key(["escape", "q", "C-c"], async () => {
+			if (confirmingQuit) return;
+			if (confirmExit) {
+				confirmingQuit = true;
+				const confirmed = await openQuitConfirmPopup(screen);
+				confirmingQuit = false;
+				if (!confirmed) {
+					viewer.focus();
+					screen.render();
+					return;
+				}
+			}
 			screen.destroy();
 			resolve();
 		});

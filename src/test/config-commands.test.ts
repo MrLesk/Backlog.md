@@ -228,6 +228,31 @@ describe("Config commands", () => {
 		expect(listOutput).toContain("hideEmptyColumns: true");
 	});
 
+	it("round-trips confirmExit and rejects invalid values without changing the setting", async () => {
+		expect((await $`bun ${CLI_PATH} config get confirmExit`.cwd(TEST_DIR).text()).trim()).toBe("false");
+		for (const value of ["true", "false"]) {
+			await $`bun ${CLI_PATH} config set confirmExit ${value}`.cwd(TEST_DIR).quiet();
+			expect((await $`bun ${CLI_PATH} config get confirmExit`.cwd(TEST_DIR).text()).trim()).toBe(value);
+			expect(await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text()).toContain(`confirmExit: ${value}`);
+			expect(await Bun.file(core.filesystem.configFilePath).text()).toContain(`confirm_exit: ${value}`);
+		}
+		const before = await Bun.file(core.filesystem.configFilePath).text();
+		const rejected = await $`bun ${CLI_PATH} config set confirmExit maybe`.cwd(TEST_DIR).nothrow().quiet();
+		expect(rejected.exitCode).toBe(1);
+		expect(rejected.stderr.toString()).toContain("confirmExit must be true or false");
+		expect(await Bun.file(core.filesystem.configFilePath).text()).toBe(before);
+		for (const command of ["get", "set"]) {
+			expect(await $`bun ${CLI_PATH} config ${command} --help`.cwd(TEST_DIR).text()).toContain("confirmExit");
+		}
+	});
+
+	it.each(["confirmExit", "confirm_exit"])("reads %s from YAML and preserves it when saving config", async (key) => {
+		await appendFile(core.filesystem.configFilePath, `\n${key}: true\n`);
+		expect((await $`bun ${CLI_PATH} config get confirmExit`.cwd(TEST_DIR).text()).trim()).toBe("true");
+		await $`bun ${CLI_PATH} config set defaultPort 7001`.cwd(TEST_DIR).quiet();
+		expect((await $`bun ${CLI_PATH} config get confirmExit`.cwd(TEST_DIR).text()).trim()).toBe("true");
+	});
+
 	it("parses block-style YAML sequences identically to inline arrays for list keys", () => {
 		const inline = core.filesystem.parseConfig(
 			'project_name: "P"\nstatuses: ["To Do", "Done"]\nlabels: ["a", "b"]\ntypes: ["bug", "epic"]\npriorities: ["Critical", "Low"]\n',
