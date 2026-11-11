@@ -8,7 +8,7 @@ const { it } = require("node:test");
 // Reuse the YAML engine already installed and pinned for frontmatter.
 const yaml = createRequire(require.resolve("gray-matter"))("js-yaml");
 
-for (const workflow of ["ci.yml", "release.yml", "architecture.yml"]) {
+for (const workflow of ["ci.yml", "release.yml", "architecture.yml", "aot.yml"]) {
 	it(`${workflow} prepares strict Git trust before network steps and preserves inherited authentication`, () => {
 		const document = yaml.load(readFileSync(path.join(__dirname, "../.github/workflows", workflow), "utf8"));
 		assert.equal(document.env.NODE_OPTIONS, "--use-openssl-ca");

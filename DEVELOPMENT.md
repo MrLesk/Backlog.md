@@ -302,3 +302,64 @@ provenance automatically. Follow the steps below to keep the setup healthy.
    package's **Provenance** tab or by running `npm view <package> --json | jq '.dist.provenance'`.
 
 [← Back to README](README.md)
+
+## Experimental native AOT qualification
+
+Releases continue to use the checksum-verified Bun 1.4.4 bytecode build. Opt in
+through the actual Tailwind build with a verified experimental compiler:
+
+```sh
+BACKLOG_BUILD_AOT=1 /path/to/verified/bun scripts/build.ts
+BACKLOG_BUILD_AOT=1 BACKLOG_BUILD_TRIM=1 /path/to/verified/bun scripts/build.ts
+```
+
+`BACKLOG_BUILD_TRIM=1` also works independently with bytecode. Requested flags
+must be supported by the running compiler. Experimental builds embed that same
+compiler; omit `BACKLOG_BUILD_EXECUTABLE_PATH` locally. Bundle-only output cannot
+request AOT or trim. Embedded version and all web assets use the normal build.
+
+Run `node scripts/prepare-bun-runtime.cjs --aot` using patched Node.js 26.12.1 or
+later to download the pinned native compiler. It verifies archive SHA-256,
+executable SHA-256 and revision. The manifest records Buildkite build 133944 and
+full commit d260d7d51ba4280c836a600df2123f42986c8669 for all six release hosts.
+In Actions it sets BACKLOG_BUILD_EXECUTABLE_PATH and PATH. Stable pins remain
+unchanged.
+
+The separate native qualification workflow uses native Linux x64/arm64,
+macOS x64/arm64 and Windows x64/arm64 runners. Both AOT modes run the existing
+compiled smoke outside the source checkout: help/version, init, task CRUD/YAML,
+web HTML/Tailwind CSS/JS/favicon, MCP tools/resources and a failed-write exit.
+
+The installed neo-neo-bblessed@1.0.10 still causes AOT to parse binary terminfo
+as JavaScript. BACK-794 preserves its tested patch in
+`backlog/attachments/back-794/blessed-aot.patch`. Qualification explicitly checks
+out the package's no-node-pty source at 44da73176e983718d4fcce993e092ac636ad9740,
+applies that patch and builds its dist. This is an unpublished qualification
+prerequisite, not a lockfile update or npm release. Replace it with the approved
+npm version after fork review and publication.
+
+On POSIX, the workflow also runs the four existing real-PTY suites against
+each native artifact, including editor handoff, readiness filtering, board moves
+and task ordering. Transcripts are retained. The Node launcher is checked in
+the published package layout against the actual artifact.
+
+Linux x64 also drives Chromium with pinned Playwright 1.62.1, creates and edits
+a task in the actual React UI, verifies CLI persistence, watches a CLI title
+change appear in the browser, captures screenshots and requires graceful server
+shutdown. Both AOT modes pass this gate in native run 40610164262.
+
+Windows runners additionally use the verified tui-test 0.1.1 console driver
+for board navigation/details, q and actual Ctrl+C. The ARM64 product uses the
+x64 driver under emulation. Both modes pass on Windows x64 and ARM64 in
+run 40610164262; console screenshots are retained.
+
+Artifacts are experimental. Passing this qualification alone is not shipping
+approval. The workflow publishes nothing.
+
+The release build uses the same six native runner architectures and checks the
+compiled product plus Node launcher before uploading an artifact. Its explicit
+`BACKLOG_BUILD_AOT` and `BACKLOG_BUILD_TRIM` defaults remain `0`. Changing either
+requires review and uses the pinned native compiler instead of the stable target
+runtime. Enable AOT only after the Blessed patch is reviewed, published with
+approval and consumed by the lockfile. Qualification currently applies that
+patch explicitly; the release job does not patch installed dependencies.

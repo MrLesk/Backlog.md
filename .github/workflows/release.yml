@@ -165,20 +165,23 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             target: bun-linux-x64
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             target: bun-linux-arm64
-          - os: macos-latest
+          - os: macos-15-intel
             target: bun-darwin-x64
-          - os: macos-latest
+          - os: macos-15
             target: bun-darwin-arm64
           - os: windows-latest
             target: bun-windows-x64
-          - os: ubuntu-latest
+          - os: windows-11-arm
             target: bun-windows-arm64
     runs-on: ${{ matrix.os }}
     env:
+      # Reviewed source opt-in; release defaults remain stable bytecode.
+      BACKLOG_BUILD_AOT: '0'
+      BACKLOG_BUILD_TRIM: '0'
       BIN: backlog-bin${{ contains(matrix.target,'windows') && '.exe' || '' }}
     steps:
       - *secure-tls
@@ -201,7 +204,12 @@ jobs:
         run: bun install --cafile "$SSL_CERT_FILE" --frozen-lockfile
       - name: Prepare checksum-verified target runtime
         shell: bash
-        run: node scripts/prepare-bun-runtime.cjs "${{ matrix.target }}"
+        run: |
+          if [[ "$BACKLOG_BUILD_AOT" == 1 || "$BACKLOG_BUILD_TRIM" == 1 ]]; then
+            node scripts/prepare-bun-runtime.cjs --aot
+          else
+            node scripts/prepare-bun-runtime.cjs "${{ matrix.target }}"
+          fi
       - name: Compile standalone binary
         shell: bash
         run: |
@@ -213,6 +221,12 @@ jobs:
       - name: Make binary executable (non-Windows)
         if: ${{ !contains(matrix.target,'windows') }}
         run: chmod +x "dist/${{ env.BIN }}"
+      - name: Check native product and packaged launcher
+        shell: bash
+        run: |
+          version="${GITHUB_REF##refs/tags/v}"
+          bun scripts/smoke-compiled-build.ts "dist/${{ env.BIN }}" "$version"
+          node scripts/smoke-packaged-build.cjs "dist/${{ env.BIN }}" "$version"
       - name: Check build output and move binary
         shell: bash
         run: |
