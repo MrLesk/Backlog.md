@@ -22,7 +22,7 @@ import { compareTaskIds, sortTasks } from "../utils/task-sorting.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
 import { taskContentSignature } from "../utils/task-watcher.ts";
 import { formatUtcDateForDisplay } from "../utils/utc-date-display.ts";
-import { openConfirmPopup } from "./components/confirm-popup.ts";
+import { openConfirmPopup, openQuitConfirmPopup } from "./components/confirm-popup.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
 import { openMultiSelectFilterPopup, openSingleSelectFilterPopup } from "./components/filter-popup.ts";
 import type { BoundaryNavigationKey } from "./components/generic-list.ts";
@@ -326,6 +326,7 @@ export async function renderBoardTui(
 		startupWarning?: string;
 		dateFormat?: string;
 		hideEmptyColumns?: boolean;
+		confirmExit?: boolean;
 		projectName?: string;
 		createTask?: (input: TaskCreateInput) => Promise<Task>;
 		screen?: ScreenInterface;
@@ -2060,9 +2061,23 @@ export async function renderBoardTui(
 				});
 		});
 
+		const requestExit = async () => {
+			if (closingBoard) return closingBoard;
+			if (options?.confirmExit) {
+				const confirmed = await runWithModalGuard(() => openQuitConfirmPopup(screen));
+				if (!confirmed) {
+					restoreColumnFocus(currentCol);
+					updateFooter();
+					screen.render();
+					return;
+				}
+			}
+			await closeBoard();
+		};
+
 		screen.key(["q", "C-c"], async () => {
 			if (popupOpen || filterPopupOpen || modalOpen) return;
-			await closeBoard();
+			await requestExit();
 		});
 
 		screen.key(["escape"], async () => {
@@ -2079,7 +2094,7 @@ export async function renderBoardTui(
 			}
 
 			if (!popupOpen) {
-				await closeBoard();
+				await requestExit();
 			}
 		});
 

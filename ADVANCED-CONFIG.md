@@ -10,6 +10,7 @@ For getting started and the interactive wizard overview, see [README.md](README.
 | Get specific config | `backlog config get defaultEditor` |
 | Set config value | `backlog config set defaultEditor "code --wait"` |
 | Enable auto-commit | `backlog config set autoCommit true` |
+| Confirm terminal exit | `backlog config set confirmExit true` |
 | Bypass git hooks | `backlog config set bypassGitHooks true` |
 | Enable cross-branch check | `backlog config set checkActiveBranches true` |
 | Set active branch days | `backlog config set activeBranchDays 30` |
@@ -32,6 +33,7 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 | `defaultEditor`   | Editor for 'E' key | Platform default (nano/notepad) |
 | `defaultPort`     | Web UI port        | `6420`                        |
 | `autoOpenBrowser` | Open browser automatically | `true`            |
+| `confirmExit` | Ask before quitting terminal views | `false` |
 | `remoteOperations`| Enable remote git operations | `true`           |
 | `autoCommit`      | Automatically commit task changes | `false`       |
 | `bypassGitHooks`  | Skip git hooks when committing (uses --no-verify) | `false`       |
@@ -42,6 +44,8 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 | `backlog_directory` | Project-relative backlog folder, chosen at `backlog init` and read from `backlog.config.yml` in the project root | `backlog` |
 
 ## Detailed Notes
+
+With `confirmExit` enabled, the board, task-list/detail, overview, document selection, and document viewer quit keys (`q`, Escape, and Ctrl+C) open a **Quit Backlog.md?** dialog with Cancel on the left and Quit on the right. Quit is initially selected, so Enter quits immediately from the prompt. While the prompt is open, `q` or Ctrl+C confirms quitting regardless of the selected button. Use arrow keys or Tab to change selection, then Enter to activate, or click a button. Escape or Cancel returns to the active view. Escape still cancels an active board move or backs out of filters, task popups, and task details first. Tab switches between board and task-list views without prompting; selecting a document opens it immediately. Loading screens still cancel immediately, and closing a nested popup does not ask to quit. Disable the prompt with `backlog config set confirmExit false`. The setting is saved as `confirm_exit` in YAML; `confirmExit: true` is also accepted.
 
 > Editor setup guide: See [Configuring VIM and Neovim as Default Editor](backlog/docs/doc-002%20-%20Configuring-VIM-and-Neovim-as-Default-Editor.md) for configuration tips and troubleshooting interactive editors.
 

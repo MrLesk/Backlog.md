@@ -40,7 +40,7 @@ import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
 import { formatChecklistItem } from "./checklist.ts";
 import { transformCodePaths } from "./code-path.ts";
-import { openConfirmPopup } from "./components/confirm-popup.ts";
+import { openConfirmPopup, openQuitConfirmPopup } from "./components/confirm-popup.ts";
 import {
 	createFilterHeader,
 	type FilterControlId,
@@ -314,6 +314,7 @@ export async function viewTaskEnhanced(
 
 	let dateFormat: string | undefined;
 	let projectName: string | undefined;
+	let confirmExit = false;
 
 	if (options.tasks) {
 		// Tasks already provided - no ContentStore loading
@@ -326,6 +327,7 @@ export async function viewTaskEnhanced(
 		configuredProjects = getProjectValues(config);
 		dateFormat = config?.dateFormat;
 		projectName = config?.projectName;
+		confirmExit = config?.confirmExit ?? false;
 	} else {
 		// Need to load tasks - show loading screen
 		const loadingScreen = await createLoadingScreen("Loading tasks");
@@ -339,6 +341,7 @@ export async function viewTaskEnhanced(
 			configuredProjects = getProjectValues(config);
 			dateFormat = config?.dateFormat;
 			projectName = config?.projectName;
+			confirmExit = config?.confirmExit ?? false;
 
 			loadingScreen?.update("Loading tasks from branches...");
 			contentStore = await core.getContentStore();
@@ -1471,7 +1474,27 @@ export async function viewTaskEnhanced(
 		await runWithModalGuard(() => openHelpPopup(screen, "task-list", { hasProjects: configuredProjects.length > 0 }));
 	});
 
-	screen.key(["escape"], () => {
+	const requestExit = async () => {
+		if (confirmExit) {
+			const confirmed = await runWithModalGuard(() => openQuitConfirmPopup(screen));
+			if (!confirmed) {
+				if (currentFocus === "list" && taskList) {
+					focusTaskList();
+				} else if (currentFocus === "detail" && descriptionBox) {
+					focusDetailPane();
+				}
+				updateHelpBar();
+				screen.render();
+				return;
+			}
+		}
+		contentStore?.dispose();
+		filterHeader.destroy();
+		screen.destroy();
+		process.exit(0);
+	};
+
+	screen.key(["escape"], async () => {
 		if (modalOpen || filterPopupOpen) {
 			return;
 		}
@@ -1489,10 +1512,7 @@ export async function viewTaskEnhanced(
 			}
 		} else {
 			// If already in task list, quit
-			contentStore?.dispose();
-			filterHeader.destroy();
-			screen.destroy();
-			process.exit(0);
+			await requestExit();
 		}
 	});
 
@@ -1514,14 +1534,11 @@ export async function viewTaskEnhanced(
 	}
 
 	// Quit handlers
-	screen.key(["q", "C-c"], () => {
+	screen.key(["q", "C-c"], async () => {
 		if (modalOpen || filterPopupOpen) {
 			return;
 		}
-		contentStore?.dispose();
-		filterHeader.destroy();
-		screen.destroy();
-		process.exit(0);
+		await requestExit();
 	});
 
 	// Initial setup

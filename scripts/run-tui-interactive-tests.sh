@@ -12,4 +12,5 @@ RUN_INTERACTIVE_TUI_TESTS=1 bun test \
 	src/test/tui-ready-filter-pty.test.ts \
 	src/test/board-tui-multi-move-pty.test.ts \
 	src/test/tui-task-list-order-pty.test.ts \
+	src/test/tui-quit-confirmation-pty.test.ts \
 	--timeout=30000

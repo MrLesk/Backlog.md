@@ -157,6 +157,7 @@ import { getVersion } from "./utils/version.ts";
 type IntegrationMode = "mcp" | "cli" | "none";
 
 const CONFIG_GET_KEYS = [
+	"confirmExit",
 	"defaultEditor",
 	"projectName",
 	"defaultAssignee",
@@ -182,6 +183,7 @@ const CONFIG_GET_KEYS = [
 ] as const;
 
 const CONFIG_SET_KEYS = [
+	"confirmExit",
 	"defaultEditor",
 	"projectName",
 	"defaultAssignee",
@@ -4986,14 +4988,16 @@ addListWindowOptions(docListCommand)
 		}
 
 		// Interactive UI
-		const selected = await genericSelectList("Select a document", docs);
+		const config = await core.filesystem.loadConfig();
+		const confirmExit = config?.confirmExit ?? false;
+		const selected = await genericSelectList("Select a document", docs, { confirmExit });
 		if (selected) {
 			// Resolve through the same reader as `doc view`. Matching filenames against the id
 			// only found `<id> - <title>.md` at the top level, so documents written under the
 			// older title-only filenames, or in a subdirectory, opened as nothing.
 			const content = await core.getDocumentViewText(selected.id);
 			if (content !== null) {
-				await scrollableViewer(content);
+				await scrollableViewer(content, confirmExit);
 			}
 		}
 	});
@@ -5087,7 +5091,8 @@ addHelpSchema(docCmd.command("view <docId>"), {
 				console.log(content);
 				return;
 			}
-			await scrollableViewer(content);
+			const config = await core.filesystem.loadConfig();
+			await scrollableViewer(content, config?.confirmExit ?? false);
 		} catch (error) {
 			process.exitCode = 1;
 			if (isAmbiguousIdError(error)) {
@@ -5381,7 +5386,7 @@ agentsCmd
 
 // Config command group
 const CONFIG_AVAILABLE_KEYS =
-	"Available keys: defaultEditor, projectName, defaultAssignee, defaultStatus, statuses, labels, priorities, types, projects, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays";
+	"Available keys: defaultEditor, projectName, defaultAssignee, defaultStatus, statuses, labels, priorities, types, projects, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, confirmExit, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays";
 
 const configCmd = addHelpSchema(program.command("config"), {
 	reads: "Project Backlog.md configuration",
@@ -5552,6 +5557,9 @@ addHelpSchema(configCmd.command("get <key>"), {
 				case "hideEmptyColumns":
 					console.log(config.hideEmptyColumns?.toString() || "false");
 					break;
+				case "confirmExit":
+					console.log(config.confirmExit?.toString() ?? "false");
+					break;
 				case "remoteOperations":
 					console.log(config.remoteOperations?.toString() || "");
 					break;
@@ -5668,6 +5676,18 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 						config.hideEmptyColumns = false;
 					} else {
 						console.error("hideEmptyColumns must be true or false");
+						process.exit(1);
+					}
+					break;
+				}
+				case "confirmExit": {
+					const boolValue = value.toLowerCase();
+					if (boolValue === "true" || boolValue === "1" || boolValue === "yes") {
+						config.confirmExit = true;
+					} else if (boolValue === "false" || boolValue === "0" || boolValue === "no") {
+						config.confirmExit = false;
+					} else {
+						console.error("confirmExit must be true or false");
 						process.exit(1);
 					}
 					break;
@@ -5850,6 +5870,7 @@ addHelpSchema(configCmd.command("list"), {
 			console.log(`  maxColumnWidth: ${config.maxColumnWidth || "(not set)"}`);
 			console.log(`  autoOpenBrowser: ${config.autoOpenBrowser ?? "(not set)"}`);
 			console.log(`  hideEmptyColumns: ${config.hideEmptyColumns ?? "(not set)"}`);
+			console.log(`  confirmExit: ${config.confirmExit ?? false}`);
 			console.log(`  defaultPort: ${config.defaultPort ?? "(not set)"}`);
 			console.log(`  remoteOperations: ${config.remoteOperations ?? "(not set)"}`);
 			console.log(`  autoCommit: ${config.autoCommit ?? "(not set)"}`);

@@ -1,6 +1,7 @@
 import { box } from "neo-neo-bblessed";
 import type { TaskStatistics } from "../core/statistics.ts";
 import { formatPriorityLabel } from "../utils/priority-config.ts";
+import { openQuitConfirmPopup } from "./components/confirm-popup.ts";
 import { getStatusIcon } from "./status-icon.ts";
 import { createScreen, formatTuiTitle } from "./tui.ts";
 
@@ -28,7 +29,11 @@ function getPriorityBreakdownRows(statistics: TaskStatistics): Array<{ label: st
 /**
  * Render the project overview in an interactive TUI
  */
-export async function renderOverviewTui(statistics: TaskStatistics, projectName: string): Promise<void> {
+export async function renderOverviewTui(
+	statistics: TaskStatistics,
+	projectName: string,
+	confirmExit = false,
+): Promise<void> {
 	// If not in TTY, fall back to plain text output
 	if (!process.stdout.isTTY) {
 		renderPlainTextOverview(statistics, projectName);
@@ -215,7 +220,19 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 		statusBox.focus();
 
 		// Exit handlers
-		screen.key(["escape", "q", "C-c"], () => {
+		let confirmingQuit = false;
+		screen.key(["escape", "q", "C-c"], async () => {
+			if (confirmingQuit) return;
+			if (confirmExit) {
+				confirmingQuit = true;
+				const confirmed = await openQuitConfirmPopup(screen);
+				confirmingQuit = false;
+				if (!confirmed) {
+					statusBox.focus();
+					screen.render();
+					return;
+				}
+			}
 			screen.destroy();
 			resolve();
 		});

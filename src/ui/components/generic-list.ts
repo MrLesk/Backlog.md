@@ -9,6 +9,7 @@ import { list } from "neo-neo-bblessed";
 import { formatHeading } from "../heading.ts";
 import { createScreen } from "../tui.ts";
 import { stripBlessedFgTags } from "../utils/strip-tags.ts";
+import { openQuitConfirmPopup } from "./confirm-popup.ts";
 
 export interface GenericListItem {
 	id: string;
@@ -598,19 +599,32 @@ export function createGenericList<T extends GenericListItem>(options: GenericLis
 export async function genericSelectList<T extends GenericListItem>(
 	title: string,
 	items: T[],
-	options?: Partial<GenericListOptions<T>>,
+	options?: Partial<GenericListOptions<T>> & { confirmExit?: boolean },
 ): Promise<T | null> {
 	if (output.isTTY === false || items.length === 0) {
 		return null;
 	}
 
 	return new Promise<T | null>((resolve) => {
+		let confirmingQuit = false;
 		const list = new GenericList<T>({
 			title,
 			items,
 			multiSelect: false,
 			showHelp: true,
-			onSelect: (selected) => {
+			onSelect: async (selected) => {
+				if (confirmingQuit) return;
+				if (selected === null && options?.confirmExit) {
+					const screen = (list.getListBox() as unknown as { screen: ScreenInterface }).screen;
+					confirmingQuit = true;
+					const confirmed = await openQuitConfirmPopup(screen);
+					confirmingQuit = false;
+					if (!confirmed) {
+						list.focus();
+						screen.render();
+						return;
+					}
+				}
 				list.destroy();
 				resolve(selected as T | null);
 			},
