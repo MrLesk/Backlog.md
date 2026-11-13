@@ -2667,8 +2667,14 @@ async function runTaskList(
 		return;
 	}
 	const baseFilters: TaskListFilter = {};
-	if (options.status) {
-		baseFilters.status = parseDelimitedStringList(options.status) ?? options.status;
+	const rawStatuses = parseDelimitedStringList(options.status) ?? [];
+	if (rawStatuses.length > 0) {
+		const canonicalStatuses = await normalizeCliStatusList(core, rawStatuses, "status");
+		if (!canonicalStatuses) {
+			cleanup();
+			return;
+		}
+		baseFilters.status = canonicalStatuses;
 	}
 	const excludeStatuses = parseDelimitedStringList(options.excludeStatus) ?? [];
 	if (excludeStatuses.length > 0) {
