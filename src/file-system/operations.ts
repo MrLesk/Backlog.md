@@ -46,6 +46,7 @@ import { normalizeDocumentRelativePath, normalizeDocumentSubPath } from "../util
 import { normalizeDueDate } from "../utils/due-date.ts";
 import type { DraftIdentityFindings } from "../utils/duplicate-detection.ts";
 import { AmbiguousIdError, isAmbiguousIdError } from "../utils/entity-id.ts";
+import { compareMilestones } from "../utils/milestone-order.ts";
 import {
 	buildGlobPattern,
 	extractAnyPrefix,
@@ -2037,7 +2038,7 @@ ${rawContent.trim()}
 				// Match task loading: one malformed file must not hide every valid item.
 			}
 		}
-		return milestones.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+		return milestones.sort(compareMilestones);
 	}
 
 	async listMilestones(): Promise<Milestone[]> {

@@ -71,6 +71,24 @@ describe("CLI milestone management", () => {
 		);
 	});
 
+	it("orders milestones by due date, then natural title, and follows renames without changing IDs", async () => {
+		const core = new Core(TEST_DIR);
+
+		await $`bun ${cliPath} milestone add "Sprint 10"`.cwd(TEST_DIR).quiet();
+		await $`bun ${cliPath} milestone add "Sprint 2"`.cwd(TEST_DIR).quiet();
+		await $`bun ${cliPath} milestone add "Later" --due-date 2027-02-01`.cwd(TEST_DIR).quiet();
+		await $`bun ${cliPath} milestone add "Sooner" --due-date 2027-01-01`.cwd(TEST_DIR).quiet();
+
+		const titles = async () => (await core.filesystem.listMilestones()).map((milestone) => milestone.title);
+		expect(await titles()).toEqual(["Sooner", "Later", "Sprint 2", "Sprint 10"]);
+
+		await $`bun ${cliPath} milestone rename "Sprint 10" "Sprint 10" --due-date 2026-12-01`.cwd(TEST_DIR).quiet();
+
+		const milestones = await core.filesystem.listMilestones();
+		expect(milestones.map((milestone) => milestone.title)).toEqual(["Sprint 10", "Sooner", "Later", "Sprint 2"]);
+		expect(milestones[0]?.id).toBe("m-0");
+	});
+
 	it("auto-commits added milestone files when autoCommit is enabled", async () => {
 		const core = new Core(TEST_DIR);
 		const config = await core.filesystem.loadConfig();

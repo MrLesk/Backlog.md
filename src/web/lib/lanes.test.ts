@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { Task } from "../../types";
+import type { Milestone, Task } from "../../types";
 import {
 	buildLanes,
 	DEFAULT_LANE_KEY,
@@ -36,6 +36,36 @@ describe("buildLanes", () => {
 		];
 		const lanes = buildLanes("milestone", tasks, ["M1"]);
 		expect(lanes.map((lane) => lane.label)).toEqual(["No milestone", "M1", "Extra"]);
+	});
+	it("lays out milestone lanes in the shared milestone order, task-only milestones last", () => {
+		const entity = (id: string, title: string, dueDate?: string): Milestone => ({
+			id,
+			title,
+			dueDate,
+			description: "",
+			rawContent: "",
+		});
+		// The board receives the milestone list already ordered by the file system.
+		const milestones = [
+			entity("m-3", "Sooner", "2027-01-01"),
+			entity("m-2", "Later", "2027-02-01"),
+			entity("m-1", "Sprint 2"),
+			entity("m-0", "Sprint 10"),
+		];
+		const lanes = buildLanes(
+			"milestone",
+			[makeTask({ id: "task-1", milestone: "Only on a task" })],
+			milestones.map((milestone) => milestone.id),
+			milestones,
+		);
+		expect(lanes.map((lane) => lane.label)).toEqual([
+			"No milestone",
+			"Sooner",
+			"Later",
+			"Sprint 2",
+			"Sprint 10",
+			"Only on a task",
+		]);
 	});
 
 	it("falls back to a single lane when mode is none", () => {
