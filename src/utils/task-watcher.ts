@@ -1,6 +1,7 @@
 import { type FSWatcher, watch } from "node:fs";
 import { stat } from "node:fs/promises";
 import type { Core } from "../core/backlog.ts";
+import type { TaskListing } from "../file-system/operations.ts";
 import type { Task } from "../types/index.ts";
 import { hasAnyPrefix } from "./prefix-config.ts";
 import { extractTaskIdFromFilename, normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "./task-path.ts";
@@ -74,6 +75,39 @@ async function readTaskFileSnapshot(tasksDir: string): Promise<TaskFileSnapshot>
 }
 
 /**
+ * Share one listing read among every task reconciliation that asks for it. At most one read
+ * runs and at most one waits: a request made while a read runs joins the next read, so every
+ * request gets a listing that started after it was made. A burst of events therefore costs a
+ * few corpus reads instead of one or more per event.
+ */
+function createSharedListingReader(core: Core): () => Promise<TaskListing> {
+	let running: Promise<TaskListing> | null = null;
+	let next: Promise<TaskListing> | null = null;
+
+	const start = (): Promise<TaskListing> => {
+		const read = core.filesystem.listTaskListing();
+		running = read;
+		const clear = () => {
+			if (running === read) running = null;
+		};
+		read.then(clear, clear);
+		return read;
+	};
+
+	return () => {
+		if (next) return next;
+		if (!running) return start();
+		next = running
+			.catch(() => undefined)
+			.then(() => {
+				next = null;
+				return start();
+			});
+		return next;
+	};
+}
+
+/**
  * Watch the current checkout's backlog/tasks directory and emit incremental updates.
  * A single filesystem event is reconciled until task content is stable or absence is
  * confirmed, because atomic writes can make the event visible before the file is.
@@ -89,6 +123,7 @@ export function watchTasks(
 	);
 	let stopped = false;
 	let directoryGeneration = 0;
+	const readListing = createSharedListingReader(core);
 
 	const reconcile = async (taskId: string, state: TaskReconciliation, eventGeneration: number): Promise<void> => {
 		let previousCandidateSignature: string | null | undefined;
@@ -99,7 +134,9 @@ export function watchTasks(
 
 			let task: Task | null = null;
 			try {
-				task = await core.filesystem.loadTask(taskId);
+				// A failed listing read resolves no task, as a standalone loadTask would.
+				const listing = await readListing().catch(() => null);
+				task = listing ? await core.filesystem.loadTask(taskId, listing) : null;
 			} catch {
 				continue;
 			}
