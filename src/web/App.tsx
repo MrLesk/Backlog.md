@@ -291,13 +291,24 @@ function AppContent() {
   const tasksRoute = useMatch('/tasks/:id');
   const boardRouteWithTitle = useMatch('/board/:id/:title');
   const boardRoute = useMatch('/board/:id');
+  const draftsRouteWithTitle = useMatch('/drafts/:id/:title');
+  const draftsRoute = useMatch('/drafts/:id');
   const taskRouteAlertRef = useRef<HTMLDivElement | null>(null);
   const routeTaskId =
     tasksRouteWithTitle?.params.id ??
     tasksRoute?.params.id ??
     boardRouteWithTitle?.params.id ??
-    boardRoute?.params.id;
-  const routeBasePath = tasksRouteWithTitle || tasksRoute ? '/tasks' : boardRouteWithTitle || boardRoute ? '/board' : null;
+    boardRoute?.params.id ??
+    draftsRouteWithTitle?.params.id ??
+    draftsRoute?.params.id;
+  const routeBasePath =
+    tasksRouteWithTitle || tasksRoute
+      ? '/tasks'
+      : boardRouteWithTitle || boardRoute
+        ? '/board'
+        : draftsRouteWithTitle || draftsRoute
+          ? '/drafts'
+          : null;
   const routeNavigationState = getTaskRouteNavigationState(location.state);
   const taskRouteError = routeNavigationState.taskRouteError;
 
@@ -532,9 +543,11 @@ function AppContent() {
 
   const openDraftModal = useCallback(
     (draft: Task) => {
-      openDetailModal(draft.id, { record: draft, isDraft: true });
+      // Drafts open through the /drafts/:id route so the URL names the open
+      // draft, exactly like tasks; the route effect opens the modal.
+      navigate(`${createUrlPath('/drafts', draft.id, draft.title)}${location.search}`);
     },
-    [openDetailModal],
+    [navigate, location.search],
   );
 
   const clearTaskModal = useCallback(() => {
@@ -612,7 +625,7 @@ function AppContent() {
     if (current.kind === 'detail' && current.fromRoute && current.id === routeTaskId) {
       return;
     }
-    openDetailModal(routeTaskId, { fromRoute: true });
+    openDetailModal(routeTaskId, { fromRoute: true, isDraft: routeBasePath === '/drafts' });
   }, [clearTaskModal, isInitialized, location.search, navigate, openDetailModal, routeBasePath, routeTaskId]);
 
   useEffect(() => {
@@ -1039,6 +1052,18 @@ function AppContent() {
             }
           />
             <Route path="drafts" element={<DraftsList onEditTask={openDraftModal} onNewDraft={handleNewDraft} dateFormat={config?.dateFormat} />} />
+            <Route path="drafts/:id" element={<DraftsList onEditTask={openDraftModal} onNewDraft={handleNewDraft} dateFormat={config?.dateFormat} />} />
+            <Route path="drafts/:id/:title" element={<DraftsList onEditTask={openDraftModal} onNewDraft={handleNewDraft} dateFormat={config?.dateFormat} />} />
+            <Route
+              path="drafts/*"
+              element={
+                <Navigate
+                  to={{ pathname: '/drafts', search: location.search }}
+                  replace
+                  state={{ taskRouteError: 'That draft link is not valid.' } satisfies TaskRouteNavigationState}
+                />
+              }
+            />
             <Route path="documentation" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} dateFormat={config?.dateFormat} />} />
             <Route path="documentation/:id" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} dateFormat={config?.dateFormat} />} />
             <Route path="documentation/:id/:title" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} dateFormat={config?.dateFormat} />} />
