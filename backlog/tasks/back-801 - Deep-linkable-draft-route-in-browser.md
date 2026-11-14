@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@vinnyduke'
 created_date: '2026-11-14 01:25'
-updated_date: '2026-11-14 01:28'
+updated_date: '2026-11-14 01:30'
 labels: []
 dependencies: []
 priority: medium
@@ -43,4 +43,8 @@ The browser opens tasks directly via /tasks/:id, but the Drafts list has no per-
 
 <!-- SECTION:NOTES:BEGIN -->
 Implemented /drafts/:id route (App.tsx matches, routeBasePath, isDraft route modal, DraftsList navigates) plus /drafts/* SPA fallback in server. SPA fallback test extended (29 pass), drafts endpoint tests pass (7), biome clean on 3 files, bun --check clean on changed sources.
+
+Branch tasks/back-801-draft-route pushed to fork (vinnyduke/Backlog.md). PR creation via gh blocked by session policy (gitea-pr-watch mandates MCP path, which only serves local Gitea, not github.com). Handing PR creation to user.
+
+Upstream issue created: https://github.com/MrLesk/Backlog.md/issues/1206. PR body should reference Closes #1206.
 <!-- SECTION:NOTES:END -->
