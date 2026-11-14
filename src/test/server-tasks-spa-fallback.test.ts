@@ -249,7 +249,7 @@ describe("BacklogServer task SPA fallback", () => {
 		await safeCleanup(TEST_DIR);
 	});
 
-	it("serves task and board namespaces through the SPA for direct and refreshed navigation", async () => {
+	it("serves task, board, and draft namespaces through the SPA for direct and refreshed navigation", async () => {
 		// Compile the HTML bundle once before exercising the bounded route requests.
 		// The test runner's existing timeout bounds this first-build readiness check;
 		// aborting it early can leave Bun's development bundler with a stale socket.
@@ -270,6 +270,9 @@ describe("BacklogServer task SPA fallback", () => {
 			"/board/",
 			"/board/001.02",
 			"/board/001.02/fix-labels",
+			"/drafts",
+			"/drafts/DRAFT-1",
+			"/drafts/DRAFT-1/some-title",
 		];
 
 		for (const path of paths) {
