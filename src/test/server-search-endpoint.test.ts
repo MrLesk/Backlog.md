@@ -229,6 +229,20 @@ describe("BacklogServer search endpoint", () => {
 		expect(results[0]?.task?.id).toBe(baseTask.id);
 	});
 
+	it("exposes readiness and filters search results by readiness", async () => {
+		const allTasks = await fetchJson<Array<{ type: string; task?: Task }>>("/api/search?type=task&query=search");
+		const baseResult = allTasks.find((item) => item.task?.id === baseTask.id);
+		const dependentResult = allTasks.find((item) => item.task?.id === dependentTask.id);
+		expect(baseResult?.task?.isReady).toBe(true);
+		expect(dependentResult?.task?.isReady).toBe(false);
+
+		const readyResults = await fetchJson<Array<{ type: string; task?: Task }>>(
+			"/api/search?type=task&query=search&ready=true",
+		);
+		expect(readyResults.some((item) => item.task?.id === baseTask.id)).toBe(true);
+		expect(readyResults.some((item) => item.task?.id === dependentTask.id)).toBe(false);
+	});
+
 	it("filters task listings by priority via the content store", async () => {
 		const tasks = await fetchJson<Task[]>("/api/tasks?priority=high");
 		expect(tasks).toHaveLength(1);

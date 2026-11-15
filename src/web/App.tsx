@@ -484,7 +484,7 @@ function AppContent() {
   // Update document title when project name changes
   React.useEffect(() => {
     if (projectName) {
-      document.title = `${projectName} - Task Management`;
+      document.title = projectName;
     }
   }, [projectName]);
 
