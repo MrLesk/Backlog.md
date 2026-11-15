@@ -1040,7 +1040,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 										setModalError(null);
 									}}
 									disabled={removeTaskHandling !== "reassign" || !canReassignRemovedMilestone}
-									className="mt-2 w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 disabled:opacity-60"
+									className="mt-2 w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 py-2 pl-3 pr-9 text-sm text-gray-900 dark:text-gray-100 disabled:opacity-60"
 								>
 									{removeReassignOptions.map((milestone) => (
 										<option key={milestone.id} value={milestone.id}>
