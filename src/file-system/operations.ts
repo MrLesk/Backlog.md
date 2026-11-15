@@ -1217,7 +1217,13 @@ export class FileSystem {
 
 			const content = await Bun.file(sourcePath).text();
 			await this.ensureDirectoryExists(dirname(targetPath));
-			await Bun.write(targetPath, content);
+			try {
+				// "wx" refuses a file already in the archive, so an archived draft is never replaced.
+				await writeFile(targetPath, content, { flag: "wx" });
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code === "EEXIST") throw pathTakenError(targetPath);
+				throw error;
+			}
 
 			await unlink(sourcePath);
 
@@ -1476,24 +1482,34 @@ export class FileSystem {
 	/**
 	 * Every draft ID in use: the stored ID of each draft that can be read and the ID each draft
 	 * file claims through its name. A file that cannot be parsed still reserves the number in its
-	 * name, and does not hide the stored IDs of the files that can be read.
+	 * name, and does not hide the stored IDs of the files that can be read. An archived draft keeps
+	 * its ID, so the number in each archived draft file name is taken too.
 	 */
 	async listOccupiedDraftIds(): Promise<string[]> {
-		const [drafts, filenames] = await Promise.all([this.listHealthyDrafts(), this.listDraftFilenames()]);
-		const idsFromFileNames = filenames.map(extractDraftIdFromFilename).filter((id): id is string => id !== null);
+		const [drafts, filenames, archivedFilenames] = await Promise.all([
+			this.listHealthyDrafts(),
+			this.listDraftFilenames(),
+			this.scanDraftFilenames(await this.getArchiveDraftsDir()),
+		]);
+		const idsFromFileNames = [...filenames, ...archivedFilenames]
+			.map(extractDraftIdFromFilename)
+			.filter((id): id is string => id !== null);
 		return [...drafts.map((draft) => draft.id), ...idsFromFileNames];
 	}
 
 	async listDraftFilenames(unreadable?: string[]): Promise<string[]> {
-		const draftsDir = await this.getDraftsDir();
+		return await this.scanDraftFilenames(await this.getDraftsDir(), unreadable);
+	}
+
+	private async scanDraftFilenames(directory: string, unreadable?: string[]): Promise<string[]> {
 		try {
 			return (
-				await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: draftsDir, followSymlinks: true }))
+				await Array.fromAsync(new Bun.Glob(buildGlobPattern("draft")).scan({ cwd: directory, followSymlinks: true }))
 			).sort();
 		} catch {
 			// A directory that cannot be scanned is a finding, not an empty store: surface it so
 			// doctor never reports draft identities as healthy without having checked them.
-			unreadable?.push(draftsDir);
+			unreadable?.push(directory);
 			return [];
 		}
 	}

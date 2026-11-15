@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fsPromises from "node:fs/promises";
 import { mkdir, readdir, rename, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Decision, Document, Task } from "../types/index.ts";
@@ -469,6 +469,37 @@ Invalid content`,
 
 			const files = await readdir(join(TEST_DIR, "backlog", "archive", "drafts"));
 			expect(files.some((f) => f.startsWith("draft-1"))).toBe(true);
+		});
+
+		it("should not reuse an archived draft ID when demoting a task", async () => {
+			await filesystem.saveDraft(sampleDraft);
+			await filesystem.archiveDraft("draft-1");
+			await filesystem.saveTask({
+				id: "TASK-1",
+				title: "Task to demote",
+				status: "To Do",
+				assignee: [],
+				createdDate: "2025-01-01",
+				labels: [],
+				dependencies: [],
+			});
+
+			expect(await filesystem.demoteTask("task-1")).toBe(true);
+
+			// The archived draft still owns DRAFT-1, so the demoted task takes the next draft ID.
+			expect((await filesystem.loadDraft("draft-2"))?.title).toBe("Task to demote");
+			expect(await filesystem.loadDraft("draft-1")).toBeNull();
+		});
+
+		it("should refuse to archive a draft over a file of the same name in the archive", async () => {
+			const draftPath = await filesystem.saveDraft(sampleDraft);
+			const archivedPath = join(TEST_DIR, "backlog", "archive", "drafts", basename(draftPath));
+			await Bun.write(archivedPath, "earlier archived draft");
+
+			await expect(filesystem.archiveDraft("draft-1")).rejects.toThrow("another file already exists at that path");
+
+			expect(await Bun.file(archivedPath).text()).toBe("earlier archived draft");
+			expect((await filesystem.loadDraft("draft-1"))?.title).toBe(sampleDraft.title);
 		});
 	});
 
