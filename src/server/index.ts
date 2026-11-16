@@ -1284,7 +1284,8 @@ export class BacklogServer {
 
 	private async handleArchiveTask(taskId: string): Promise<Response> {
 		try {
-			if (!(await this.core.archiveTask(taskId))) {
+			const archived = isDraftId(taskId) ? await this.core.archiveDraft(taskId) : await this.core.archiveTask(taskId);
+			if (!archived) {
 				return Response.json({ error: taskNotFoundMessage(taskId) }, { status: 404 });
 			}
 			this.broadcastDataUpdated();
@@ -1302,7 +1303,7 @@ export class BacklogServer {
 				console.error("Error archiving task after it moved:", error);
 				return Response.json({ error: message, archiveState }, { status: 500 });
 			}
-			if (isAmbiguousTaskIdError(error)) {
+			if (isAmbiguousIdError(error) || isAmbiguousTaskIdError(error) || isTaskLockError(error)) {
 				return Response.json({ error: error.message }, { status: 409 });
 			}
 			throw error;
