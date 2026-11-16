@@ -14,6 +14,23 @@ function commentsIn(value: unknown): string {
 	return comments.join("\n");
 }
 
+/** The previous writer put editor commands in double quotes without escaping their backslashes. */
+export function normalizeLegacyEditorConfig(content: string): string {
+	const document = parseDocument(content, { uniqueKeys: false });
+	if (!isMap(document.contents)) return content;
+	let normalized = content;
+	for (const pair of [...document.contents.items].reverse()) {
+		if (!isScalar(pair.key) || pair.key.value !== "default_editor" || !isScalar(pair.value)) continue;
+		if (pair.value.type !== "QUOTE_DOUBLE" || !pair.value.range) continue;
+		const [start, end] = pair.value.range;
+		const raw = content.slice(start, end);
+		if (!raw.endsWith('"')) continue;
+		const literal = raw.slice(1, -1).replaceAll("'", "''");
+		normalized = `${normalized.slice(0, start)}'${literal}'${normalized.slice(end)}`;
+	}
+	return normalized;
+}
+
 /** Update Backlog-owned values in the user's YAML document, preserving custom entries and comments. */
 export function serializeConfig(config: BacklogConfig, original: string | undefined, path: string): string {
 	const values: Record<string, unknown> = {
@@ -48,7 +65,7 @@ export function serializeConfig(config: BacklogConfig, original: string | undefi
 		backlog_directory: config.backlogDirectory || undefined,
 	};
 	try {
-		const document: Document = parseDocument(original ?? "", { uniqueKeys: false });
+		const document: Document = parseDocument(normalizeLegacyEditorConfig(original ?? ""), { uniqueKeys: false });
 		if (document.errors.length) throw document.errors[0];
 		if (!document.contents) document.contents = document.createNode({});
 		if (!isMap(document.contents)) throw new Error("Expected a YAML mapping of settings.");
@@ -67,6 +84,13 @@ export function serializeConfig(config: BacklogConfig, original: string | undefi
 		for (const [key, value] of Object.entries(values)) {
 			const pairs = mapping.items.filter((pair) => isScalar(pair.key) && pair.key.value === key);
 			const pair = pairs.at(-1);
+			let hasAlias = false;
+			if (isNode(pair?.value))
+				visit(pair.value, {
+					Alias() {
+						hasAlias = true;
+					},
+				});
 			if (value === undefined) {
 				for (const removed of pairs) {
 					const comments = [commentsIn(removed.key), commentsIn(removed.value)].filter(Boolean).join("\n");
@@ -75,7 +99,7 @@ export function serializeConfig(config: BacklogConfig, original: string | undefi
 				mapping.items = mapping.items.filter((item) => !pairs.includes(item));
 			} else if (!pair) {
 				document.set(key, document.createNode(value, { flow: Array.isArray(value) }));
-			} else if (!isDeepStrictEqual(previous[key], value)) {
+			} else if (hasAlias || !isDeepStrictEqual(previous[key], value)) {
 				if (isScalar(pair.value) && !Array.isArray(value)) {
 					pair.value.value = value;
 				} else {
@@ -91,6 +115,8 @@ export function serializeConfig(config: BacklogConfig, original: string | undefi
 					pair.value = replacement;
 				}
 			}
+			const editor = key === "default_editor" ? mapping.get(key, true) : undefined;
+			if (isScalar(editor)) editor.type = "QUOTE_SINGLE";
 		}
 		// An owned anchor must neither disappear nor change a custom value through an alias.
 		const next = document.toJS() as Record<string, unknown>;

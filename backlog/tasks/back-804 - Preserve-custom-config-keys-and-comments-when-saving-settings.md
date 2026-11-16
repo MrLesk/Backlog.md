@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-11-16T21:14:00Z'
-updated_date: '2026-11-16T21:50:00Z'
+updated_date: '2026-11-16T22:17:00Z'
 labels: []
 dependencies: []
 references:
@@ -51,6 +51,8 @@ Any normal config save currently rebuilds config.yml from recognized fields and 
 1. Reproduce custom-key/comment loss in saveConfig and the real config set command.
 2. Update the existing YAML document through the explicitly pinned yaml dependency. Preserve custom entries, comments, setting aliases and legacy milestone migration; decode YAML scalar escapes/comments in the existing reader so saved values reload correctly. Refuse unsafe rewrites before writing.
 3. Verify config/init/migration/hostname and DoD coverage, types, Biome, a compiled build and smoke test. Complete cold and separate context complexity reviews and publish the PR.
+
+5. Address the three GitHub review cases: preserve requested owned alias values, exclude nested custom metadata from settings reads, and retain literal editor paths from the previous writer.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -61,10 +63,12 @@ Cold and separate context complexity reviews are complete. All four cold finding
 Final validation: 155 tests pass across config-commands, config-migration, config-watcher, enhanced-init, prefix-migration, filesystem and server-hostname. After retaining one-line JSON escaping, 69 tests pass across MCP DoD defaults, config commands, core DoD and server DoD. Types, Biome, native build and compiled smoke pass. The broader suite is still running; its observed escape-format failure is fixed and covered by the 69-test pass. Cold findings were rechecked with no blockers; context complexity review has no blockers.
 
 Broader run finished: 3354 non-DOM tests pass, 13 skip, with two failures; 408 DOM tests pass. One failure was the multiline DoD escape representation, fixed afterward by doubleQuotedAsJSON and verified by the 69-test targeted pass. The other is the already reproduced main-branch document-archive PTY spacing failure; no test assertion was changed. The focused final checks remain green. Full logs: /tmp/backlog804-full.log, /tmp/backlog804-final-tests.log.
+
+GitHub follow-up: reproduced owned-alias drift, nested setting revival and both legacy Windows editor path forms before fixing them. Owned aliases are materialized to the caller-requested value. Valid YAML reads use the root mapping indentation; malformed legacy per-key reads remain. The old writer stored literal default_editor backslashes inside double quotes, so the shared read/save normalizer preserves that format and new editor values use single quotes. A narrow review also checked leading BOM handling. Final follow-up: 188 tests pass across 10 config/init/migration/filesystem/hostname/DoD files; the direct BOM assertion also passes. Types, Biome, the final native build and compiled config smoke pass. Cold and separate context follow-ups have no remaining supported blockers.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Shared config saves now update a YAML document instead of rebuilding known lines. Custom keys, nested values and comments survive; settings still add/change/clear, and malformed documents or reference changes are refused before writing. Scalar reading handles preserved comments and YAML escaping. Focused regressions, init/migration coverage, types, Biome, compiled smoke and required reviews pass.
+Shared config saves preserve custom YAML values and comments, including nested metadata. Known settings add/change/clear without alias drift or nested values reviving them. Legacy Windows editor paths remain literal and newly saved editors use unambiguous single quotes. Unsafe custom-reference rewrites remain refused. Focused checks, types, Biome, build, compiled smoke and both reviews pass; the earlier full run had the documented pre-existing document-viewer PTY spacing failure.
 <!-- SECTION:FINAL_SUMMARY:END -->

@@ -2,6 +2,7 @@ import type { Dirent } from "node:fs";
 import { lstat, mkdir, readdir, readFile, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import lockfile from "proper-lockfile";
+import { isMap, parseDocument as parseYamlDocument } from "yaml";
 import {
 	ARCHIVED_TASK_DIRECTORIES,
 	DEFAULT_DIRECTORIES,
@@ -71,7 +72,7 @@ import {
 } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
-import { serializeConfig } from "./config-serialization.ts";
+import { normalizeLegacyEditorConfig, serializeConfig } from "./config-serialization.ts";
 
 // Interface for task path resolution context
 interface TaskPathContext {
@@ -113,17 +114,17 @@ const CONFIG_KEY_LINE_PATTERN = /^\s*(?!-\s)[^\s#][^:]*:/;
  * continue it, stopping at the next key written at the same or lower indentation. Returns nothing
  * when the key is absent. The last occurrence wins, which is what YAML does with a repeated key.
  *
- * A config key belongs at column 0, so an unindented line always outranks an indented look-alike:
- * without that rule a `statuses:` line nested inside another key's mapping or block scalar would
- * hijack the real key. Indented matches are used only when the key appears nowhere at column 0.
+ * Use the root mapping's indentation when known, excluding nested mappings and block scalars.
+ * For malformed legacy YAML, prefer column 0 and fall back to an indented key when absent there.
  */
-function extractConfigKeyYaml(content: string, key: string): string | undefined {
+function extractConfigKeyYaml(content: string, key: string, rootIndent?: number): string | undefined {
 	const lines = content.split(/\r?\n/);
 	const keyPattern = new RegExp(`^(\\s*)${key}\\s*:`);
 	const keyIndent = (line: string) => line.match(keyPattern)?.[1]?.length;
-	const startIndex = lines.some((line) => keyIndent(line) === 0)
-		? lines.findLastIndex((line) => keyIndent(line) === 0)
-		: lines.findLastIndex((line) => keyIndent(line) !== undefined);
+	const indent = rootIndent ?? (lines.some((line) => keyIndent(line) === 0) ? 0 : undefined);
+	const startIndex = lines.findLastIndex((line) =>
+		indent === undefined ? keyIndent(line) !== undefined : keyIndent(line) === indent,
+	);
 	if (startIndex === -1) {
 		return undefined;
 	}
@@ -220,8 +221,13 @@ function readYamlKey(document: string, key: string): { value: unknown } | { erro
  * guessed value. Returns nothing when the key is absent or carries no value; `default_assignee` also
  * accepts a single scalar name.
  */
-function parseConfigListValue(content: string, key: ConfigListKey, configPath: string): string[] | undefined {
-	const block = extractConfigKeyYaml(content, key);
+function parseConfigListValue(
+	content: string,
+	key: ConfigListKey,
+	configPath: string,
+	rootIndent?: number,
+): string[] | undefined {
+	const block = extractConfigKeyYaml(content, key, rootIndent);
 	if (block === undefined) {
 		return undefined;
 	}
@@ -2323,10 +2329,15 @@ ${description || `Milestone: ${title}`}`,
 		}
 	}
 
-	parseConfig(content: string): BacklogConfig {
+	parseConfig(source: string): BacklogConfig {
+		const content = normalizeLegacyEditorConfig(source.replace(/^\uFEFF/, ""));
+		const document = parseYamlDocument(content, { uniqueKeys: false });
+		// Valid YAML identifies the root mapping. Keep the legacy per-key fallback for malformed files.
+		const rootStart = !document.errors.length && isMap(document.contents) ? document.contents.range?.[0] : undefined;
+		const rootIndent = rootStart === undefined ? undefined : rootStart - content.lastIndexOf("\n", rootStart - 1) - 1;
 		const config: Partial<BacklogConfig> = {};
-		const parsedDefinitionOfDone = this.parseDefinitionOfDone(content);
-		const hostnameYaml = extractConfigKeyYaml(content, "browser_hostname");
+		const parsedDefinitionOfDone = this.parseDefinitionOfDone(content, rootIndent);
+		const hostnameYaml = extractConfigKeyYaml(content, "browser_hostname", rootIndent);
 		if (hostnameYaml !== undefined) {
 			const parsed = readYamlKey(hostnameYaml, "browser_hostname");
 			if ("error" in parsed) throw configSyntaxError(this.resolvedConfigPath, "browser_hostname", parsed.error);
@@ -2342,7 +2353,8 @@ ${description || `Milestone: ${title}`}`,
 			}
 		}
 		// Every list key goes through the same strict parse, which throws rather than guess.
-		const parseListValue = (key: ConfigListKey) => parseConfigListValue(content, key, this.resolvedConfigPath);
+		const parseListValue = (key: ConfigListKey) =>
+			parseConfigListValue(content, key, this.resolvedConfigPath, rootIndent);
 		config.statuses = parseListValue("statuses");
 		config.labels = parseListValue("labels");
 		config.types = parseListValue("types");
@@ -2352,6 +2364,7 @@ ${description || `Milestone: ${title}`}`,
 		const lines = content.split("\n");
 
 		for (const line of lines) {
+			if (rootIndent !== undefined && line.length - line.trimStart().length !== rootIndent) continue;
 			const trimmed = line.trim();
 			if (!trimmed || trimmed.startsWith("#")) continue;
 
@@ -2361,7 +2374,7 @@ ${description || `Milestone: ${title}`}`,
 			const key = trimmed.substring(0, colonIndex).trim();
 			const readScalar = () => {
 				const rawValue = trimmed.substring(colonIndex + 1).trim();
-				const block = extractConfigKeyYaml(content, key) ?? trimmed;
+				const block = extractConfigKeyYaml(content, key, rootIndent) ?? trimmed;
 				const parsed = readYamlKey(block, key);
 				const resolved = "value" in parsed ? parsed : readYamlKey(content, key);
 				// Decode escaping and comments without rejecting scalar text the legacy reader accepted.
@@ -2470,8 +2483,8 @@ ${description || `Milestone: ${title}`}`,
 		};
 	}
 
-	private parseDefinitionOfDone(content: string): string[] | undefined {
-		const definitionOfDoneYaml = extractConfigKeyYaml(content, "definition_of_done");
+	private parseDefinitionOfDone(content: string, rootIndent?: number): string[] | undefined {
+		const definitionOfDoneYaml = extractConfigKeyYaml(content, "definition_of_done", rootIndent);
 		const legacyEscapedDefinitionOfDoneYaml = definitionOfDoneYaml
 			? this.escapeLegacyDefinitionOfDoneBackslashes(definitionOfDoneYaml)
 			: undefined;
