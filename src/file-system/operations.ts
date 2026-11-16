@@ -1218,7 +1218,12 @@ export class FileSystem {
 
 			const content = await Bun.file(sourcePath).text();
 			await this.ensureDirectoryExists(dirname(targetPath));
-			await Bun.write(targetPath, content);
+			try {
+				await writeFile(targetPath, content, { flag: "wx" });
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code === "EEXIST") throw pathTakenError(targetPath);
+				throw error;
+			}
 
 			await unlink(sourcePath);
 

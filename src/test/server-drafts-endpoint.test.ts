@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { symlink } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import { FileSystem } from "../file-system/operations.ts";
@@ -77,6 +78,23 @@ describe("BacklogServer draft task endpoints", () => {
 		);
 		const list = (await (await request("/api/drafts")).json()) as Task[];
 		expect(list.some((record) => record.id === task.id)).toBe(false);
+	});
+
+	it.each(["file", "symlink"])("leaves an existing archive %s and the source draft unchanged", async (kind) => {
+		const { task } = await core.createTaskFromInput({ title: "Archive collision", status: "Draft" });
+		const draft = await core.filesystem.loadDraft(task.id);
+		if (!draft?.filePath) throw new Error("Expected the draft file");
+		const before = await Bun.file(draft.filePath).text();
+		const archivePath = join(TEST_DIR, "backlog", "archive", "drafts", basename(draft.filePath));
+		const existingPath = kind === "symlink" ? join(TEST_DIR, "outside-archive.md") : archivePath;
+		await Bun.write(existingPath, "Keep this content");
+		if (kind === "symlink") await symlink(existingPath, archivePath);
+
+		const response = await request(`/api/tasks/${task.id}/archive`, { method: "POST" });
+
+		expect(response.ok).toBe(false);
+		expect(await Bun.file(existingPath).text()).toBe("Keep this content");
+		expect(await Bun.file(draft.filePath).text()).toBe(before);
 	});
 
 	it("reports 409 when archiving contends with a held draft lock", async () => {
