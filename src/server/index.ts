@@ -412,7 +412,7 @@ export class BacklogServer {
 		// Use config default port if no port specified
 		const finalPort = port ?? config?.defaultPort ?? 6420;
 		const finalHostname = await resolveBrowserListeningAddress(
-			hostname ?? config?.defaultHostname ?? DEFAULT_BROWSER_HOSTNAME,
+			hostname ?? config?.browserHostname ?? DEFAULT_BROWSER_HOSTNAME,
 		);
 		this.projectName = config?.projectName || "Untitled Project";
 
@@ -1578,9 +1578,9 @@ export class BacklogServer {
 				return Response.json({ error: "Port must be between 1 and 65535" }, { status: 400 });
 			}
 
-			if (updatedConfig.defaultHostname !== undefined) {
+			if (updatedConfig.browserHostname !== undefined) {
 				try {
-					updatedConfig.defaultHostname = normalizeBrowserHostname(updatedConfig.defaultHostname);
+					updatedConfig.browserHostname = normalizeBrowserHostname(updatedConfig.browserHostname);
 				} catch (error) {
 					return Response.json({ error: (error as Error).message }, { status: 400 });
 				}
@@ -2108,13 +2108,6 @@ export class BacklogServer {
 			const installClaudeAgentFlag = parseOptionalBoolean(body.installClaudeAgent) ?? false;
 			const filesystemOnly = parseOptionalBoolean(body.filesystemOnly) ?? false;
 			const advancedConfig = body.advancedConfig || {};
-			if (advancedConfig.defaultHostname !== undefined) {
-				try {
-					advancedConfig.defaultHostname = normalizeBrowserHostname(advancedConfig.defaultHostname);
-				} catch (error) {
-					return Response.json({ error: (error as Error).message }, { status: 400 });
-				}
-			}
 
 			// Input validation (browser layer responsibility)
 			if (!projectName) {

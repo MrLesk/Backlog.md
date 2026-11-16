@@ -43,6 +43,19 @@ describe("BacklogServer init endpoint", () => {
 		expect(config?.checkActiveBranches).toBe(true);
 	});
 
+	it("writes the local hostname default without accepting an init hostname override", async () => {
+		const server = new BacklogServer(TEST_DIR) as unknown as InitHandler;
+		const response = await server.handleInit(
+			initRequest({
+				filesystemOnly: true,
+				advancedConfig: { browserHostname: "0.0.0.0" },
+			}),
+		);
+		expect(response.status).toBe(200);
+		const config = await new Core(TEST_DIR).filesystem.loadConfig();
+		expect(config?.browserHostname).toBe("127.0.0.1");
+	});
+
 	it("rejects reserved task prefixes before writing config", async () => {
 		const server = new BacklogServer(TEST_DIR) as unknown as InitHandler;
 		const response = await server.handleInit(

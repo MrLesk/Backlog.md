@@ -31,7 +31,6 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 | `includeDatetimeInDates` | Add time to new dates | `true`              |
 | `defaultEditor`   | Editor for 'E' key | Platform default (nano/notepad) |
 | `defaultPort`     | Web UI port        | `6420`                        |
-| `defaultHostname` | Web UI listening hostname or IP address | `127.0.0.1` |
 | `autoOpenBrowser` | Open browser automatically | `true`            |
 | `remoteOperations`| Enable remote git operations | `true`           |
 | `autoCommit`      | Automatically commit task changes | `false`       |
@@ -43,23 +42,6 @@ Running `backlog config` with no arguments launches the interactive advanced wiz
 | `backlog_directory` | Project-relative backlog folder, chosen at `backlog init` and read from `backlog.config.yml` in the project root | `backlog` |
 
 ## Detailed Notes
-
-### Browser hostname
-
-`backlog init` saves `127.0.0.1` by default. Choose a different hostname in advanced init, `backlog config`, or Web UI Settings,
-or run `backlog config set defaultHostname <hostname>`. The YAML key is `default_hostname`, stored as a quoted string.
-Changes take effect on the next browser server start. Existing projects without this key retain local-only access.
-
-`backlog browser --host <hostname>` overrides the saved value for one run without changing configuration. Use a hostname
-or an IPv4/IPv6 address, without a protocol, port, or path; use `--port` separately. DNS names resolve to a listening address
-at startup. The same address is used for port checks and the server. `0.0.0.0` listens on all IPv4 interfaces; `::` is the
-IPv6 wildcard. For wildcard listeners, the opened URL uses loopback; remote clients need a reachable server address.
-
-**Remote access is insecure.** A non-loopback listener exposes an API without authentication or HTTPS. Reachable clients
-can read and change Backlog files and project configuration. Status-change commands can execute with the server account\'s
-permissions, potentially exposing other local files and credentials. The terminal warns before every non-loopback start,
-including `--no-open` and `--non-interactive`. Settings and advanced init also show the warning when selecting remote access.
-Do not expose the server to the public internet.
 
 > Editor setup guide: See [Configuring VIM and Neovim as Default Editor](backlog/docs/doc-002%20-%20Configuring-VIM-and-Neovim-as-Default-Editor.md) for configuration tips and troubleshooting interactive editors.
 

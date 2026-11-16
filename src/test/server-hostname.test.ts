@@ -99,7 +99,7 @@ describe("BacklogServer loopback binding", () => {
 		const filesystem = new FileSystem(TEST_DIR);
 		const config = await filesystem.loadConfig();
 		if (!config) throw new Error("Missing fixture config");
-		await filesystem.saveConfig({ ...config, defaultHostname: "0.0.0.0" });
+		await filesystem.saveConfig({ ...config, browserHostname: "0.0.0.0" });
 		const warnings: string[] = [];
 		const warnSpy = spyOn(console, "warn").mockImplementation((message) => warnings.push(String(message)));
 		const originalServe = Bun.serve;
@@ -127,14 +127,14 @@ describe("BacklogServer loopback binding", () => {
 		const filesystem = new FileSystem(TEST_DIR);
 		const config = await filesystem.loadConfig();
 		if (!config) throw new Error("Missing fixture config");
-		await filesystem.saveConfig({ ...config, defaultHostname: "0.0.0.0" });
+		await filesystem.saveConfig({ ...config, browserHostname: "0.0.0.0" });
 		const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
 		try {
 			server = new BacklogServer(TEST_DIR);
 			await server.start(await unusedLoopbackPort(), false, "127.0.0.1");
 			expect(internals(server).server?.hostname).toBe("127.0.0.1");
 			expect(warnSpy).not.toHaveBeenCalled();
-			expect((await filesystem.loadConfig())?.defaultHostname).toBe("0.0.0.0");
+			expect((await filesystem.loadConfig())?.browserHostname).toBe("0.0.0.0");
 		} finally {
 			warnSpy.mockRestore();
 		}
@@ -170,18 +170,18 @@ describe("BacklogServer loopback binding", () => {
 		const save = await fetch(url, {
 			method: "PUT",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ ...config, defaultHostname: "::" }),
+			body: JSON.stringify({ ...config, browserHostname: "::" }),
 		});
 		expect(save.status).toBe(200);
-		expect((await (await fetch(url)).json()).defaultHostname).toBe("::");
+		expect((await (await fetch(url)).json()).browserHostname).toBe("::");
 		expect(internals(server).server?.hostname).toBe("127.0.0.1");
 		const invalid = await fetch(url, {
 			method: "PUT",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ ...config, defaultHostname: "http://example.com" }),
+			body: JSON.stringify({ ...config, browserHostname: "http://example.com" }),
 		});
 		expect(invalid.status).toBe(400);
-		expect((await (await fetch(url)).json()).defaultHostname).toBe("::");
+		expect((await (await fetch(url)).json()).browserHostname).toBe("::");
 	});
 
 	it("serves lightweight browser bootstrap before the shared content corpus finishes loading", async () => {

@@ -689,7 +689,6 @@ export class ApiClient {
 			taskPrefix?: string;
 			defaultEditor?: string;
 			defaultPort?: number;
-			defaultHostname?: string;
 			autoOpenBrowser?: boolean;
 		};
 	}): Promise<{ success: boolean; projectName: string; mcpResults?: Record<string, string> }> {

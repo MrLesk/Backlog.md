@@ -68,7 +68,6 @@ export interface InitializeProjectOptions {
 		defaultEditor?: string;
 		definitionOfDone?: string[];
 		defaultPort?: number;
-		defaultHostname?: string;
 		autoOpenBrowser?: boolean;
 		/** Custom task prefix (e.g., "JIRA"). Only set during first init, read-only after. */
 		taskPrefix?: string;
@@ -179,9 +178,7 @@ export async function initializeProject(
 		activeBranchDays:
 			normalizedAdvancedConfig.activeBranchDays ?? existingConfig?.activeBranchDays ?? d.activeBranchDays,
 		defaultPort: normalizedAdvancedConfig.defaultPort ?? existingConfig?.defaultPort ?? d.defaultPort,
-		defaultHostname: normalizeBrowserHostname(
-			normalizedAdvancedConfig.defaultHostname ?? existingConfig?.defaultHostname ?? d.defaultHostname,
-		),
+		browserHostname: normalizeBrowserHostname(existingConfig?.browserHostname ?? d.browserHostname),
 		autoOpenBrowser: normalizedAdvancedConfig.autoOpenBrowser ?? existingConfig?.autoOpenBrowser ?? d.autoOpenBrowser,
 		prefixes: existingConfig?.prefixes || {
 			task: normalizedAdvancedConfig.taskPrefix || "task",

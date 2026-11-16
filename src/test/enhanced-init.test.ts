@@ -67,30 +67,21 @@ describe("Enhanced init command", () => {
 		expect(config).toBeTruthy();
 		expect(config?.projectName).toBe("New Project");
 		expect(config?.autoCommit).toBe(false); // Default value
-		expect(config?.defaultHostname).toBe("127.0.0.1");
-		expect(await Bun.file(core.filesystem.configFilePath).text()).toContain('default_hostname: "127.0.0.1"');
+		expect(config?.browserHostname).toBe("127.0.0.1");
+		expect(await Bun.file(core.filesystem.configFilePath).text()).toContain('browser_hostname: "127.0.0.1"');
 		expect(config?.statuses).toEqual(["To Do", "In Progress", "Done"]);
 		expect(config?.dateFormat).toBe("yyyy-mm-dd");
 	});
 
-	test("preserves a chosen browser hostname on re-init and accepts an advanced override", async () => {
+	test("preserves a manually configured browser hostname on re-init", async () => {
 		const core = new Core(tmpDir);
-		await initializeProject(core, {
-			projectName: "Hostname",
-			integrationMode: "none",
-			filesystemOnly: true,
-			advancedConfig: { defaultHostname: "::1" },
-		});
+		await initializeProject(core, { projectName: "Hostname", integrationMode: "none", filesystemOnly: true });
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing fixture config");
+		await core.filesystem.saveConfig({ ...config, browserHostname: "::1" });
 		const existingConfig = await core.filesystem.loadConfig();
 		await initializeProject(core, { projectName: "Hostname", integrationMode: "none", existingConfig });
-		expect((await core.filesystem.loadConfig())?.defaultHostname).toBe("::1");
-		await initializeProject(core, {
-			projectName: "Hostname",
-			integrationMode: "none",
-			existingConfig,
-			advancedConfig: { defaultHostname: "localhost" },
-		});
-		expect((await core.filesystem.loadConfig())?.defaultHostname).toBe("localhost");
+		expect((await core.filesystem.loadConfig())?.browserHostname).toBe("::1");
 	});
 
 	test("should handle editor configuration in init flow", async () => {

@@ -86,7 +86,7 @@ export const DEFAULT_INIT_CONFIG = {
 	zeroPaddedIds: undefined as number | undefined,
 	defaultEditor: undefined as string | undefined,
 	defaultPort: 6420,
-	defaultHostname: DEFAULT_BROWSER_HOSTNAME,
+	browserHostname: DEFAULT_BROWSER_HOSTNAME,
 	autoOpenBrowser: true,
 } as const;
 

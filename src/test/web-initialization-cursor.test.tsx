@@ -68,32 +68,6 @@ afterEach(() => {
 });
 
 describe("Web Cursor initialization", () => {
-	it("uses defaults after advanced settings with an invalid hostname are discarded", async () => {
-		const container = setupDom();
-		let submitted: Parameters<typeof apiClient.initializeProject>[0] | undefined;
-		apiClient.initializeProject = async (options) => {
-			submitted = options;
-			return { success: true, projectName: options.projectName };
-		};
-		activeRoot = createRoot(container);
-		await act(async () => {
-			activeRoot?.render(<InitializationScreen onInitialized={() => {}} />);
-			await Promise.resolve();
-		});
-		await setInputValue(container.querySelector("input[placeholder='My Awesome Project']") as HTMLInputElement, "Hostname defaults");
-		await click(button(container, "Next"));
-		await click(container.querySelector("input[name='integrationMode'][value='none']") as HTMLInputElement);
-		await click(button(container, "Next"));
-		const advanced = Array.from(container.querySelectorAll("label")).find((label) => label.textContent?.includes("Configure advanced settings now"))?.querySelector("input") as HTMLInputElement;
-		await click(advanced);
-		await setInputValue(container.querySelector("#init-default-hostname") as HTMLInputElement, "");
-		await click(advanced);
-		await click(button(container, "Next"));
-		await click(button(container, "Initialize Project"));
-		expect(submitted).toBeDefined();
-		expect(submitted?.advancedConfig).toBeUndefined();
-	});
-
 	it("identifies Cursor under AGENTS.md and submits the shared target", async () => {
 		const container = setupDom();
 		let submitted: Parameters<typeof apiClient.initializeProject>[0] | undefined;

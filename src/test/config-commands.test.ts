@@ -67,7 +67,6 @@ describe("Config commands", () => {
 		expect(mergedConfig.defaultEditor).toBeUndefined();
 		expect(mergedConfig.definitionOfDone).toEqual([]);
 		expect(mergedConfig.defaultPort).toBe(6420);
-		expect(mergedConfig.defaultHostname).toBe("127.0.0.1");
 		expect(mergedConfig.autoOpenBrowser).toBe(true);
 
 		const reloadedConfig = await core.filesystem.loadConfig();
@@ -91,7 +90,7 @@ describe("Config commands", () => {
 			{ definitionOfDoneItem: "Ship release notes" },
 			{ definitionOfDoneAction: "done" },
 			{ configureWebUI: true },
-			{ defaultPort: 7007, defaultHostname: "::1", autoOpenBrowser: false },
+			{ defaultPort: 7007, autoOpenBrowser: false },
 			{ installClaudeAgent: true },
 		]);
 
@@ -118,7 +117,6 @@ describe("Config commands", () => {
 		expect(reloadedConfig?.defaultEditor).toBe("backlog-test-editor");
 		expect(reloadedConfig?.definitionOfDone).toEqual(["Ship release notes"]);
 		expect(reloadedConfig?.defaultPort).toBe(7007);
-		expect(reloadedConfig?.defaultHostname).toBe("::1");
 		expect(reloadedConfig?.autoOpenBrowser).toBe(false);
 		expect(reloadedConfig?.bypassGitHooks).toBe(true);
 		expect(reloadedConfig?.autoCommit).toBe(true);
@@ -217,23 +215,20 @@ describe("Config commands", () => {
 		expect(portOutput.trim()).toBe("7001");
 	});
 
-	it("defaults the browser hostname locally and round-trips a saved override", async () => {
-		expect((await $`bun ${CLI_PATH} config get defaultHostname`.cwd(TEST_DIR).text()).trim()).toBe("127.0.0.1");
-		await $`bun ${CLI_PATH} config set defaultHostname 0.0.0.0`.cwd(TEST_DIR).quiet();
-		expect((await $`bun ${CLI_PATH} config get defaultHostname`.cwd(TEST_DIR).text()).trim()).toBe("0.0.0.0");
-		expect(await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text()).toContain("defaultHostname: 0.0.0.0");
-		expect(await Bun.file(core.filesystem.configFilePath).text()).toContain('default_hostname: "0.0.0.0"');
+	it("preserves a manually written hostname without advertising it in config output", async () => {
+		const path = core.filesystem.configFilePath;
+		await Bun.write(path, `${await Bun.file(path).text()}browser_hostname: "0.0.0.0"\n`);
+		await $`bun ${CLI_PATH} config set defaultPort 7001`.cwd(TEST_DIR).quiet();
+		core.filesystem.invalidateConfigCache();
+		expect((await core.filesystem.loadConfig())?.browserHostname).toBe("0.0.0.0");
+		expect(await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text()).not.toContain("browserHostname");
 	});
 
-	it("rejects browser URLs and wrong hostname types without saving them", async () => {
-		const before = await Bun.file(core.filesystem.configFilePath).text();
-		const result = await $`bun ${CLI_PATH} config set defaultHostname http://localhost:6420`
-			.cwd(TEST_DIR)
-			.quiet()
-			.nothrow();
-		expect(result.exitCode).not.toBe(0);
-		expect(await Bun.file(core.filesystem.configFilePath).text()).toBe(before);
-		expect(() => core.filesystem.parseConfig("project_name: P\ndefault_hostname: false\n")).toThrow("hostname");
+	it("rejects malformed manually written hostnames and wrong YAML types", () => {
+		expect(() => core.filesystem.parseConfig('project_name: P\nbrowser_hostname: "http://localhost"\n')).toThrow(
+			"hostname",
+		);
+		expect(() => core.filesystem.parseConfig("project_name: P\nbrowser_hostname: false\n")).toThrow("hostname");
 	});
 
 	it("round-trips hideEmptyColumns through config get/set/list", async () => {

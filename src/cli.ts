@@ -82,7 +82,7 @@ import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
-import { DEFAULT_BROWSER_HOSTNAME, normalizeBrowserHostname } from "./utils/browser-host.ts";
+import { DEFAULT_BROWSER_HOSTNAME, REMOTE_ACCESS_WARNING } from "./utils/browser-host.ts";
 import { launchBrowser } from "./utils/browser-launch.ts";
 import { formatDependencyCleanupMessage } from "./utils/dependency-graph.ts";
 import {
@@ -172,7 +172,6 @@ const CONFIG_GET_KEYS = [
 	"dateFormat",
 	"maxColumnWidth",
 	"defaultPort",
-	"defaultHostname",
 	"autoOpenBrowser",
 	"remoteOperations",
 	"autoCommit",
@@ -192,7 +191,6 @@ const CONFIG_SET_KEYS = [
 	"maxColumnWidth",
 	"autoOpenBrowser",
 	"defaultPort",
-	"defaultHostname",
 	"remoteOperations",
 	"autoCommit",
 	"filesystemOnly",
@@ -868,7 +866,6 @@ function getDefaultAdvancedConfig(existingConfig?: BacklogConfig | null): Partia
 		defaultEditor: existingConfig?.defaultEditor,
 		definitionOfDone: existingConfig?.definitionOfDone ? [...existingConfig.definitionOfDone] : undefined,
 		defaultPort: existingConfig?.defaultPort ?? 6420,
-		defaultHostname: existingConfig?.defaultHostname ?? DEFAULT_BROWSER_HOSTNAME,
 		autoOpenBrowser: existingConfig?.autoOpenBrowser ?? true,
 	};
 }
@@ -1780,7 +1777,6 @@ addHelpSchema(program.command("init [projectName]"), {
 						defaultEditor: advancedConfig.defaultEditor,
 						definitionOfDone: advancedConfig.definitionOfDone,
 						defaultPort: advancedConfig.defaultPort,
-						defaultHostname: advancedConfig.defaultHostname,
 						autoOpenBrowser: advancedConfig.autoOpenBrowser,
 						taskPrefix: taskPrefix || undefined,
 					},
@@ -1872,7 +1868,6 @@ addHelpSchema(program.command("init [projectName]"), {
 						}`,
 					);
 					summaryLines.push(`  ${label("Web UI port:")} ${String(config.defaultPort)}`);
-					summaryLines.push(`  ${label("Web UI hostname:")} ${config.defaultHostname ?? DEFAULT_BROWSER_HOSTNAME}`);
 					summaryLines.push(`  ${label("Auto open browser:")} ${boolValue(Boolean(config.autoOpenBrowser))}`);
 					if (config.defaultEditor) {
 						summaryLines.push(`  ${label("Default editor:")} ${config.defaultEditor}`);
@@ -5387,7 +5382,7 @@ agentsCmd
 
 // Config command group
 const CONFIG_AVAILABLE_KEYS =
-	"Available keys: defaultEditor, projectName, defaultAssignee, defaultStatus, statuses, labels, priorities, types, projects, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, defaultHostname, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays";
+	"Available keys: defaultEditor, projectName, defaultAssignee, defaultStatus, statuses, labels, priorities, types, projects, milestones, definitionOfDone, dateFormat, maxColumnWidth, defaultPort, autoOpenBrowser, hideEmptyColumns, remoteOperations, autoCommit, filesystemOnly, bypassGitHooks, zeroPaddedIds, checkActiveBranches, activeBranchDays";
 
 const configCmd = addHelpSchema(program.command("config"), {
 	reads: "Project Backlog.md configuration",
@@ -5434,7 +5429,6 @@ const configCmd = addHelpSchema(program.command("config"), {
 				}`,
 			);
 			console.log(`  Web UI port: ${mergedConfig.defaultPort ?? 6420}`);
-			console.log(`  Web UI hostname: ${mergedConfig.defaultHostname ?? DEFAULT_BROWSER_HOSTNAME}`);
 			console.log(`  Auto open browser: ${mergedConfig.autoOpenBrowser ?? true}`);
 			console.log(`  Bypass git hooks: ${mergedConfig.bypassGitHooks ?? false}`);
 			console.log(`  Auto commit: ${mergedConfig.autoCommit ?? false}`);
@@ -5549,9 +5543,6 @@ addHelpSchema(configCmd.command("get <key>"), {
 					break;
 				case "maxColumnWidth":
 					console.log(config.maxColumnWidth?.toString() || "");
-					break;
-				case "defaultHostname":
-					console.log(config.defaultHostname ?? DEFAULT_BROWSER_HOSTNAME);
 					break;
 				case "defaultPort":
 					console.log(config.defaultPort?.toString() || "");
@@ -5682,9 +5673,6 @@ addHelpSchema(configCmd.command("set <key> <value>"), {
 					}
 					break;
 				}
-				case "defaultHostname":
-					config.defaultHostname = normalizeBrowserHostname(value);
-					break;
 				case "defaultPort": {
 					const port = Number.parseInt(value, 10);
 					if (Number.isNaN(port) || port < 1 || port > 65535) {
@@ -5864,7 +5852,6 @@ addHelpSchema(configCmd.command("list"), {
 			console.log(`  autoOpenBrowser: ${config.autoOpenBrowser ?? "(not set)"}`);
 			console.log(`  hideEmptyColumns: ${config.hideEmptyColumns ?? "(not set)"}`);
 			console.log(`  defaultPort: ${config.defaultPort ?? "(not set)"}`);
-			console.log(`  defaultHostname: ${config.defaultHostname ?? DEFAULT_BROWSER_HOSTNAME}`);
 			console.log(`  remoteOperations: ${config.remoteOperations ?? "(not set)"}`);
 			console.log(`  autoCommit: ${config.autoCommit ?? "(not set)"}`);
 			console.log(`  filesystemOnly: ${config.filesystemOnly ?? "false"}`);
@@ -6172,14 +6159,11 @@ program
 	.option("-p, --port <port>", "port to run server on")
 	.option(
 		"--host <hostname>",
-		"listening hostname or IP; overrides defaultHostname for this run (remote access is insecure)",
+		"listening hostname or IP for this run. DANGER: remote access is unauthenticated; see warning below",
 	)
 	.option("--no-open", "don't automatically open browser")
 	.option("--non-interactive", "automatically use next free port without asking")
-	.addHelpText(
-		"after",
-		"\nSaved hostname: backlog config set defaultHostname <hostname>. Changes apply on the next start.\nRemote access has no authentication or HTTPS and can allow local file changes and command execution.\n",
-	)
+	.addHelpText("after", `\n${"=".repeat(72)}\n${REMOTE_ACCESS_WARNING}\n${"=".repeat(72)}\n`)
 	.action(async (options) => {
 		try {
 			const cwd = await requireProjectRoot();
@@ -6193,7 +6177,7 @@ program
 			const config = await core.filesystem.loadConfig();
 			const defaultPort = config?.defaultPort ?? 6420;
 			const hostname = await resolveBrowserListeningAddress(
-				options.host ?? config?.defaultHostname ?? DEFAULT_BROWSER_HOSTNAME,
+				options.host ?? config?.browserHostname ?? DEFAULT_BROWSER_HOSTNAME,
 			);
 
 			let port = Number.parseInt(options.port || defaultPort.toString(), 10);

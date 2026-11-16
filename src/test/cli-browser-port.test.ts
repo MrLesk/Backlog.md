@@ -100,12 +100,28 @@ describe("browser command port selection", () => {
 		}
 	});
 
-	it("starts with an explicit remote host without changing the saved hostname", async () => {
+	it.each([
+		{ saved: "0.0.0.0", override: undefined, remote: true },
+		{ saved: "0.0.0.0", override: "127.0.0.1", remote: false },
+		{ saved: "127.0.0.1", override: "0.0.0.0", remote: true },
+	])("warns according to the effective host without changing config: %j", async ({ saved, override, remote }) => {
+		const core = new Core(TEST_DIR);
+		const before = await core.filesystem.loadConfig();
+		if (!before) throw new Error("Missing fixture config");
+		await core.filesystem.saveConfig({ ...before, browserHostname: saved });
 		const probe = await listenOnEphemeralPort();
 		await closeServer(probe.server);
 		const child = spawn(
 			"bun",
-			[CLI_PATH, "browser", "--host", "0.0.0.0", "--port", String(probe.port), "--no-open", "--non-interactive"],
+			[
+				CLI_PATH,
+				"browser",
+				...(override ? ["--host", override] : []),
+				"--port",
+				String(probe.port),
+				"--no-open",
+				"--non-interactive",
+			],
 			{
 				cwd: TEST_DIR,
 				env: { ...process.env, NO_COLOR: "1" },
@@ -120,11 +136,15 @@ describe("browser command port selection", () => {
 			const output = await waitForOutput(child, "browser interface running");
 			expect(output).not.toContain("Opening browser");
 			expect((await fetch(`http://127.0.0.1:${probe.port}/api/status`)).status).toBe(200);
-			expect(stderr).toContain("INSECURE REMOTE ACCESS");
-			expect(stderr).toContain("commands");
+			if (remote) {
+				expect(stderr).toContain("INSECURE REMOTE ACCESS");
+				expect(stderr).toContain("commands");
+			} else {
+				expect(stderr).not.toContain("INSECURE REMOTE ACCESS");
+			}
 			expect(stderr).not.toContain("\u001b[");
 			const config = await new Core(TEST_DIR).filesystem.loadConfig();
-			expect(config?.defaultHostname).not.toBe("0.0.0.0");
+			expect(config?.browserHostname).toBe(saved);
 		} finally {
 			await stopChild(child);
 		}
@@ -135,7 +155,10 @@ describe("browser command port selection", () => {
 
 		expect(output).toContain("127.0.0.1");
 		expect(output).toContain("--host <hostname>");
-		expect(output).toContain("defaultHostname");
-		expect(output).toContain("command execution");
+		expect(output).not.toContain("browserHostname");
+		expect(output).toContain("INSECURE REMOTE ACCESS");
+		expect(output).toContain("authentication");
+		expect(output).toContain("commands");
+		expect(output).toContain("not encrypted");
 	});
 });
