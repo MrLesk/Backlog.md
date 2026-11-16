@@ -35,6 +35,7 @@
         "react-tooltip": "6.0.9",
         "tailwindcss": "4.3.3",
         "typescript": "7.0.2",
+        "yaml": "2.9.1",
       },
       "optionalDependencies": {
         "backlog.md-darwin-arm64": "*",

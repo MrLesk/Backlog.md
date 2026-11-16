@@ -71,6 +71,7 @@ import {
 } from "../utils/task-path.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
+import { serializeConfig } from "./config-serialization.ts";
 
 // Interface for task path resolution context
 interface TaskPathContext {
@@ -2288,7 +2289,13 @@ ${description || `Milestone: ${title}`}`,
 		if (normalizedConfig.browserHostname !== undefined) {
 			normalizedConfig.browserHostname = normalizeBrowserHostname(normalizedConfig.browserHostname);
 		}
-		const content = this.serializeConfig(normalizedConfig);
+		let original: string | undefined;
+		try {
+			original = await readFile(configPath, "utf8");
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+		}
+		const content = serializeConfig(normalizedConfig, original, configPath);
 		await Bun.write(configPath, content);
 		this.cachedConfig = normalizedConfig;
 		this.cachedConfigSnapshot = { path: configPath, content };
@@ -2352,17 +2359,26 @@ ${description || `Milestone: ${title}`}`,
 			if (colonIndex === -1) continue;
 
 			const key = trimmed.substring(0, colonIndex).trim();
-			const value = trimmed.substring(colonIndex + 1).trim();
+			const readScalar = () => {
+				const rawValue = trimmed.substring(colonIndex + 1).trim();
+				const block = extractConfigKeyYaml(content, key) ?? trimmed;
+				const parsed = readYamlKey(block, key);
+				const resolved = "value" in parsed ? parsed : readYamlKey(content, key);
+				// Decode escaping and comments without rejecting scalar text the legacy reader accepted.
+				return "value" in resolved && resolved.value !== null && typeof resolved.value !== "object"
+					? String(resolved.value ?? "")
+					: rawValue.replace(/^(['"])(.*)\1$/, "$2");
+			};
 
 			switch (key) {
 				case "project_name":
-					config.projectName = value.replace(/['"]/g, "");
+					config.projectName = readScalar();
 					break;
 				case "default_reporter":
-					config.defaultReporter = value.replace(/['"]/g, "");
+					config.defaultReporter = readScalar();
 					break;
 				case "default_status":
-					config.defaultStatus = value.replace(/['"]/g, "");
+					config.defaultStatus = readScalar();
 					break;
 				case "definition_of_done":
 					if (parsedDefinitionOfDone !== undefined) {
@@ -2370,56 +2386,55 @@ ${description || `Milestone: ${title}`}`,
 					}
 					break;
 				case "date_format":
-					config.dateFormat = value.replace(/['"]/g, "");
+					config.dateFormat = readScalar();
 					break;
 				case "max_column_width":
-					config.maxColumnWidth = Number.parseInt(value, 10);
+					config.maxColumnWidth = Number.parseInt(readScalar(), 10);
 					break;
 				case "default_editor":
-					config.defaultEditor = value.replace(/["']/g, "");
+					config.defaultEditor = readScalar();
 					break;
 				case "auto_open_browser":
-					config.autoOpenBrowser = value.toLowerCase() === "true";
+					config.autoOpenBrowser = readScalar().toLowerCase() === "true";
 					break;
 				case "hide_empty_columns":
-					config.hideEmptyColumns = value.toLowerCase() === "true";
+					config.hideEmptyColumns = readScalar().toLowerCase() === "true";
 					break;
 				case "default_port":
-					config.defaultPort = Number.parseInt(value, 10);
+					config.defaultPort = Number.parseInt(readScalar(), 10);
 					break;
 				case "remote_operations":
-					config.remoteOperations = value.toLowerCase() === "true";
+					config.remoteOperations = readScalar().toLowerCase() === "true";
 					break;
 				case "auto_commit":
-					config.autoCommit = value.toLowerCase() === "true";
+					config.autoCommit = readScalar().toLowerCase() === "true";
 					break;
 				case "filesystem_only":
 				case "filesystemOnly":
-					config.filesystemOnly = value.toLowerCase() === "true";
+					config.filesystemOnly = readScalar().toLowerCase() === "true";
 					break;
 				case "zero_padded_ids":
-					config.zeroPaddedIds = Number.parseInt(value, 10);
+					config.zeroPaddedIds = Number.parseInt(readScalar(), 10);
 					break;
 				case "bypass_git_hooks":
-					config.bypassGitHooks = value.toLowerCase() === "true";
+					config.bypassGitHooks = readScalar().toLowerCase() === "true";
 					break;
 				case "check_active_branches":
-					config.checkActiveBranches = value.toLowerCase() === "true";
+					config.checkActiveBranches = readScalar().toLowerCase() === "true";
 					break;
 				case "active_branch_days":
-					config.activeBranchDays = Number.parseInt(value, 10);
+					config.activeBranchDays = Number.parseInt(readScalar(), 10);
 					break;
 				case "onStatusChange":
 				case "on_status_change":
-					// Remove surrounding quotes if present, but preserve inner content
-					config.onStatusChange = value.replace(/^['"]|['"]$/g, "");
+					config.onStatusChange = readScalar();
 					break;
 				case "task_prefix":
-					config.prefixes = { task: value.replace(/['"]/g, "") };
+					config.prefixes = { task: readScalar() };
 					break;
 				case "backlog_directory":
 				case "backlogDirectory":
-					config.backlogDirectory = value.replace(/['"]/g, "");
+					config.backlogDirectory = readScalar();
 					break;
 			}
 		}
@@ -2453,51 +2468,6 @@ ${description || `Milestone: ${title}`}`,
 			prefixes: config.prefixes,
 			backlogDirectory: config.backlogDirectory,
 		};
-	}
-
-	private serializeConfig(config: BacklogConfig): string {
-		const normalizedDefinitionOfDone = this.normalizeDefinitionOfDone(config.definitionOfDone);
-		const lines = [
-			`project_name: "${config.projectName}"`,
-			...(config.defaultAssignee?.length
-				? [`default_assignee: [${config.defaultAssignee.map((assignee) => JSON.stringify(assignee)).join(", ")}]`]
-				: []),
-			...(config.defaultReporter ? [`default_reporter: "${config.defaultReporter}"`] : []),
-			...(config.defaultStatus ? [`default_status: "${config.defaultStatus}"`] : []),
-			`statuses: [${config.statuses.map((s) => `"${s}"`).join(", ")}]`,
-			`labels: [${config.labels.map((l) => `"${l}"`).join(", ")}]`,
-			...(config.types && config.types.length > 0 ? [`types: [${config.types.map((t) => `"${t}"`).join(", ")}]`] : []),
-			...(config.priorities && config.priorities.length > 0
-				? [`priorities: [${config.priorities.map((p) => `"${p}"`).join(", ")}]`]
-				: []),
-			...(config.projects && config.projects.length > 0
-				? [`projects: [${config.projects.map((p) => `"${p}"`).join(", ")}]`]
-				: []),
-			...(Array.isArray(normalizedDefinitionOfDone)
-				? [`definition_of_done: [${normalizedDefinitionOfDone.map((item) => JSON.stringify(item)).join(", ")}]`]
-				: []),
-			`date_format: ${config.dateFormat}`,
-			...(config.maxColumnWidth ? [`max_column_width: ${config.maxColumnWidth}`] : []),
-			...(config.defaultEditor ? [`default_editor: "${config.defaultEditor}"`] : []),
-			...(typeof config.autoOpenBrowser === "boolean" ? [`auto_open_browser: ${config.autoOpenBrowser}`] : []),
-			...(typeof config.hideEmptyColumns === "boolean" ? [`hide_empty_columns: ${config.hideEmptyColumns}`] : []),
-			...(config.defaultPort ? [`default_port: ${config.defaultPort}`] : []),
-			...(config.browserHostname !== undefined ? [`browser_hostname: ${JSON.stringify(config.browserHostname)}`] : []),
-			...(typeof config.remoteOperations === "boolean" ? [`remote_operations: ${config.remoteOperations}`] : []),
-			...(typeof config.autoCommit === "boolean" ? [`auto_commit: ${config.autoCommit}`] : []),
-			...(typeof config.filesystemOnly === "boolean" ? [`filesystem_only: ${config.filesystemOnly}`] : []),
-			...(typeof config.zeroPaddedIds === "number" ? [`zero_padded_ids: ${config.zeroPaddedIds}`] : []),
-			...(typeof config.bypassGitHooks === "boolean" ? [`bypass_git_hooks: ${config.bypassGitHooks}`] : []),
-			...(typeof config.checkActiveBranches === "boolean"
-				? [`check_active_branches: ${config.checkActiveBranches}`]
-				: []),
-			...(typeof config.activeBranchDays === "number" ? [`active_branch_days: ${config.activeBranchDays}`] : []),
-			...(config.onStatusChange ? [`onStatusChange: '${config.onStatusChange}'`] : []),
-			...(config.prefixes?.task ? [`task_prefix: "${config.prefixes.task}"`] : []),
-			...(config.backlogDirectory ? [`backlog_directory: "${config.backlogDirectory}"`] : []),
-		];
-
-		return `${lines.join("\n")}\n`;
 	}
 
 	private parseDefinitionOfDone(content: string): string[] | undefined {
