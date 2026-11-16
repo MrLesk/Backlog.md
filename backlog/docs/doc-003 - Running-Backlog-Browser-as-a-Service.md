@@ -3,13 +3,15 @@ id: doc-003
 title: Running Backlog Browser as a Service
 type: guide
 created_date: '2026-04-25'
-updated_date: '2026-07-30 17:48'
+updated_date: '2026-11-16T18:52:00Z'
 ---
 # Running Backlog.md as a Service
 
 `backlog browser --no-open` keeps the Web UI running without opening a browser tab. This is useful when you want a long-lived local dashboard that starts on boot and restarts on failure.
 
-The service listens only on `127.0.0.1`, so it is available on the same machine and is not exposed to other devices on the LAN or VPN.
+The default listening hostname is `127.0.0.1` for local-only access. The saved `defaultHostname` setting applies when the service starts; set it through `backlog config`, Web UI Settings, or advanced init. Changing it requires a service restart. Add `--host 127.0.0.1` to a service command to keep that service local regardless of the saved setting.
+
+A deliberate `--host <hostname>` override takes precedence for that run without saving it. Non-loopback listeners expose an API without authentication or HTTPS. Reachable clients can change local Backlog files and configuration and execute status-change commands with the service account's permissions, potentially exposing other files and credentials. Every non-loopback start writes a strong warning to stderr, including `--no-open` and non-interactive runs. Inspect your service's error logs. Do not expose the server to the public internet.
 
 Pick the recipe that matches your OS.
 

@@ -100,10 +100,42 @@ describe("browser command port selection", () => {
 		}
 	});
 
-	it("documents the local-machine-only bind without offering a public host override", async () => {
+	it("starts with an explicit remote host without changing the saved hostname", async () => {
+		const probe = await listenOnEphemeralPort();
+		await closeServer(probe.server);
+		const child = spawn(
+			"bun",
+			[CLI_PATH, "browser", "--host", "0.0.0.0", "--port", String(probe.port), "--no-open", "--non-interactive"],
+			{
+				cwd: TEST_DIR,
+				env: { ...process.env, NO_COLOR: "1" },
+				stdio: ["ignore", "pipe", "pipe"],
+			},
+		);
+		let stderr = "";
+		child.stderr.on("data", (chunk) => {
+			stderr += chunk.toString();
+		});
+		try {
+			const output = await waitForOutput(child, "browser interface running");
+			expect(output).not.toContain("Opening browser");
+			expect((await fetch(`http://127.0.0.1:${probe.port}/api/status`)).status).toBe(200);
+			expect(stderr).toContain("INSECURE REMOTE ACCESS");
+			expect(stderr).toContain("commands");
+			expect(stderr).not.toContain("\u001b[");
+			const config = await new Core(TEST_DIR).filesystem.loadConfig();
+			expect(config?.defaultHostname).not.toBe("0.0.0.0");
+		} finally {
+			await stopChild(child);
+		}
+	});
+
+	it("documents the safe default and the one-run hostname override", async () => {
 		const output = await $`bun ${CLI_PATH} browser --help`.cwd(TEST_DIR).text();
 
-		expect(output).toContain("this machine only at 127.0.0.1");
-		expect(output).not.toContain("--host");
+		expect(output).toContain("127.0.0.1");
+		expect(output).toContain("--host <hostname>");
+		expect(output).toContain("defaultHostname");
+		expect(output).toContain("command execution");
 	});
 });

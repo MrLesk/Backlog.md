@@ -67,8 +67,30 @@ describe("Enhanced init command", () => {
 		expect(config).toBeTruthy();
 		expect(config?.projectName).toBe("New Project");
 		expect(config?.autoCommit).toBe(false); // Default value
+		expect(config?.defaultHostname).toBe("127.0.0.1");
+		expect(await Bun.file(core.filesystem.configFilePath).text()).toContain('default_hostname: "127.0.0.1"');
 		expect(config?.statuses).toEqual(["To Do", "In Progress", "Done"]);
 		expect(config?.dateFormat).toBe("yyyy-mm-dd");
+	});
+
+	test("preserves a chosen browser hostname on re-init and accepts an advanced override", async () => {
+		const core = new Core(tmpDir);
+		await initializeProject(core, {
+			projectName: "Hostname",
+			integrationMode: "none",
+			filesystemOnly: true,
+			advancedConfig: { defaultHostname: "::1" },
+		});
+		const existingConfig = await core.filesystem.loadConfig();
+		await initializeProject(core, { projectName: "Hostname", integrationMode: "none", existingConfig });
+		expect((await core.filesystem.loadConfig())?.defaultHostname).toBe("::1");
+		await initializeProject(core, {
+			projectName: "Hostname",
+			integrationMode: "none",
+			existingConfig,
+			advancedConfig: { defaultHostname: "localhost" },
+		});
+		expect((await core.filesystem.loadConfig())?.defaultHostname).toBe("localhost");
 	});
 
 	test("should handle editor configuration in init flow", async () => {

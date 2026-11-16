@@ -1,5 +1,11 @@
 import * as clack from "@clack/prompts";
 import type { BacklogConfig } from "../types/index.ts";
+import {
+	DEFAULT_BROWSER_HOSTNAME,
+	isLoopbackBrowserHostname,
+	normalizeBrowserHostname,
+	REMOTE_ACCESS_WARNING,
+} from "../utils/browser-host.ts";
 import { isEditorAvailable as checkEditorAvailability, resolveEditor } from "../utils/editor.ts";
 
 interface PromptChoice {
@@ -18,6 +24,7 @@ interface PromptQuestion {
 	min?: number;
 	max?: number;
 	choices?: PromptChoice[];
+	validate?: (value: string | undefined) => string | undefined;
 }
 
 interface PromptOptions {
@@ -88,6 +95,7 @@ async function runSinglePrompt(question: PromptQuestion, options?: PromptOptions
 		const result = await clack.text({
 			message,
 			initialValue: initialText,
+			validate: question.validate,
 		});
 		if (clack.isCancel(result)) {
 			onCancel?.();
@@ -218,6 +226,7 @@ export async function runAdvancedConfigWizard({
 		? config.defaultEditor
 		: (process.env.EDITOR ?? process.env.VISUAL ?? resolveEditor(null));
 	let defaultPort = config?.defaultPort ?? 6420;
+	let defaultHostname = config?.defaultHostname ?? DEFAULT_BROWSER_HOSTNAME;
 	let autoOpenBrowser = config?.autoOpenBrowser ?? true;
 	let definitionOfDone = normalizeDefinitionOfDoneItems(config?.definitionOfDone);
 	let installClaudeAgent = false;
@@ -572,7 +581,7 @@ export async function runAdvancedConfigWizard({
 				type: "confirm",
 				name: "configureWebUI",
 				message: "Configure web UI settings now?",
-				hint: "Port and browser auto-open",
+				hint: "Hostname, port and browser auto-open",
 				initial: false,
 			},
 			{ onCancel },
@@ -585,6 +594,19 @@ export async function runAdvancedConfigWizard({
 		let goBackToWebUIPrompt = false;
 		const webUIValues = await promptImpl(
 			[
+				{
+					type: "text",
+					name: "defaultHostname",
+					message: "Default web UI hostname:",
+					initial: defaultHostname,
+					validate: (value) => {
+						try {
+							normalizeBrowserHostname(value);
+						} catch (error) {
+							return (error as Error).message;
+						}
+					},
+				},
 				{
 					type: "number",
 					name: "defaultPort",
@@ -613,6 +635,8 @@ export async function runAdvancedConfigWizard({
 			continue;
 		}
 
+		defaultHostname = normalizeBrowserHostname(webUIValues?.defaultHostname ?? defaultHostname);
+		if (!isLoopbackBrowserHostname(defaultHostname)) clack.log.warn(REMOTE_ACCESS_WARNING);
 		if (typeof webUIValues?.defaultPort === "number" && !Number.isNaN(webUIValues.defaultPort)) {
 			defaultPort = webUIValues.defaultPort;
 		}
@@ -645,6 +669,7 @@ export async function runAdvancedConfigWizard({
 			defaultEditor,
 			definitionOfDone,
 			defaultPort,
+			defaultHostname,
 			autoOpenBrowser,
 		},
 		installClaudeAgent,

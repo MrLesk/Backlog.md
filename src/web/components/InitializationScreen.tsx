@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { DEFAULT_INIT_CONFIG } from "../../constants/index.ts";
+import { normalizeBrowserHostname } from "../../utils/browser-host.ts";
+import { RemoteAccessWarning } from "./RemoteAccessWarning";
 import { apiClient } from "../lib/api";
 
 type IntegrationMode = "mcp" | "cli" | "none";
@@ -18,6 +20,7 @@ interface AdvancedConfig {
 	taskPrefix: string;
 	defaultEditor: string;
 	defaultPort: number;
+	defaultHostname: string;
 	autoOpenBrowser: boolean;
 }
 
@@ -52,6 +55,7 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 		taskPrefix: "",
 		defaultEditor: DEFAULT_INIT_CONFIG.defaultEditor ?? "",
 		defaultPort: DEFAULT_INIT_CONFIG.defaultPort,
+		defaultHostname: DEFAULT_INIT_CONFIG.defaultHostname,
 		autoOpenBrowser: DEFAULT_INIT_CONFIG.autoOpenBrowser,
 	});
 
@@ -121,6 +125,12 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 				setCurrentStep("advancedConfig");
 				break;
 			case "advancedConfig":
+				try {
+					if (showAdvancedConfig) normalizeBrowserHostname(advancedConfig.defaultHostname);
+				} catch (error) {
+					setError((error as Error).message);
+					return;
+				}
 				setCurrentStep("summary");
 				break;
 		}
@@ -774,6 +784,17 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({ onInitializ
 					<div>
 						<h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Web UI</h3>
 						<div className="space-y-3">
+							<div>
+								<label htmlFor="init-default-hostname" className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Default hostname</label>
+								<input
+									id="init-default-hostname"
+									type="text"
+									value={advancedConfig.defaultHostname}
+									onChange={(e) => setAdvancedConfig((prev) => ({ ...prev, defaultHostname: e.target.value }))}
+									className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700"
+								/>
+								<RemoteAccessWarning hostname={advancedConfig.defaultHostname} />
+							</div>
 							<div>
 								<label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">
 									Default port

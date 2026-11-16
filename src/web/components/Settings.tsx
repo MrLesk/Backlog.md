@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { apiClient } from '../lib/api';
 import { SuccessToast } from './SuccessToast';
 import type { BacklogConfig } from '../../types';
+import { DEFAULT_BROWSER_HOSTNAME, normalizeBrowserHostname } from '../../utils/browser-host';
+import { RemoteAccessWarning } from './RemoteAccessWarning';
 
 const Settings: React.FC = () => {
 	const [config, setConfig] = useState<BacklogConfig | null>(null);
@@ -79,6 +81,11 @@ const Settings: React.FC = () => {
 		}
 
 
+		try {
+			normalizeBrowserHostname(config.defaultHostname ?? DEFAULT_BROWSER_HOSTNAME);
+		} catch (error) {
+			errors.defaultHostname = (error as Error).message;
+		}
 		setValidationErrors(errors);
 		return Object.keys(errors).length === 0;
 	};
@@ -90,6 +97,7 @@ const Settings: React.FC = () => {
 			setSaving(true);
 			const normalizedConfig = {
 				...config,
+				defaultHostname: normalizeBrowserHostname(config.defaultHostname ?? DEFAULT_BROWSER_HOSTNAME),
 				definitionOfDone: normalizeDefinitionOfDone(config.definitionOfDone),
 			};
 			await apiClient.updateConfig(normalizedConfig);
@@ -317,6 +325,23 @@ const Settings: React.FC = () => {
 					<div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
 						<h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Web UI Settings</h2>
 						<div className="space-y-4">
+							<div>
+								<label htmlFor="defaultHostname" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+									Default Hostname
+								</label>
+								<input
+									id="defaultHostname"
+									type="text"
+									value={config.defaultHostname ?? DEFAULT_BROWSER_HOSTNAME}
+									onChange={(e) => handleInputChange('defaultHostname', e.target.value)}
+									aria-invalid={Boolean(validationErrors.defaultHostname)}
+									aria-describedby="hostname-restart"
+									className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700"
+								/>
+								<p id="hostname-restart" className="mt-1 text-sm text-gray-500 dark:text-gray-400">Takes effect when the browser server restarts.</p>
+								{validationErrors.defaultHostname && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{validationErrors.defaultHostname}</p>}
+								<RemoteAccessWarning hostname={config.defaultHostname ?? DEFAULT_BROWSER_HOSTNAME} />
+							</div>
 							<div>
 								<label htmlFor="defaultPort" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
 									Default Port

@@ -368,10 +368,20 @@ Dependents (2 direct, 2 total):
 
 | Action      | Example                                              |
 |-------------|------------------------------------------------------|
-| Web interface | `backlog browser` (launches the local-machine-only web UI on `127.0.0.1:6420`) |
+| Web interface | `backlog browser` (defaults to the local web UI on `127.0.0.1:6420`) |
 | Web custom port | `backlog browser --port 8080 --no-open` |
+| Saved Web hostname | `backlog config set defaultHostname <hostname>` |
+| Web hostname for one run | `backlog browser --host <hostname> --no-open` |
 
-The Web UI listens only on `127.0.0.1`; it is not reachable from other devices on the LAN or VPN.
+The default hostname is `127.0.0.1`, including new projects created with `backlog init`. Advanced init, `backlog config`,
+and Web UI Settings can save a different hostname (`default_hostname` in YAML), effective after restarting the server.
+`--host` takes precedence over the saved value and does not change it. Supply a hostname or IP address without a protocol,
+port, or path. Wildcard listeners (`0.0.0.0` or `::`) open a loopback URL locally; remote clients use a reachable server address.
+
+**Remote access is insecure:** the API has no authentication or HTTPS. Reachable clients can read and change Backlog data
+and configuration and can execute status-change commands with the server account\'s permissions, exposing other local files
+and credentials. Every non-loopback start warns before listening, including `--no-open` and non-interactive runs.
+Do not expose it to the public internet.
 
 To keep the Web UI running in the background with auto-start on boot, see [Running Backlog.md as a Service](backlog/docs/doc-003%20-%20Running-Backlog-Browser-as-a-Service.md).
 

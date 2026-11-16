@@ -232,8 +232,7 @@ showing what it changes in the architecture.
 
 ## <img src="./.github/web-interface-256.png" alt="Web Interface" width="28" height="28" align="center"> Web Interface
 
-Launch a web interface for visual task management on the local machine. The server listens on `127.0.0.1` and is not
-reachable from other devices on the LAN or VPN:
+Launch a web interface for visual task management. By default, the server listens on `127.0.0.1` for local-only access:
 
 ```bash
 # Start the web server (opens browser automatically)
@@ -244,7 +243,22 @@ backlog browser --port 8080
 
 # Don't open browser automatically
 backlog browser --no-open
+
+# Override the saved hostname for this run (enables insecure remote access)
+backlog browser --host 0.0.0.0 --no-open
 ```
+
+Set a saved hostname with `backlog config set defaultHostname <hostname>`, the configuration wizard, Web UI Settings,
+or advanced setup during `backlog init`. New projects use `127.0.0.1`. Saved changes apply on the next server start.
+The order is `--host`, then the saved hostname, then `127.0.0.1`; the override does not change configuration.
+
+**Warning:** Remote access has no authentication or HTTPS. Anyone who can reach the server can read and change Backlog
+data and configuration, and run status-change commands with the server account's permissions. This can expose other
+local files and credentials. Every non-loopback start prints this warning, including background and non-interactive
+runs. Do not expose the server to the public internet.
+
+`0.0.0.0` listens on all IPv4 interfaces; `::` listens on IPv6 wildcard interfaces. These starts display a local
+loopback URL for opening the browser. Other devices use a reachable address of the server machine.
 
 **Features:**
 - Interactive Kanban board with drag-and-drop
@@ -362,7 +376,7 @@ Full help: `backlog --help`
 
 Backlog.md works with zero configuration. Settings merge from CLI flags, then the project config file (`backlog.config.yml` when present, otherwise `backlog/config.yml` or `.backlog/config.yml`), then built‑in defaults.
 
-Run `backlog config` with no arguments to launch the interactive wizard (the same experience triggered from `backlog init` advanced setup). It walks through cross-branch accuracy (`checkActiveBranches`, `remoteOperations`, `activeBranchDays`), Git workflow (`autoCommit`, `bypassGitHooks`), ID formatting (`zeroPaddedIds`), editor integration (`defaultEditor`), Definition of Done defaults, and Web UI defaults (`defaultPort`, `autoOpenBrowser`). Skipping the wizard applies the safe built-in defaults, and rerunning `backlog init` or `backlog config` pre-populates prompts with your current values.
+Run `backlog config` with no arguments to launch the interactive wizard (the same experience triggered from `backlog init` advanced setup). It walks through cross-branch accuracy (`checkActiveBranches`, `remoteOperations`, `activeBranchDays`), Git workflow (`autoCommit`, `bypassGitHooks`), ID formatting (`zeroPaddedIds`), editor integration (`defaultEditor`), Definition of Done defaults, and Web UI defaults (`defaultHostname`, `defaultPort`, `autoOpenBrowser`). Skipping the wizard applies the safe built-in defaults, and rerunning `backlog init` or `backlog config` pre-populates prompts with your current values.
 
 For filesystem-only projects (`backlog init --no-git`), the saved config forces `checkActiveBranches=false`, `remoteOperations=false`, and `autoCommit=false` so CLI, Web, and MCP local-file workflows do not depend on a Git repository.
 

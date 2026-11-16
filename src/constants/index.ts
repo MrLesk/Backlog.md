@@ -1,3 +1,5 @@
+import { DEFAULT_BROWSER_HOSTNAME } from "../utils/browser-host.ts";
+
 /**
  * Default directory structure for backlog projects
  */
@@ -84,6 +86,7 @@ export const DEFAULT_INIT_CONFIG = {
 	zeroPaddedIds: undefined as number | undefined,
 	defaultEditor: undefined as string | undefined,
 	defaultPort: 6420,
+	defaultHostname: DEFAULT_BROWSER_HOSTNAME,
 	autoOpenBrowser: true,
 } as const;
 

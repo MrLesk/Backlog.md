@@ -21,6 +21,22 @@ describe("isPortAvailable", () => {
 		}
 	});
 
+	it("checks the selected interface instead of assuming IPv4 loopback", async () => {
+		const server = Bun.serve({ hostname: "::1", port: 0, fetch: () => new Response("ok") });
+		if (server.port === undefined) throw new Error("Missing port");
+		try {
+			expect(await isPortAvailable(server.port, "::1")).toBe(false);
+			expect(await isPortAvailable(server.port, "127.0.0.1")).toBe(true);
+			expect(await findNextAvailablePort(server.port, server.port, "::1")).toBeNull();
+		} finally {
+			await server.stop(true);
+		}
+	});
+
+	it("reports a host binding error instead of treating every port as occupied", async () => {
+		await expect(isPortAvailable(6420, "192.0.2.123")).rejects.toHaveProperty("code", "EADDRNOTAVAIL");
+	});
+
 	it("returns false for port 0 (out-of-range for browser use)", async () => {
 		const result = await isPortAvailable(0);
 		expect(result).toBe(false);
