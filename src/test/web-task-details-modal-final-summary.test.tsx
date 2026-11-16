@@ -352,6 +352,54 @@ describe("Web task popup Final Summary display", () => {
 		}
 	});
 
+	it("uses the acknowledged revision for a second metadata edit while the first response is delayed", async () => {
+		setupDom();
+		const task: Task = { id: "TASK-12C", revision: "opened", title: "Consecutive metadata edits", status: "To Do",
+			assignee: [], labels: [], dependencies: [], createdDate: "2025-01-01" };
+		const originalUpdate = apiClient.updateTask;
+		let releaseFirst!: () => void;
+		const firstResponse = new Promise<void>((resolve) => { releaseFirst = resolve; });
+		const writes: Array<{ priority?: string; expectedRevision?: string }> = [];
+		apiClient.updateTask = async (_id, updates) => {
+			writes.push(updates);
+			if (writes.length === 1) await firstResponse;
+			else if (updates.expectedRevision !== "first-save") throw new ApiError("Task changed", 409, "TASK_CHANGED");
+			return { ...task, priority: updates.priority, revision: writes.length === 1 ? "first-save" : "second-save" };
+		};
+		try {
+			const container = document.getElementById("root")!;
+			activeRoot = createRoot(container);
+			const renderTask = async (current: Task) => {
+				await act(async () => { activeRoot?.render(<ThemeProvider><TaskDetailsModal task={current} isOpen={true} onClose={() => {}} /></ThemeProvider>); });
+			};
+			await renderTask(task);
+			await act(async () => { clickElement(findButton(container, "Edit")!); });
+			const priority = Array.from(container.querySelectorAll("select")).find((select) => select.textContent?.includes("No Priority"))!;
+			const changePriority = async (value: string) => {
+				await act(async () => {
+					priority.value = value;
+					priority.dispatchEvent(new window.Event("change", { bubbles: true }));
+				});
+			};
+			await changePriority("high");
+			await changePriority("low");
+			await act(async () => { releaseFirst(); });
+			await waitFor(() => writes.length === 2);
+			expect(writes.map((write) => write.priority)).toEqual(["high", "low"]);
+			expect(writes.map((write) => write.expectedRevision)).toEqual(["opened", "first-save"]);
+			expect(findButton(container, "Save")?.disabled).toBe(false);
+			expect(container.textContent).not.toContain("A newer version of this task is available");
+			await renderTask({ ...task, priority: "low", revision: "second-save" });
+			expect(findButton(container, "Save")?.disabled).toBe(false);
+			await renderTask({ ...task, priority: "medium", revision: "external-change" });
+			expect(container.textContent).toContain("A newer version of this task is available");
+			expect(findButton(container, "Save")?.disabled).toBe(true);
+		} finally {
+			releaseFirst();
+			apiClient.updateTask = originalUpdate;
+		}
+	});
+
 	it("requires an explicit refresh to discard edits when a newer task arrives", async () => {
 		setupDom();
 

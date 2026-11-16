@@ -25,6 +25,7 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   onSaved?: () => Promise<void> | void; // refresh callback
+  onTaskUpdated?: (task: Task) => void; // Acknowledges a write before older parent reads can arrive
   onSubmit?: (taskData: Partial<Task>) => Promise<void>; // For creating new tasks
   onArchive?: () => Promise<void> | void; // For archiving tasks
   onDependencyCleanup?: (taskId: string, cleanedTaskIds: string[]) => void; // Reports records that lost a reference
@@ -187,6 +188,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   isOpen,
   onClose,
   onSaved,
+  onTaskUpdated,
   onSubmit,
   onArchive,
   onDependencyCleanup,
@@ -222,6 +224,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const formRevisionRef = useRef(task?.revision);
   const lastIncomingVersionRef = useRef<string | undefined>(undefined);
   const editSessionRef = useRef(0);
+  const updateQueueRef = useRef<Promise<void>>(Promise.resolve());
   const saveInFlightRef = useRef(false);
   const [newVersionAvailable, setNewVersionAvailable] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -497,7 +500,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
     const session = editSessionRef.current;
     const owner = `${identity}\0${session}`;
     setPendingUpdates(current => ({ identity: owner, count: current.identity === owner ? current.count + 1 : 1 }));
-    try {
+    // Read the revision only after earlier writes have acknowledged their version.
+    const result = updateQueueRef.current.then(async () => {
+      if (modalIdentityRef.current !== identity || editSessionRef.current !== session) {
+        throw new Error("The task editing session ended before this change could be saved.");
+      }
       const updated = await apiClient.updateTask(task.id, { ...updates, expectedRevision: formRevisionRef.current });
       if (modalIdentityRef.current === identity && editSessionRef.current === session) {
         formRevisionRef.current = updated.revision;
@@ -505,8 +512,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
           task: updated, isCreateMode: false, isDraftMode, availableStatuses,
           defaultDefinitionOfDone, createModeAssignee,
         });
+        onTaskUpdated?.(updated);
       }
       return updated;
+    });
+    updateQueueRef.current = result.then(() => {}, () => {});
+    try {
+      return await result;
     } catch (error) {
       if (modalIdentityRef.current === identity && editSessionRef.current === session && isTaskChangedError(error)) setNewVersionAvailable(true);
       throw error;
@@ -944,7 +956,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
       } else if (task) {
         Object.assign(taskData, buildDefinitionOfDoneEditPayload());
         // Update existing task
-        taskData.expectedRevision = formRevisionRef.current;
         const updated = await persistTaskUpdates(taskData);
         if (!isCurrent()) return;
         resetForm(buildTaskDetailsFormState({

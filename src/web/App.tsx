@@ -216,6 +216,15 @@ function AppContent() {
   modalRef.current = modal;
   // Advanced by every completed data refresh, whether or not the records visibly changed.
   const [dataVersion, setDataVersion] = useState(0);
+  const detailReadGenerationRef = useRef(0);
+
+  const acknowledgeTaskUpdate = useCallback((updated: Task) => {
+    // A read started before this successful write cannot replace its acknowledged record.
+    detailReadGenerationRef.current += 1;
+    setModal(current => current.kind === 'detail' && current.id === updated.id
+      ? { ...current, value: updated } : current);
+    setDataVersion(version => version + 1);
+  }, []);
 
   const openDetailModal = useCallback(
     (id: string, options: { isDraft?: boolean; fromRoute?: boolean; record?: Task | TaskDetail } = {}) => {
@@ -777,19 +786,20 @@ function AppContent() {
   const detailId = modal.kind === 'detail' ? modal.id : null;
   useEffect(() => {
     if (detailSession === null || detailId === null) return;
+    const generation = ++detailReadGenerationRef.current;
     let active = true;
     void apiClient
       .fetchTask(detailId)
       .then(detail => {
-        if (!active) return;
+        if (!active || generation !== detailReadGenerationRef.current) return;
         setModal(current =>
-          current.kind === 'detail' && current.session === detailSession && current.id === detailId
+          generation === detailReadGenerationRef.current && current.kind === 'detail' && current.session === detailSession && current.id === detailId
             ? { ...current, value: detail }
             : current,
         );
       })
       .catch(error => {
-        if (!active) return;
+        if (!active || generation !== detailReadGenerationRef.current) return;
         const current = modalRef.current;
         if (current.kind !== 'detail' || current.session !== detailSession || current.id !== detailId) return;
         if (current.value !== null) return;
@@ -1073,6 +1083,7 @@ function AppContent() {
         isOpen={showModal}
         onClose={handleCloseModal}
         onSaved={refreshData}
+        onTaskUpdated={acknowledgeTaskUpdate}
         onSubmit={handleSubmitTask}
         onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
         onDependencyCleanup={reportDependencyCleanup}
