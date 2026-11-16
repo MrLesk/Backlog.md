@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { isReadOnlyTask, isWorkingCopyTask, type AcceptanceCriterion, type Milestone, type Task, type TaskComment } from "../../types";
 import { type TaskDetail, taskDependencyGraph, taskReadiness } from "../../core/task-detail";
 import Modal from "./Modal";
-import { apiClient, NetworkError, readDemotionFailureCause, readMovedFailureState } from "../lib/api";
+import { apiClient, ApiError, NetworkError, readDemotionFailureCause, readMovedFailureState } from "../lib/api";
 import { useTheme } from "../contexts/ThemeContext";
 import MDEditor from "@uiw/react-md-editor";
 import AcceptanceCriteriaEditor from "./AcceptanceCriteriaEditor";
@@ -45,7 +45,9 @@ interface Props {
 
 type Mode = "preview" | "edit" | "create";
 
-type TaskUpdatePayload = Omit<Partial<Task>, "dueDate" | "project"> & {
+type TaskUpdatePayload = Omit<Partial<Task>, "dueDate" | "project" | "milestone"> & {
+  expectedRevision?: string;
+  milestone?: string | null;
 	dueDate?: string | null;
   project?: string | null;
   definitionOfDoneAdd?: string[];
@@ -92,6 +94,11 @@ const EMPTY_TASKS: Task[] = [];
 const containsCommentDelimiterLine = (value: string): boolean => /^\s*---\s*$/m.test(value.replace(/\r\n/g, "\n"));
 
 const areJsonEqual = (first: unknown, second: unknown): boolean => JSON.stringify(first) === JSON.stringify(second);
+
+const isTaskChangedError = (error: unknown): boolean =>
+  error instanceof ApiError && error.status === 409 && typeof error.data === "object" &&
+  error.data !== null && "code" in error.data && error.data.code === "TASK_CHANGED";
+
 
 const isEditableKeyboardTarget = (target: EventTarget | null): boolean =>
   target instanceof Element &&
@@ -204,14 +211,23 @@ export const TaskDetailsModal: React.FC<Props> = ({
   // Promoting a draft replaces it with a new task ID, which the Drafts page does through its own
   // Promote action, so the popup shows the draft status without turning the field into a second one.
   const isOpenDraft = (task?.status ?? "").trim().toLowerCase() === "draft";
-  const demotionIdentity = [isOpen ? "open" : "closed", task?.id, task?.source, task?.branch, isOpenDraft ? "draft" : "task"].join("\0");
-  const demotionIdentityRef = useRef(demotionIdentity);
-  demotionIdentityRef.current = demotionIdentity;
+  const modalIdentity = [isOpen ? "open" : "closed", task?.id, task?.source, task?.branch, isOpenDraft ? "draft" : "task"].join("\0");
+  const modalIdentityRef = useRef(modalIdentity);
+  modalIdentityRef.current = modalIdentity;
   const [mode, setMode] = useState<Mode>(isCreateMode ? "create" : "preview");
   const modeRef = useRef(mode);
   const previousTaskId = useRef(task?.id ?? "");
   const previousIsOpen = useRef(isOpen);
   const formBaselineRef = useRef<TaskDetailsFormState | null>(null);
+  const formRevisionRef = useRef(task?.revision);
+  const lastIncomingVersionRef = useRef<string | undefined>(undefined);
+  const editSessionRef = useRef(0);
+  const saveInFlightRef = useRef(false);
+  const [newVersionAvailable, setNewVersionAvailable] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [pendingUpdates, setPendingUpdates] = useState({ identity: modalIdentity, count: 0 });
+  const pendingOwner = `${modalIdentity}\0${editSessionRef.current}`;
+  const hasPendingUpdates = pendingUpdates.identity === pendingOwner && pendingUpdates.count > 0;
   const activeDemotionRequest = useRef<{ identity: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [demoting, setDemoting] = useState(false);
@@ -229,7 +245,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [commentAuthor, setCommentAuthor] = useState("");
   const [commentSaving, setCommentSaving] = useState(false);
   const [commentsChanged, setCommentsChanged] = useState(false);
-  const preserveEditModeAfterCommentRefresh = useRef(false);
   const [finalSummary, setFinalSummary] = useState(task?.finalSummary || "");
   const [criteria, setCriteria] = useState<AcceptanceCriterion[]>(task?.acceptanceCriteriaItems || []);
   const defaultDefinitionOfDone = useMemo(
@@ -448,19 +463,62 @@ export const TaskDetailsModal: React.FC<Props> = ({
     [task, availableTasks, availableStatuses],
   );
 
-  // Keep a baseline for dirty-check
-  const baseline = useMemo(() => ({
-    title: task?.title || "",
-    description: task?.description || "",
-    plan: task?.implementationPlan || "",
-    notes: task?.implementationNotes || "",
-    finalSummary: task?.finalSummary || "",
-    dueDate: task?.dueDate || "",
-    criteria: JSON.stringify(task?.acceptanceCriteriaItems || []),
-    definitionOfDone: JSON.stringify(task?.definitionOfDoneItems || (isCreateMode ? defaultDefinitionOfDone : [])),
-  }), [task, defaultDefinitionOfDone, isCreateMode]);
+  const resetForm = useCallback((next: TaskDetailsFormState, revision?: string) => {
+    setTitle(next.title);
+    setDescription(next.description);
+    setPlan(next.plan);
+    setNotes(next.notes);
+    setDisplayComments(next.displayComments);
+    setCommentSaving(false);
+    setCommentsChanged(false);
+    setFinalSummary(next.finalSummary);
+    setCriteria(next.criteria);
+    setDefinitionOfDone(next.definitionOfDone);
+    setStatus(next.status);
+    setAssignee(next.assignee);
+    setLabels(next.labels);
+    setPriority(next.priority);
+    setTaskType(next.taskType);
+    setProject(next.project);
+    setDependencies(next.dependencies);
+    setReferences(next.references);
+    setModifiedFiles(next.modifiedFiles);
+    setMilestone(next.milestone);
+    setDueDate(next.dueDate);
+    formBaselineRef.current = next;
+    formRevisionRef.current = revision;
+    setNewVersionAvailable(false);
+    setError(null);
+  }, []);
+
+  const persistTaskUpdates = async (updates: TaskUpdatePayload): Promise<Task> => {
+    if (!task) throw new Error("No task is open for editing.");
+    const identity = modalIdentityRef.current;
+    const session = editSessionRef.current;
+    const owner = `${identity}\0${session}`;
+    setPendingUpdates(current => ({ identity: owner, count: current.identity === owner ? current.count + 1 : 1 }));
+    try {
+      const updated = await apiClient.updateTask(task.id, { ...updates, expectedRevision: formRevisionRef.current });
+      if (modalIdentityRef.current === identity && editSessionRef.current === session) {
+        formRevisionRef.current = updated.revision;
+        formBaselineRef.current = buildTaskDetailsFormState({
+          task: updated, isCreateMode: false, isDraftMode, availableStatuses,
+          defaultDefinitionOfDone, createModeAssignee,
+        });
+      }
+      return updated;
+    } catch (error) {
+      if (modalIdentityRef.current === identity && editSessionRef.current === session && isTaskChangedError(error)) setNewVersionAvailable(true);
+      throw error;
+    } finally {
+      setPendingUpdates(current => current.identity === owner ? { identity: owner, count: current.count - 1 } : current);
+    }
+  };
+
+  const baseline = formBaselineRef.current;
 
   const isDirty = useMemo(() => {
+    if (!baseline) return false;
     return (
       title !== baseline.title ||
       description !== baseline.description ||
@@ -468,8 +526,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
       notes !== baseline.notes ||
       finalSummary !== baseline.finalSummary ||
       dueDate !== baseline.dueDate ||
-      JSON.stringify(criteria) !== baseline.criteria ||
-      JSON.stringify(definitionOfDone) !== baseline.definitionOfDone
+      JSON.stringify(criteria) !== JSON.stringify(baseline.criteria) ||
+      JSON.stringify(definitionOfDone) !== JSON.stringify(baseline.definitionOfDone)
     );
   }, [title, description, plan, notes, finalSummary, dueDate, criteria, definitionOfDone, baseline]);
 
@@ -480,14 +538,20 @@ export const TaskDetailsModal: React.FC<Props> = ({
   useEffect(
     () => () => {
       activeDemotionRequest.current = null;
+      editSessionRef.current += 1;
     },
     [],
   );
 
   useEffect(() => {
+    editSessionRef.current += 1;
     activeDemotionRequest.current = null;
+    saveInFlightRef.current = false;
+    setSaving(false);
     setDemoting(false);
-  }, [demotionIdentity]);
+    setRefreshing(false);
+    setNewVersionAvailable(false);
+  }, [modalIdentity]);
 
   // Intercept Escape to cancel edit (not close modal) when in edit mode
   useEffect(() => {
@@ -513,7 +577,23 @@ export const TaskDetailsModal: React.FC<Props> = ({
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () => window.removeEventListener("keydown", onKey, { capture: true } as any);
-  }, [mode, title, description, plan, notes, finalSummary, criteria, definitionOfDone, status, availableStatuses, isReadOnly]);
+  }, [mode, title, description, plan, notes, finalSummary, criteria, definitionOfDone, status, availableStatuses, isReadOnly, newVersionAvailable, refreshing, hasPendingUpdates]);
+
+  useEffect(() => {
+    if (!isOpen || isCreateMode || mode !== "edit" || saving || hasPendingUpdates) return;
+    const previous = formBaselineRef.current;
+    if (!previous) return;
+    const next = buildTaskDetailsFormState({ task, isCreateMode, isDraftMode, availableStatuses,
+      defaultDefinitionOfDone, createModeAssignee });
+    const incoming = task?.revision ?? JSON.stringify(next);
+    if (lastIncomingVersionRef.current === incoming) return;
+    lastIncomingVersionRef.current = incoming;
+    const changed = task?.revision !== undefined && formRevisionRef.current !== undefined
+      ? task.revision !== formRevisionRef.current
+      : !areJsonEqual(previous, next);
+    if (changed) setNewVersionAvailable(true);
+  }, [task, mode, isOpen, isCreateMode, saving, hasPendingUpdates, isDraftMode, availableStatuses,
+    defaultDefinitionOfDone, createModeAssignee]);
 
   // Reset local state when task changes or modal opens
   useEffect(() => {
@@ -536,10 +616,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     const previousFormState = formBaselineRef.current;
     const sameOpenModalRefresh =
       Boolean(previousFormState) && isOpen && previousIsOpen.current && previousTaskId.current === nextTaskId;
-    const shouldPreserveEditMode =
-      !isCreateMode &&
-      sameOpenModalRefresh &&
-      (modeRef.current === "edit" || preserveEditModeAfterCommentRefresh.current);
+    if (!isCreateMode && sameOpenModalRefresh && modeRef.current === "edit") return;
 
     if (sameOpenModalRefresh && previousFormState) {
       setTitle((current) => preserveDirtyRefreshValue(current, previousFormState.title, nextFormState.title));
@@ -593,44 +670,23 @@ export const TaskDetailsModal: React.FC<Props> = ({
         preserveDirtyRefreshValue(current, previousFormState.milestone, nextFormState.milestone),
       );
       setDueDate((current) => preserveDirtyRefreshValue(current, previousFormState.dueDate, nextFormState.dueDate));
-      setMode(shouldPreserveEditMode ? "edit" : isCreateMode ? "create" : modeRef.current);
-      preserveEditModeAfterCommentRefresh.current = false;
+      setMode(isCreateMode ? "create" : modeRef.current);
       previousTaskId.current = nextTaskId;
       previousIsOpen.current = isOpen;
       formBaselineRef.current = nextFormState;
+      formRevisionRef.current = task?.revision;
+      setNewVersionAvailable(false);
       setError(null);
       return;
     }
 
-    setTitle(nextFormState.title);
-    setDescription(nextFormState.description);
-    setPlan(nextFormState.plan);
-    setNotes(nextFormState.notes);
-    setDisplayComments(nextFormState.displayComments);
+    resetForm(nextFormState, task?.revision);
+    lastIncomingVersionRef.current = task?.revision ?? JSON.stringify(nextFormState);
     setCommentBody("");
     setCommentAuthor("");
-    setCommentSaving(false);
-    setCommentsChanged(false);
-    setFinalSummary(nextFormState.finalSummary);
-    setCriteria(nextFormState.criteria);
-    setDefinitionOfDone(nextFormState.definitionOfDone);
-    setStatus(nextFormState.status);
-    setAssignee(nextFormState.assignee);
-    setLabels(nextFormState.labels);
-    setPriority(nextFormState.priority);
-    setTaskType(nextFormState.taskType);
-    setProject(nextFormState.project);
-    setDependencies(nextFormState.dependencies);
-    setReferences(nextFormState.references);
-    setModifiedFiles(nextFormState.modifiedFiles);
-    setMilestone(nextFormState.milestone);
-    setDueDate(nextFormState.dueDate);
     setMode(isCreateMode ? "create" : "preview");
-    preserveEditModeAfterCommentRefresh.current = false;
     previousTaskId.current = nextTaskId;
     previousIsOpen.current = isOpen;
-    formBaselineRef.current = nextFormState;
-    setError(null);
   }, [task, isOpen, isCreateMode, isDraftMode, availableStatuses, defaultDefinitionOfDone, createModeAssignee]);
 
   const refreshAfterCommentChange = useCallback(() => {
@@ -681,20 +737,25 @@ export const TaskDetailsModal: React.FC<Props> = ({
       const confirmDiscard = window.confirm("Discard unsaved changes?");
       if (!confirmDiscard) return;
     }
+    editSessionRef.current += 1;
+    setRefreshing(false);
+    saveInFlightRef.current = false;
+    setSaving(false);
     if (isCreateMode) {
       // In create mode, close the modal on cancel
       onClose();
     } else {
-      setTitle(task?.title || "");
-      setDescription(task?.description || "");
-      setPlan(task?.implementationPlan || "");
-      setNotes(task?.implementationNotes || "");
+      // Props may still precede an acknowledged own write. Cancel discards local edits,
+      // while retaining that saved baseline unless a newer incoming version was reported.
+      const next = newVersionAvailable || !formBaselineRef.current
+        ? buildTaskDetailsFormState({ task, isCreateMode, isDraftMode, availableStatuses,
+          defaultDefinitionOfDone, createModeAssignee })
+        : formBaselineRef.current;
+      resetForm(next, newVersionAvailable ? task?.revision : formRevisionRef.current);
+      lastIncomingVersionRef.current = task?.revision;
       setCommentBody("");
       setCommentAuthor("");
-      setFinalSummary(task?.finalSummary || "");
-      setDueDate(task?.dueDate || "");
-      setCriteria(task?.acceptanceCriteriaItems || []);
-      setDefinitionOfDone(task?.definitionOfDoneItems || []);
+      modeRef.current = "preview";
       setMode("preview");
       refreshAfterCommentChange();
     }
@@ -733,7 +794,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   };
 
   const buildDefinitionOfDoneEditPayload = (): TaskUpdatePayload => {
-    const original = task?.definitionOfDoneItems ?? [];
+    const original = formBaselineRef.current?.definitionOfDone ?? [];
     const cleanedCurrent = normalizeChecklistItems(definitionOfDone);
     const originalByIndex = new Map(original.map((item) => [item.index, item]));
     const currentByIndex = new Map(cleanedCurrent.map((item) => [item.index, item]));
@@ -794,8 +855,45 @@ export const TaskDetailsModal: React.FC<Props> = ({
     return payload;
   };
 
+  const handleRefreshTask = async () => {
+    if (!task || refreshing) return;
+    const identity = modalIdentityRef.current;
+    const session = editSessionRef.current;
+    const isCurrent = () => modalIdentityRef.current === identity && editSessionRef.current === session;
+    const incomingAtStart = lastIncomingVersionRef.current;
+    setRefreshing(true);
+    setError(null);
+    try {
+      const latest = await apiClient.fetchTask(task.id);
+      if (!isCurrent()) return;
+      const next = buildTaskDetailsFormState({
+        task: latest, isCreateMode: false, isDraftMode, availableStatuses,
+        defaultDefinitionOfDone, createModeAssignee,
+      });
+      const fetchedVersion = latest.revision ?? JSON.stringify(next);
+      if (lastIncomingVersionRef.current !== incomingAtStart && lastIncomingVersionRef.current !== fetchedVersion) {
+        setNewVersionAvailable(true);
+        return;
+      }
+      resetForm(next, latest.revision);
+      setCommentBody("");
+      setCommentAuthor("");
+      modeRef.current = "edit";
+      setMode("edit");
+      if (onSaved) await onSaved();
+    } catch (err) {
+      if (isCurrent()) setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (isCurrent()) setRefreshing(false);
+    }
+  };
+
   const handleSave = async () => {
-    if (demoting) return;
+    if (demoting || newVersionAvailable || refreshing || hasPendingUpdates || saveInFlightRef.current) return;
+    const identity = modalIdentityRef.current;
+    const session = editSessionRef.current;
+    const isCurrent = () => modalIdentityRef.current === identity && editSessionRef.current === session;
+    saveInFlightRef.current = true;
     setSaving(true);
     setError(null);
 
@@ -803,6 +901,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     if (isCreateMode && !title.trim()) {
       setError("Title is required");
       setSaving(false);
+      saveInFlightRef.current = false;
       return;
     }
 
@@ -845,12 +944,24 @@ export const TaskDetailsModal: React.FC<Props> = ({
       } else if (task) {
         Object.assign(taskData, buildDefinitionOfDoneEditPayload());
         // Update existing task
-        await apiClient.updateTask(task.id, taskData);
+        taskData.expectedRevision = formRevisionRef.current;
+        const updated = await persistTaskUpdates(taskData);
+        if (!isCurrent()) return;
+        resetForm(buildTaskDetailsFormState({
+          task: updated, isCreateMode: false, isDraftMode, availableStatuses,
+          defaultDefinitionOfDone, createModeAssignee,
+        }), updated.revision);
+        modeRef.current = "preview";
         setMode("preview");
         if (onSaved) await onSaved();
         setCommentsChanged(false);
       }
     } catch (err) {
+      if (!isCurrent()) return;
+      if (isTaskChangedError(err)) {
+        setNewVersionAvailable(true);
+        return;
+      }
       // Extract and display the error message from API response
       let errorMessage = 'Failed to save task';
 
@@ -864,7 +975,10 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
       setError(errorMessage);
     } finally {
-      setSaving(false);
+      if (isCurrent()) {
+        saveInFlightRef.current = false;
+        setSaving(false);
+      }
     }
   };
 
@@ -876,7 +990,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     const next = (criteria || []).map((c) => (c.index === index ? { ...c, checked } : c));
     setCriteria(next);
     try {
-      await apiClient.updateTask(task.id, { acceptanceCriteriaItems: next });
+      await persistTaskUpdates({ acceptanceCriteriaItems: next });
       if (onSaved) await onSaved();
     } catch (err) {
       // rollback
@@ -895,7 +1009,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
       const updates: TaskUpdatePayload = checked
         ? { definitionOfDoneCheck: [index] }
         : { definitionOfDoneUncheck: [index] };
-      await apiClient.updateTask(task.id, updates);
+      await persistTaskUpdates(updates);
       if (onSaved) await onSaved();
     } catch (err) {
       setDefinitionOfDone(definitionOfDone);
@@ -925,7 +1039,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     // Only update server if editing existing task
     if (task) {
       try {
-        await apiClient.updateTask(task.id, updates);
+        await persistTaskUpdates(updates);
         if (onSaved) await onSaved();
       } catch (err) {
         console.error("Failed to update task metadata", err);
@@ -953,7 +1067,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     setTaskType(nextType);
 
     try {
-      const updatedTask = await apiClient.updateTask(task.id, { type: nextType });
+      const updatedTask = await persistTaskUpdates({ type: nextType });
       if (typeUpdateRequestRef.current !== requestId) return;
       setTaskType(updatedTask.type ?? "");
       if (onSaved) {
@@ -991,9 +1105,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
     }
     setCommentSaving(true);
     setError(null);
-    preserveEditModeAfterCommentRefresh.current = true;
     try {
-      const updatedTask = await apiClient.updateTask(task.id, {
+      const updatedTask = await persistTaskUpdates({
         commentsAppend: [body],
         ...(author.length > 0 && { commentAuthor: author }),
       });
@@ -1002,7 +1115,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
       setCommentBody("");
       setCommentAuthor("");
     } catch (err) {
-      preserveEditModeAfterCommentRefresh.current = false;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setCommentSaving(false);
@@ -1015,10 +1127,10 @@ export const TaskDetailsModal: React.FC<Props> = ({
 		if (!task || !canDemote || activeDemotionRequest.current !== null) return;
 		if (!window.confirm(`Demote "${task.title}" to draft? It will be moved to the drafts folder.`)) return;
 
-		const request = { identity: demotionIdentity };
+		const request = { identity: modalIdentity };
 		activeDemotionRequest.current = request;
 		const isCurrentRequest = () =>
-			activeDemotionRequest.current === request && demotionIdentityRef.current === request.identity;
+			activeDemotionRequest.current === request && modalIdentityRef.current === request.identity;
 		const finishWithRefreshWarning = async (message: string) => {
 			window.dispatchEvent(new window.Event("drafts-updated"));
 			try {
@@ -1113,11 +1225,21 @@ export const TaskDetailsModal: React.FC<Props> = ({
         if (mode === "edit" && isDirty) {
           if (!window.confirm("Discard unsaved changes and close?")) return;
         }
+        editSessionRef.current += 1;
         refreshAfterCommentChange();
         onClose();
       }}
       title={isCreateMode ? (isDraftMode ? "Create New Draft" : "Create New Task") : `${displayId} — ${task.title}`}
       maxWidthClass="max-w-5xl"
+      headerNotice={newVersionAvailable && mode === "edit" && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-100">
+          <span>A newer version of this task is available.</span>
+          <button type="button" onClick={() => void handleRefreshTask()} disabled={refreshing}
+            className="rounded-md border border-amber-400 px-3 py-2 font-medium hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50 dark:hover:bg-amber-900/50">
+            {refreshing ? "Refreshing…" : "Refresh and discard edits"}
+          </button>
+        </div>
+      )}
       disableEscapeClose={mode === "edit" || mode === "create" || demoting}
       actions={
 		<div className="flex flex-nowrap items-center justify-end gap-2">
@@ -1164,7 +1286,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
               </button>
 	              <button
 		                onClick={() => void handleSave()}
-		                disabled={saving || demoting}
+		                disabled={saving || demoting || newVersionAvailable || refreshing || hasPendingUpdates}
 		                className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200 disabled:opacity-50"
 		                title="Save"
 		              >
@@ -1741,7 +1863,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
                   setTitle(e.target.value);
                 }}
                 onBlur={() => {
-                  if (title.trim() && title !== task.title) {
+                  if (mode === "preview" && title.trim() && title !== task.title) {
                     void handleInlineMetaUpdate({ title: title.trim() });
                   }
                 }}
