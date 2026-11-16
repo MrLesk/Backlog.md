@@ -232,7 +232,7 @@ showing what it changes in the architecture.
 
 ## <img src="./.github/web-interface-256.png" alt="Web Interface" width="28" height="28" align="center"> Web Interface
 
-Launch a web interface for visual task management on the local machine. The server listens on `127.0.0.1` and is not
+Launch a web interface for visual task management on the local machine. By default, the server listens on `127.0.0.1` and is not
 reachable from other devices on the LAN or VPN:
 
 ```bash

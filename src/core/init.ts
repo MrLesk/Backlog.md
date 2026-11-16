@@ -8,6 +8,7 @@ import {
 import { DEFAULT_INIT_CONFIG } from "../constants/index.ts";
 import type { BacklogConfig } from "../types/index.ts";
 import { normalizeProjectBacklogDirectory } from "../utils/backlog-directory.ts";
+import { normalizeBrowserHostname } from "../utils/browser-host.ts";
 import {
 	formatMcpClientSetupCommand,
 	getMcpClientSetupCommand,
@@ -177,6 +178,7 @@ export async function initializeProject(
 		activeBranchDays:
 			normalizedAdvancedConfig.activeBranchDays ?? existingConfig?.activeBranchDays ?? d.activeBranchDays,
 		defaultPort: normalizedAdvancedConfig.defaultPort ?? existingConfig?.defaultPort ?? d.defaultPort,
+		browserHostname: normalizeBrowserHostname(existingConfig?.browserHostname ?? d.browserHostname),
 		autoOpenBrowser: normalizedAdvancedConfig.autoOpenBrowser ?? existingConfig?.autoOpenBrowser ?? d.autoOpenBrowser,
 		prefixes: existingConfig?.prefixes || {
 			task: normalizedAdvancedConfig.taskPrefix || "task",

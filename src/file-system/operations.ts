@@ -34,6 +34,7 @@ import {
 	resolveBacklogDirectory,
 	resolveBacklogDirectoryFromRootConfig,
 } from "../utils/backlog-directory.ts";
+import { normalizeBrowserHostname } from "../utils/browser-host.ts";
 import { decisionIdKey, decisionIdsEqual, findDecisionById } from "../utils/decision-id.ts";
 import {
 	documentIdKey,
@@ -2284,6 +2285,9 @@ ${description || `Milestone: ${title}`}`,
 			delete normalizedConfig.backlogDirectory;
 		}
 		const configPath = this.resolvedConfigPath;
+		if (normalizedConfig.browserHostname !== undefined) {
+			normalizedConfig.browserHostname = normalizeBrowserHostname(normalizedConfig.browserHostname);
+		}
 		const content = this.serializeConfig(normalizedConfig);
 		await Bun.write(configPath, content);
 		this.cachedConfig = normalizedConfig;
@@ -2315,6 +2319,21 @@ ${description || `Milestone: ${title}`}`,
 	parseConfig(content: string): BacklogConfig {
 		const config: Partial<BacklogConfig> = {};
 		const parsedDefinitionOfDone = this.parseDefinitionOfDone(content);
+		const hostnameYaml = extractConfigKeyYaml(content, "browser_hostname");
+		if (hostnameYaml !== undefined) {
+			const parsed = readYamlKey(hostnameYaml, "browser_hostname");
+			if ("error" in parsed) throw configSyntaxError(this.resolvedConfigPath, "browser_hostname", parsed.error);
+			try {
+				config.browserHostname = normalizeBrowserHostname(parsed.value);
+			} catch (error) {
+				throw configValueError(
+					this.resolvedConfigPath,
+					"browser_hostname",
+					(error as Error).message,
+					"Use a quoted hostname or IP address without a protocol, port, or path.",
+				);
+			}
+		}
 		// Every list key goes through the same strict parse, which throws rather than guess.
 		const parseListValue = (key: ConfigListKey) => parseConfigListValue(content, key, this.resolvedConfigPath);
 		config.statuses = parseListValue("statuses");
@@ -2422,6 +2441,7 @@ ${description || `Milestone: ${title}`}`,
 			autoOpenBrowser: config.autoOpenBrowser,
 			hideEmptyColumns: config.hideEmptyColumns,
 			defaultPort: config.defaultPort,
+			browserHostname: config.browserHostname,
 			remoteOperations: config.remoteOperations,
 			autoCommit: config.autoCommit,
 			filesystemOnly: config.filesystemOnly,
@@ -2462,6 +2482,7 @@ ${description || `Milestone: ${title}`}`,
 			...(typeof config.autoOpenBrowser === "boolean" ? [`auto_open_browser: ${config.autoOpenBrowser}`] : []),
 			...(typeof config.hideEmptyColumns === "boolean" ? [`hide_empty_columns: ${config.hideEmptyColumns}`] : []),
 			...(config.defaultPort ? [`default_port: ${config.defaultPort}`] : []),
+			...(config.browserHostname !== undefined ? [`browser_hostname: ${JSON.stringify(config.browserHostname)}`] : []),
 			...(typeof config.remoteOperations === "boolean" ? [`remote_operations: ${config.remoteOperations}`] : []),
 			...(typeof config.autoCommit === "boolean" ? [`auto_commit: ${config.autoCommit}`] : []),
 			...(typeof config.filesystemOnly === "boolean" ? [`filesystem_only: ${config.filesystemOnly}`] : []),

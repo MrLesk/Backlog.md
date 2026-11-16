@@ -82,6 +82,7 @@ import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
+import { DEFAULT_BROWSER_HOSTNAME, REMOTE_ACCESS_WARNING } from "./utils/browser-host.ts";
 import { launchBrowser } from "./utils/browser-launch.ts";
 import { formatDependencyCleanupMessage } from "./utils/dependency-graph.ts";
 import {
@@ -6154,20 +6155,30 @@ addHelpSchema(program.command("cleanup"), {
 // Browser command for web UI
 program
 	.command("browser")
-	.description("open browser interface on this machine only at 127.0.0.1 (press Ctrl+C or Cmd+C to stop)")
+	.description("open browser interface (default host: 127.0.0.1; press Ctrl+C or Cmd+C to stop)")
 	.option("-p, --port <port>", "port to run server on")
+	.option(
+		"--host <hostname>",
+		"listening hostname or IP for this run. DANGER: remote access is unauthenticated; see warning below",
+	)
 	.option("--no-open", "don't automatically open browser")
 	.option("--non-interactive", "automatically use next free port without asking")
+	.addHelpText("after", `\n${"=".repeat(72)}\n${REMOTE_ACCESS_WARNING}\n${"=".repeat(72)}\n`)
 	.action(async (options) => {
 		try {
 			const cwd = await requireProjectRoot();
-			const { BacklogServer, findNextAvailablePort, isPortAvailable } = await import("./server/index.ts");
+			const { BacklogServer, findNextAvailablePort, isPortAvailable, resolveBrowserListeningAddress } = await import(
+				"./server/index.ts"
+			);
 			const server = new BacklogServer(cwd);
 
 			// Load config to get default port
 			const core = new Core(cwd);
 			const config = await core.filesystem.loadConfig();
 			const defaultPort = config?.defaultPort ?? 6420;
+			const hostname = await resolveBrowserListeningAddress(
+				options.host ?? config?.browserHostname ?? DEFAULT_BROWSER_HOSTNAME,
+			);
 
 			let port = Number.parseInt(options.port || defaultPort.toString(), 10);
 			if (Number.isNaN(port) || port < 1 || port > 65535) {
@@ -6176,8 +6187,8 @@ program
 			}
 
 			// Pre-check port availability and offer interactive retry
-			if (!(await isPortAvailable(port))) {
-				const nextPort = await findNextAvailablePort(port + 1);
+			if (!(await isPortAvailable(port, hostname))) {
+				const nextPort = await findNextAvailablePort(port + 1, 65535, hostname);
 				if (nextPort === null) {
 					console.error(`No available port found after ${port}. Use --port to specify an available port.`);
 					process.exit(1);
@@ -6206,7 +6217,7 @@ program
 				}
 			}
 
-			await server.start(port, options.open !== false);
+			await server.start(port, options.open !== false, hostname);
 
 			// Graceful shutdown on common termination signals.
 			let shuttingDown = false;

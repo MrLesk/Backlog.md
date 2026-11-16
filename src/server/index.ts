@@ -1,6 +1,8 @@
+import { lookup } from "node:dns/promises";
 import net from "node:net";
 import { dirname, isAbsolute, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
+import pc from "picocolors";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
 import { CONTENT_RECORD_WORDS, Core, formatCleanupResult, RecordRefusedError } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
@@ -21,6 +23,13 @@ import {
 	type Task,
 	type TaskUpdateInput,
 } from "../types/index.ts";
+import {
+	browserUrl,
+	DEFAULT_BROWSER_HOSTNAME,
+	isLoopbackBrowserHostname,
+	normalizeBrowserHostname,
+	REMOTE_ACCESS_WARNING,
+} from "../utils/browser-host.ts";
 import { launchBrowser } from "../utils/browser-launch.ts";
 import type { BrowserLoadingState } from "../utils/browser-loading-state.ts";
 import { normalizeDueDate } from "../utils/due-date.ts";
@@ -221,26 +230,33 @@ export function markHtmlBundleNoStore(bundle: Bun.HTMLBundle): Bun.HTMLBundle {
 
 const spaIndexHtml = markHtmlBundleNoStore(indexHtml);
 const BUNDLE_ASSET_DIR_ENV = "BACKLOG_BUNDLE_ASSET_DIR";
-const BROWSER_HOST = "127.0.0.1";
+export async function resolveBrowserListeningAddress(hostname: string): Promise<string> {
+	const normalized = normalizeBrowserHostname(hostname);
+	return net.isIP(normalized) ? normalized : (await lookup(normalized)).address;
+}
 const MIN_PORT = 1;
 const MAX_PORT = 65535;
 
-export async function isPortAvailable(port: number): Promise<boolean> {
+export async function isPortAvailable(port: number, hostname = DEFAULT_BROWSER_HOSTNAME): Promise<boolean> {
 	if (!Number.isInteger(port) || port < MIN_PORT || port > MAX_PORT) return false;
-	return new Promise((resolve) => {
+	return new Promise((resolve, reject) => {
 		const srv = net.createServer();
-		srv.listen(port, BROWSER_HOST, () => srv.close(() => resolve(true)));
-		srv.on("error", () => resolve(false));
+		srv.listen(port, hostname, () => srv.close(() => resolve(true)));
+		srv.on("error", (error: NodeJS.ErrnoException) => (error.code === "EADDRINUSE" ? resolve(false) : reject(error)));
 	});
 }
 
-export async function findNextAvailablePort(startPort: number, maxPort = MAX_PORT): Promise<number | null> {
+export async function findNextAvailablePort(
+	startPort: number,
+	maxPort = MAX_PORT,
+	hostname = DEFAULT_BROWSER_HOSTNAME,
+): Promise<number | null> {
 	if (!Number.isInteger(startPort) || !Number.isInteger(maxPort)) return null;
 
 	const firstPort = Math.max(startPort, MIN_PORT);
 	const lastPort = Math.min(maxPort, MAX_PORT);
 	for (let port = firstPort; port <= lastPort; port++) {
-		if (await isPortAvailable(port)) {
+		if (await isPortAvailable(port, hostname)) {
 			return port;
 		}
 	}
@@ -383,7 +399,7 @@ export class BacklogServer {
 		}
 	}
 
-	async start(port?: number, openBrowser = true): Promise<void> {
+	async start(port?: number, openBrowser = true, hostname?: string): Promise<void> {
 		// Prevent duplicate starts (e.g., accidental re-entry)
 		if (this.server) {
 			console.log("Server already running");
@@ -395,6 +411,9 @@ export class BacklogServer {
 
 		// Use config default port if no port specified
 		const finalPort = port ?? config?.defaultPort ?? 6420;
+		const finalHostname = await resolveBrowserListeningAddress(
+			hostname ?? config?.browserHostname ?? DEFAULT_BROWSER_HOSTNAME,
+		);
 		this.projectName = config?.projectName || "Untitled Project";
 
 		// Check if browser should open (config setting or CLI override)
@@ -402,9 +421,18 @@ export class BacklogServer {
 		const shouldOpenBrowser = openBrowser && (config?.autoOpenBrowser ?? true);
 
 		try {
+			if (!isLoopbackBrowserHostname(finalHostname)) {
+				console.warn(
+					pc.bold(
+						pc.red(
+							`\n${"=".repeat(72)}\n${REMOTE_ACCESS_WARNING}\nListening address: ${finalHostname}, port ${finalPort}\n${"=".repeat(72)}\n`,
+						),
+					),
+				);
+			}
 			const serveOptions = {
 				port: finalPort,
-				hostname: BROWSER_HOST,
+				hostname: finalHostname,
 				development: process.env.NODE_ENV === "development",
 				routes: {
 					"/": spaIndexHtml,
@@ -576,7 +604,7 @@ export class BacklogServer {
 				this.restoreRuntimeWorkingDirectory();
 				throw error;
 			}
-			const url = `http://${BROWSER_HOST}:${finalPort}`;
+			const url = browserUrl(finalHostname, finalPort);
 			console.log(`🚀 Backlog.md browser interface running at ${url}`);
 			console.log(`📊 Project: ${this.projectName}`);
 			const stopKey = process.platform === "darwin" ? "Cmd+C" : "Ctrl+C";
@@ -1550,6 +1578,13 @@ export class BacklogServer {
 				return Response.json({ error: "Port must be between 1 and 65535" }, { status: 400 });
 			}
 
+			if (updatedConfig.browserHostname !== undefined) {
+				try {
+					updatedConfig.browserHostname = normalizeBrowserHostname(updatedConfig.browserHostname);
+				} catch (error) {
+					return Response.json({ error: (error as Error).message }, { status: 400 });
+				}
+			}
 			// Save configuration
 			await this.core.filesystem.saveConfig(updatedConfig);
 

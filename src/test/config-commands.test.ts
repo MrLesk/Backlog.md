@@ -215,6 +215,22 @@ describe("Config commands", () => {
 		expect(portOutput.trim()).toBe("7001");
 	});
 
+	it("preserves a manually written hostname without advertising it in config output", async () => {
+		const path = core.filesystem.configFilePath;
+		await Bun.write(path, `${await Bun.file(path).text()}browser_hostname: "0.0.0.0"\n`);
+		await $`bun ${CLI_PATH} config set defaultPort 7001`.cwd(TEST_DIR).quiet();
+		core.filesystem.invalidateConfigCache();
+		expect((await core.filesystem.loadConfig())?.browserHostname).toBe("0.0.0.0");
+		expect(await $`bun ${CLI_PATH} config list`.cwd(TEST_DIR).text()).not.toContain("browserHostname");
+	});
+
+	it("rejects malformed manually written hostnames and wrong YAML types", () => {
+		expect(() => core.filesystem.parseConfig('project_name: P\nbrowser_hostname: "http://localhost"\n')).toThrow(
+			"hostname",
+		);
+		expect(() => core.filesystem.parseConfig("project_name: P\nbrowser_hostname: false\n")).toThrow("hostname");
+	});
+
 	it("round-trips hideEmptyColumns through config get/set/list", async () => {
 		const defaultGet = await $`bun ${CLI_PATH} config get hideEmptyColumns`.cwd(TEST_DIR).text();
 		expect(defaultGet.trim()).toBe("false");
