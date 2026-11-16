@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-11-16T21:14:00Z'
-updated_date: '2026-11-16T21:26:00Z'
+updated_date: '2026-11-16T21:50:00Z'
 labels: []
 dependencies: []
 references:
@@ -59,6 +59,8 @@ Any normal config save currently rebuilds config.yml from recognized fields and 
 Cold and separate context complexity reviews are complete. All four cold findings were reproduced in tests and corrected: uncached scalar reads, escaping/comments, inherited custom key names and custom YAML references. The full suite found a pre-existing one-line JSON escape contract for multiline DoD items; retain it with the yaml doubleQuotedAsJSON option rather than changing the test.
 
 Final validation: 155 tests pass across config-commands, config-migration, config-watcher, enhanced-init, prefix-migration, filesystem and server-hostname. After retaining one-line JSON escaping, 69 tests pass across MCP DoD defaults, config commands, core DoD and server DoD. Types, Biome, native build and compiled smoke pass. The broader suite is still running; its observed escape-format failure is fixed and covered by the 69-test pass. Cold findings were rechecked with no blockers; context complexity review has no blockers.
+
+Broader run finished: 3354 non-DOM tests pass, 13 skip, with two failures; 408 DOM tests pass. One failure was the multiline DoD escape representation, fixed afterward by doubleQuotedAsJSON and verified by the 69-test targeted pass. The other is the already reproduced main-branch document-archive PTY spacing failure; no test assertion was changed. The focused final checks remain green. Full logs: /tmp/backlog804-full.log, /tmp/backlog804-final-tests.log.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
