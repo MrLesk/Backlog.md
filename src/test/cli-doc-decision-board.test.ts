@@ -546,5 +546,23 @@ describe("CLI Integration", () => {
 			const occurrences = overwrittenContent.split("TASK-1").length - 1;
 			expect(occurrences).toBe(1); // Should appear once after overwrite
 		});
+
+		it("should export the board to an absolute path outside the project and a relative path inside it", async () => {
+			const outsideDir = createUniqueTestDir("test-board-export-outside");
+			try {
+				const absolutePath = join(outsideDir, "out", "board.md");
+				const absolute = await $`bun ${CLI_PATH} board export ${absolutePath} --force`.cwd(TEST_DIR).quiet().nothrow();
+				expect(absolute.exitCode).toBe(0);
+				expect(absolute.stdout.toString()).toContain(`Exported board to ${absolutePath}`);
+				expect(await Bun.file(absolutePath).exists()).toBe(true);
+				expect(await Bun.file(join(TEST_DIR, absolutePath)).exists()).toBe(false);
+
+				const relative = await $`bun ${CLI_PATH} board export reports/board.md --force`.cwd(TEST_DIR).quiet().nothrow();
+				expect(relative.exitCode).toBe(0);
+				expect(await Bun.file(join(TEST_DIR, "reports", "board.md")).exists()).toBe(true);
+			} finally {
+				await safeCleanup(outsideDir);
+			}
+		});
 	});
 });
