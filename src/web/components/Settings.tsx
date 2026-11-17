@@ -58,10 +58,9 @@ const Settings: React.FC = () => {
 		}
 	};
 
-	const normalizeDefinitionOfDone = (items: string[] | undefined): string[] | undefined => {
-		const normalized = (items ?? []).map((item) => item.trim()).filter((item) => item.length > 0);
-		return normalized.length > 0 ? normalized : undefined;
-	};
+	// Always returns a list: an empty list tells the server to clear the saved items.
+	const normalizeDefinitionOfDone = (items: string[] | undefined): string[] =>
+		(items ?? []).map((item) => item.trim()).filter((item) => item.length > 0);
 
 	const validateConfig = (): boolean => {
 		const errors: Record<string, string> = {};
@@ -88,13 +87,13 @@ const Settings: React.FC = () => {
 
 		try {
 			setSaving(true);
-			const normalizedConfig = {
+			// The server decides which of these fields a browser may change and returns what it saved.
+			const savedConfig = await apiClient.updateConfig({
 				...config,
 				definitionOfDone: normalizeDefinitionOfDone(config.definitionOfDone),
-			};
-			await apiClient.updateConfig(normalizedConfig);
-			setConfig(normalizedConfig);
-			setOriginalConfig(normalizedConfig);
+			});
+			setConfig(savedConfig);
+			setOriginalConfig(savedConfig);
 			setShowSuccess(true);
 			setTimeout(() => setShowSuccess(false), 3000);
 			setError(null);
@@ -252,22 +251,6 @@ const Settings: React.FC = () => {
 								</p>
 							</div>
 
-							<div>
-								<label htmlFor="defaultEditor" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-									Default Editor
-								</label>
-								<input
-									id="defaultEditor"
-									type="text"
-									value={config.defaultEditor}
-									onChange={(e) => handleInputChange('defaultEditor', e.target.value)}
-									className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
-									placeholder="e.g., vim, nano, code"
-								/>
-								<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-									Editor command to use for editing tasks (overrides EDITOR environment variable)
-								</p>
-							</div>
 						</div>
 					</div>
 
@@ -400,24 +383,6 @@ const Settings: React.FC = () => {
 								/>
 								<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
 									Maximum width for text columns in CLI output
-								</p>
-							</div>
-
-							<div>
-								<label htmlFor="taskResolutionStrategy" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-									Task Resolution Strategy
-								</label>
-								<select
-									id="taskResolutionStrategy"
-									value={config.taskResolutionStrategy}
-									onChange={(e) => handleInputChange('taskResolutionStrategy', e.target.value as 'most_recent' | 'most_progressed')}
-									className="w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
-								>
-									<option value="most_recent">Most Recent</option>
-									<option value="most_progressed">Most Progressed</option>
-								</select>
-								<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-									Strategy for resolving conflicts when tasks exist in multiple branches
 								</p>
 							</div>
 

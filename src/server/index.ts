@@ -411,9 +411,40 @@ export class BacklogServer {
 
 		// Use config default port if no port specified
 		const finalPort = port ?? config?.defaultPort ?? 6420;
-		const finalHostname = await resolveBrowserListeningAddress(
-			hostname ?? config?.browserHostname ?? DEFAULT_BROWSER_HOSTNAME,
-		);
+		const selectedHostname = hostname ?? config?.browserHostname ?? DEFAULT_BROWSER_HOSTNAME;
+		const finalHostname = await resolveBrowserListeningAddress(selectedHostname);
+		// A browser sends the name it used to reach this server in the Host header. Another website
+		// can point its own name at this machine, so only these names are trusted: the selected host,
+		// the address it resolved to, and the loopback names. The port is not compared, so a
+		// forwarded port keeps working.
+		const allowedHostnames = new Set([
+			normalizeBrowserHostname(selectedHostname),
+			finalHostname,
+			"localhost",
+			"127.0.0.1",
+			"::1",
+		]);
+		// A listener on every address is reached through any of this machine's IP addresses. An IP
+		// address always leads to the machine it names, so that listener accepts every IP address.
+		const wildcardListener = finalHostname === "0.0.0.0" || finalHostname === "::";
+		const rejectUntrustedBrowserRequest = (req: Request): Response | undefined => {
+			const host = req.headers.get("host");
+			if (!host || /[\s/?#@\\]/.test(host)) return new Response("Forbidden", { status: 403 });
+			let authority: URL;
+			try {
+				authority = new URL(`http://${host}`);
+			} catch {
+				return new Response("Forbidden", { status: 403 });
+			}
+			const requestHostname = authority.hostname.replace(/^\[(.*)\]$/, "$1");
+			if (
+				(!allowedHostnames.has(requestHostname) && !(wildcardListener && net.isIP(requestHostname))) ||
+				(req.headers.has("origin") && req.headers.get("origin") !== authority.origin)
+			) {
+				return new Response("Forbidden", { status: 403 });
+			}
+			return undefined;
+		};
 		this.projectName = config?.projectName || "Untitled Project";
 
 		// Check if browser should open (config setting or CLI override)
@@ -565,6 +596,8 @@ export class BacklogServer {
 					},
 				},
 				fetch: async (req: Request, server: Server<unknown>) => {
+					const rejected = rejectUntrustedBrowserRequest(req);
+					if (rejected) return rejected;
 					const res = await this.handleRequest(req, server);
 
 					// Disable caching for GET/HEAD so browser always fetches latest content
@@ -593,6 +626,15 @@ export class BacklogServer {
 				/* biome-ignore format: keep cast on single line below for type narrowing */
 			};
 			const bundleAssetDirectory = process.env[BUNDLE_ASSET_DIR_ENV]?.trim();
+			// Bun answers these routes without calling `fetch`, so each handler gets the request guard
+			// here. Only the app shell is skipped: it is static and holds no project data.
+			for (const methods of Object.values(serveOptions.routes)) {
+				if (methods === spaIndexHtml) continue;
+				const route = methods as Record<string, (req: Request) => Response | Promise<Response>>;
+				for (const [method, handler] of Object.entries(route)) {
+					route[method] = (req) => rejectUntrustedBrowserRequest(req) ?? handler(req);
+				}
+			}
 			if (bundleAssetDirectory) {
 				this.runtimeWorkingDirectory = process.cwd();
 				process.chdir(bundleAssetDirectory);
@@ -1567,24 +1609,67 @@ export class BacklogServer {
 
 	private async handleUpdateConfig(req: Request): Promise<Response> {
 		try {
-			const updatedConfig = await req.json();
-
-			// Validate configuration
-			if (!updatedConfig.projectName?.trim()) {
-				return Response.json({ error: "Project name is required" }, { status: 400 });
+			const input = await req.json();
+			if (!input || typeof input !== "object" || Array.isArray(input)) {
+				return Response.json({ error: "Invalid configuration" }, { status: 400 });
 			}
-
-			if (updatedConfig.defaultPort && (updatedConfig.defaultPort < 1 || updatedConfig.defaultPort > 65535)) {
-				return Response.json({ error: "Port must be between 1 and 65535" }, { status: 400 });
-			}
-
-			if (updatedConfig.browserHostname !== undefined) {
-				try {
-					updatedConfig.browserHostname = normalizeBrowserHostname(updatedConfig.browserHostname);
-				} catch (error) {
-					return Response.json({ error: (error as Error).message }, { status: 400 });
+			this.core.filesystem.invalidateConfigCache();
+			const currentConfig = await this.core.filesystem.loadConfig();
+			if (!currentConfig) return Response.json({ error: "Configuration not found" }, { status: 404 });
+			const updatedConfig = { ...currentConfig };
+			// The only settings a browser may change. Every other field in the request is ignored and
+			// keeps its saved value, so this endpoint can never set a setting that runs a command, such
+			// as onStatusChange or defaultEditor. A new Settings field is saved once it is added here
+			// with its check below.
+			const editableFields = [
+				"projectName",
+				"dateFormat",
+				"autoCommit",
+				"remoteOperations",
+				"defaultStatus",
+				"definitionOfDone",
+				"defaultPort",
+				"autoOpenBrowser",
+				"hideEmptyColumns",
+				"maxColumnWidth",
+				"zeroPaddedIds",
+			] as const;
+			for (const field of editableFields) {
+				if (Object.hasOwn(input, field)) {
+					const value = input[field];
+					let valid = false;
+					switch (field) {
+						case "projectName":
+							valid = typeof value === "string" && !!value.trim() && !/[\r\n\u2028\u2029]/.test(value);
+							break;
+						case "dateFormat":
+						case "defaultStatus":
+							valid = typeof value === "string" && !/[\r\n\u2028\u2029]/.test(value);
+							break;
+						case "definitionOfDone":
+							valid = Array.isArray(value) && value.every((item) => typeof item === "string");
+							break;
+						case "defaultPort":
+							valid = Number.isInteger(value) && value >= 1 && value <= 65535;
+							break;
+						case "maxColumnWidth":
+							valid = Number.isInteger(value) && value > 0;
+							break;
+						case "zeroPaddedIds":
+							valid = Number.isInteger(value) && value >= 0;
+							break;
+						case "autoCommit":
+						case "remoteOperations":
+						case "autoOpenBrowser":
+						case "hideEmptyColumns":
+							valid = typeof value === "boolean";
+							break;
+					}
+					if (!valid) return Response.json({ error: `Invalid ${field}` }, { status: 400 });
+					(updatedConfig as unknown as Record<string, unknown>)[field] = value;
 				}
 			}
+
 			// Save configuration
 			await this.core.filesystem.saveConfig(updatedConfig);
 

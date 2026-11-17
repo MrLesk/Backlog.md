@@ -822,48 +822,38 @@ describe("BacklogServer task SPA fallback", () => {
 		const branchOnlyTask = await request("/api/task/BACK-099");
 		expect(branchOnlyTask.status).toBe(200);
 		expect(((await branchOnlyTask.json()) as Task).title).toBe("Branch-only task");
-		const configResponse = await request("/api/config");
-		expect(configResponse.status).toBe(200);
-		const config = (await configResponse.json()) as Record<string, unknown>;
-
-		const disabled = await request(
-			"/api/config",
-			{
-				method: "PUT",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ ...config, checkActiveBranches: false }),
+		const config = await filesystem.loadConfig();
+		if (!config) throw new Error("Expected test config");
+		await filesystem.saveConfig({ ...config, checkActiveBranches: false });
+		const localOnly = await retry(
+			async () => {
+				const response = await request("/api/task/BACK-1");
+				if (response.status !== 200) throw new Error("Active-branch checks have not been disabled yet");
+				return response;
 			},
-			5000,
+			20,
+			100,
 		);
-		expect(disabled.status).toBe(200);
-		expect((await disabled.json()) as { checkActiveBranches: boolean }).toMatchObject({
-			checkActiveBranches: false,
-		});
 		const disabledReadback = await request("/api/config");
 		expect(disabledReadback.status).toBe(200);
 		expect((await disabledReadback.json()) as { checkActiveBranches: boolean }).toMatchObject({
 			checkActiveBranches: false,
 		});
-		const localOnly = await request("/api/task/BACK-1");
-		expect(localOnly.status).toBe(200);
 		expect(((await localOnly.json()) as Task).title).toBe("Main collision task");
 		const localTasks = await request("/api/tasks?crossBranch=true");
 		expect(localTasks.status).toBe(200);
 		expect(((await localTasks.json()) as Task[]).map((task) => task.id)).not.toContain("BACK-099");
 
-		const enabled = await request(
-			"/api/config",
-			{
-				method: "PUT",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ ...config, checkActiveBranches: true }),
+		await filesystem.saveConfig({ ...config, checkActiveBranches: true });
+		await retry(
+			async () => {
+				const response = await request("/api/task/BACK-1");
+				if (response.status !== 409) throw new Error("Active-branch checks have not been enabled yet");
+				return true;
 			},
-			5000,
+			20,
+			100,
 		);
-		expect(enabled.status).toBe(200);
-		expect((await enabled.json()) as { checkActiveBranches: boolean }).toMatchObject({
-			checkActiveBranches: true,
-		});
 		const enabledReadback = await request("/api/config");
 		expect(enabledReadback.status).toBe(200);
 		expect((await enabledReadback.json()) as { checkActiveBranches: boolean }).toMatchObject({
