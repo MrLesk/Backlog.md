@@ -1,11 +1,11 @@
 ---
 id: BACK-807
 title: Refresh project dependencies and build tooling
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-11-18T22:35:00Z'
-updated_date: '2026-11-18T22:45:00Z'
+updated_date: '2026-11-18T22:52:00Z'
 labels: []
 dependencies: []
 references:
@@ -13,6 +13,7 @@ references:
   - flake.nix
   - .github/workflows/ci.yml
   - groma/config.json
+  - https://github.com/MrLesk/Backlog.md/pull/1221
 modified_files:
   - package.json
   - bun.lock
@@ -39,7 +40,7 @@ Review the versions used to build and test the shipped CLI, browser and npm pack
 <!-- AC:BEGIN -->
 - [x] #1 Direct project packages, Bun and build tools are checked against stable upstream releases, with evidence for any version kept behind latest.
 - [x] #2 CI, release, Nix and local development inputs agree on their tool versions and verified artifacts, and both dependency caches can be regenerated.
-- [ ] #3 The supported CLI, browser, MCP, native executables and npm packaging retain their behavior on the updated tools, including the existing trust and older-CPU checks.
+- [x] #3 The supported CLI, browser, MCP, native executables and npm packaging retain their behavior on the updated tools, including the existing trust and older-CPU checks.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -60,15 +61,28 @@ Review the versions used to build and test the shipped CLI, browser and npm pack
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Bun 1.4.4 and its types are already stable latest. All six embedded runtime SHA-256 digests agree with the official release. Node 26.13.1 is the latest stable release. Node 27 is alpha. Keep js-yaml 4.3.2, the latest v4 patch. For a header with a date and an anchored mapping merged into another key, v4 produced a Date, a merged value, and 22 listener events. With 5.5.0, the same call produced a string, no merged value and zero events. Backlog uses these events to retain original date spelling and unknown Markdown metadata. Version 5 removed the listener API and changed its default schema. A migration needs a separate change to the parser. See https://github.com/nodeca/js-yaml/blob/5.5.0/docs/migrate_v4_to_v5.md.
+Compared all root development packages and repository-owned workflow actions with their published stable versions. Twelve existing packages moved forward, including jsdom 31.0.1. Bun’s runtime, peer and types already match stable 1.4.4. All six official runtime archive digests match. Node 26.13.1 is the latest stable release. Node 27 is alpha. The first lock refresh resolved Bun’s wildcard Node types to the Node 16 declarations used by image-q. The type checker then reported 37 errors. Making the Node 26.6.6 typings a direct development dependency fixed the project and allowed image-q to retain its own version.
 
-Nix updated nixos-unstable to 04906337b6d53e8bb0eaf0470ae9f070a4d4eb55, where the Brotli package uses release 1.2.1: https://github.com/NixOS/nixpkgs/blob/04906337b6d53e8bb0eaf0470ae9f070a4d4eb55/pkgs/by-name/br/brotli/package.nix . That release includes the same security patch formerly applied locally, as shown by the upstream cherry-pick: https://github.com/google/brotli/commit/b418fa81c48262a86a95332b0bc6d62c30aa78b6 . Git and curl can now use Nixpkgs directly. Bun and the archived AVX2-only executable remain separately checksum-pinned for the older-CPU control. An unpinned transitive Node types dependency initially resolved to 16.9.1 and caused 37 type errors on Node APIs. Pinning the current 26.6.6 declarations directly fixed them while allowing image-q to keep its own older declaration dependency.
+The Markdown parser stays at js-yaml 4.3.2, the latest v4 release. In a header with a date and an anchored mapping merged into another field, v4 reports 22 source events, a Date and the merged value. Version 5.5.0 reports no events, a string and no merged value. Backlog uses the removed listener API to retain date spelling and unknown frontmatter. [Upstream migration guide](https://github.com/nodeca/js-yaml/blob/5.5.0/docs/migrate_v4_to_v5.md)
 
-The install graph retains Zod 3.25.76 because the current Jimp 1.6.1 plugins require ^3.23.8. No patched release exists in that range for GHSA-mrhx-c7xc-m3w5. Bun build metadata for all 1,378 CLI/browser inputs shows no Jimp or Zod 3 modules and confirms the MCP adapter uses patched Zod 4.6.7. Documented the single remaining audit advisory in DEVELOPMENT.md.
+The updated Nixpkgs ships Brotli 1.2.1, so its Git and curl include the exact fix previously patched in this flake. The separately pinned old AVX2-only executable remains the control for checking older-CPU support. The Nixpkgs default Bun archive for x64 differs from the unified archive Backlog ships. [Pinned Brotli package](https://github.com/NixOS/nixpkgs/blob/04906337b6d53e8bb0eaf0470ae9f070a4d4eb55/pkgs/by-name/br/brotli/package.nix) · [Upstream patch in 1.2.1](https://github.com/google/brotli/commit/b418fa81c48262a86a95332b0bc6d62c30aa78b6)
 
-An independent audit of the unmodified base lock at 2dd9160a reported nine advisories. Eight are resolved by the upgrade (Hono, its Node adapter and body-parser). The same Zod advisory was already present via neo-neo-bblessed 1.0.10 → jimp 1.6.1 → @jimp plugins → Zod 3.25.76. The affected copy is installed in development dependencies, separate from the bundled MCP copy.
+The registry audit went from nine findings on the base lock to one. Eight were resolved in Hono, its Node adapter and body-parser. The remaining advisory affects the copy of Zod 3.25.76 installed through neo-neo-bblessed 1.0.10, Jimp 1.6.1 and its plugins. No patched v3 release exists. The production bundle metadata contains no Jimp or Zod 3 modules in its 1,378 inputs. MCP uses the patched Zod 4.6.7. [Zod advisory](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5)
 
-Groma and its action are the latest releases, and the project scanners now use React 0.2.3 and TypeScript 0.2.4. The work-source entry is a minimum supported Backlog version. The external action itself hard-codes Node 26.12.1 and npm 12.2.1 without exposing a version input. Its map-generation job still has the older npm dependency advisories. The CI, release and Nix tool pins controlled by this repository use 26.13.1 and 12.2.3. See https://github.com/MrLesk/groma.md-action/blob/v1.2.4/action.yml and https://github.com/MrLesk/groma.md-action/blob/v1.2.4/prepare-trust.mjs.
+The current Groma action uses its own Node 26.12.1 and npm 12.2.1, including that npm version’s older ip-address and Undici. The action exposes no input for those tools. Backlog’s CI, release and Nix pins select 26.13.1 and 12.2.3. Groma’s own Backlog 1.54.0 setting is a minimum for the work-source adapter. [Action Node pin](https://github.com/MrLesk/groma.md-action/blob/v1.2.4/action.yml#L59) · [Action npm pin](https://github.com/MrLesk/groma.md-action/blob/v1.2.4/prepare-trust.mjs#L29)
 
-Local checks passed for frozen installation, 565 type-checked files, Biome, 104 focused tests, seven build-trust tests, native packaged CLI/browser/MCP smoke, and both npm tarballs installed together offline. Headless Chrome opened the compiled browser, edited a description using the Markdown editor and saved the result, which the packaged CLI then read. A Linux ARM64 Nix build ran the package install checks and confirmed Node 26.13.1, npm 12.2.3 and curl linked to Brotli 1.2.1. Regenerating bun.nix produced the same bytes. Full-platform CI will check the other release targets and the older-CPU control. The cold review found the scanner pins and verified native hashes and lock agreement. Both scanner pins were updated with Groma and confirmed in the separate final review.
+The cold review verified the official Bun and Node archive digests and matching versions and integrity hashes for all 545 unique packages in bun.lock and bun.nix. Its finding added the updated React and TypeScript scanner pins using Groma. The final review confirmed the compatibility evidence and the upstream action boundary.
+
+The frozen isolated install, all 565 checked TypeScript files, Biome, seven build-trust tests and deterministic bun.nix generation passed. The packaged macOS ARM64 CLI passed its task-persistence, failed-write, browser and MCP smoke. Both npm tarballs installed together offline. Chrome edited and saved a description through the packaged Markdown editor, and the CLI read it back. The interactive TUI suites passed 11 source and six compiled checks. A Linux ARM64 Nix package and development shell passed the package smoke, pinned tool and inherited trust checks. The published Groma 0.7.8 scanned and exported clean checkouts on macOS and Linux with the two current scanners.
+
+CI on the implementation commit passed all six native build targets, Linux, macOS, Windows and x86-64 Nix, including the independent old-CPU control and the development-shell trust checks. The two Linux test passes totalled 3,787 passed, 13 skipped and zero failed. CodeQL and the architecture workflow also passed. [Implementation CI](https://github.com/MrLesk/Backlog.md/actions/runs/44414628000)
+
+The local full test initially inherited TERM=dumb. One interactive assertion lost the cursor movement used for word spacing. The same fixture failed identically on the unchanged base and passed with TERM=xterm-256color.
+The complete local rerun with that terminal type passed 3,787 tests, with the same 13 skips as Linux CI and zero failures.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Updated twelve direct packages, pinned the project’s Node type definitions, and refreshed CI, release, Groma and Nix dependencies. Bun 1.4.4 was already current. Kept the compatible Markdown parser and documented the single remaining install-graph advisory and the external Groma action’s tool pins. The full Linux and macOS test runs, six cross-platform builds, package and browser smoke checks, interactive TUI, Linux ARM64 and x86-64 Nix, CodeQL and both reviews passed.
+<!-- SECTION:FINAL_SUMMARY:END -->
