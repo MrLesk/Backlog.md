@@ -37,6 +37,193 @@ describe("Config commands", () => {
 		return stub;
 	}
 
+	it("config set preserves custom values and comments while changing one setting", async () => {
+		const path = core.filesystem.configFilePath;
+		const before = await Bun.file(path).text();
+		await Bun.write(
+			path,
+			`# Project settings\n${before}# Release tooling\nrelease_channel: "beta" # Keep this note\nrelease_tools:\n  branches: [main, preview]\n  notes: |\n    custom-setting: is text here\n    # This line is part of the value\n`,
+		);
+
+		const result = await $`bun ${CLI_PATH} config set maxColumnWidth 25`.cwd(TEST_DIR).nothrow().quiet();
+
+		expect(result.exitCode).toBe(0);
+		const saved = await Bun.file(path).text();
+		const parsed = Bun.YAML.parse(saved) as Record<string, unknown>;
+		expect(parsed.release_channel).toBe("beta");
+		expect(parsed.release_tools).toEqual({
+			branches: ["main", "preview"],
+			notes: "custom-setting: is text here\n# This line is part of the value\n",
+		});
+		expect(parsed.max_column_width).toBe(25);
+		for (const comment of ["# Project settings", "# Release tooling", "# Keep this note"])
+			expect(saved).toContain(comment);
+	});
+
+	it("keeps comments when replacing or clearing known settings and normalizes their aliases", async () => {
+		const path = core.filesystem.configFilePath;
+		await Bun.write(
+			path,
+			'project_name: "Comments"\nstatuses:\n  - To Do # Pending work\n  - Done\nlabels: []\n# Editor preference\ndefault_editor: "code" # Wait for edits\ndefault_editor: "vi"\non_status_change: "old command" # Status hook\nfilesystemOnly: true\n',
+		);
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Expected the config");
+		await core.filesystem.saveConfig({
+			...config,
+			statuses: ["To Do", "Review", "Done"],
+			defaultEditor: undefined,
+			onStatusChange: "new command",
+			filesystemOnly: false,
+		});
+		const saved = await Bun.file(path).text();
+		core.filesystem.invalidateConfigCache();
+		const reloaded = await core.filesystem.loadConfig();
+		expect(reloaded?.defaultEditor).toBeUndefined();
+		expect(reloaded?.onStatusChange).toBe("new command");
+		expect(reloaded?.filesystemOnly).toBe(false);
+		expect(reloaded?.statuses).toEqual(["To Do", "Review", "Done"]);
+		for (const comment of ["# Editor preference", "# Wait for edits", "# Status hook", "# Pending work"])
+			expect(saved).toContain(comment);
+	});
+
+	it("reads saved booleans with comments and escaped command strings from disk", async () => {
+		const path = core.filesystem.configFilePath;
+		await appendFile(path, "auto_open_browser: false # Browser preference\n");
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Expected the config");
+		const defaultEditor = 'C:\\Tools\\Editor.exe --wait "file name"';
+		const onStatusChange = 'echo "done"';
+		await core.filesystem.saveConfig({ ...config, autoOpenBrowser: true, defaultEditor, onStatusChange });
+		core.filesystem.invalidateConfigCache();
+		const reloaded = await core.filesystem.loadConfig();
+		expect(reloaded?.autoOpenBrowser).toBe(true);
+		expect(reloaded?.defaultEditor).toBe(defaultEditor);
+		expect(reloaded?.onStatusChange).toBe(onStatusChange);
+	});
+
+	it("preserves requested owned values when their shared YAML anchor changes", async () => {
+		const path = core.filesystem.configFilePath;
+		await Bun.write(path, "project_name: P\nstatuses: &workflow [To Do, Done]\nlabels: *workflow\n");
+		core.filesystem.invalidateConfigCache();
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Expected the config");
+		await core.filesystem.saveConfig({ ...config, statuses: ["To Do", "Review", "Done"] });
+		core.filesystem.invalidateConfigCache();
+		const reloaded = await core.filesystem.loadConfig();
+		expect(reloaded?.statuses).toEqual(["To Do", "Review", "Done"]);
+		expect(reloaded?.labels).toEqual(["To Do", "Done"]);
+	});
+
+	it("does not revive cleared settings from preserved nested metadata", async () => {
+		const path = core.filesystem.configFilePath;
+		await Bun.write(
+			path,
+			'project_name: P\ndefault_editor: "code"\nrelease_tools:\n  default_editor: "tool-editor"\n  labels: [internal]\n  browser_hostname: remote.example\n',
+		);
+		core.filesystem.invalidateConfigCache();
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Expected the config");
+		await core.filesystem.saveConfig({ ...config, defaultEditor: undefined });
+		core.filesystem.invalidateConfigCache();
+		const reloaded = await core.filesystem.loadConfig();
+		expect(reloaded?.defaultEditor).toBeUndefined();
+		expect(reloaded?.labels).toEqual([]);
+		expect(reloaded?.browserHostname).toBeUndefined();
+		expect((Bun.YAML.parse(await Bun.file(path).text()) as Record<string, unknown>).release_tools).toEqual({
+			default_editor: "tool-editor",
+			labels: ["internal"],
+			browser_hostname: "remote.example",
+		});
+	});
+
+	it("keeps settings when a UTF-8 config starts with a byte order mark", async () => {
+		const path = core.filesystem.configFilePath;
+		const source = "\uFEFFproject_name: P\nstatuses: [Queued, Done]\nlabels: [important]\ndefault_editor: code\n";
+		expect(core.filesystem.parseConfig(source).statuses).toEqual(["Queued", "Done"]);
+		await Bun.write(path, source);
+		core.filesystem.invalidateConfigCache();
+		const config = await core.filesystem.loadConfig();
+		expect(config?.statuses).toEqual(["Queued", "Done"]);
+		expect(config?.labels).toEqual(["important"]);
+		expect(config?.defaultEditor).toBe("code");
+		if (!config) throw new Error("Expected the config");
+		await core.filesystem.saveConfig({ ...config, maxColumnWidth: 25 });
+		core.filesystem.invalidateConfigCache();
+		const reloaded = await core.filesystem.loadConfig();
+		expect(reloaded?.statuses).toEqual(config.statuses);
+		expect(reloaded?.labels).toEqual(config.labels);
+		expect(reloaded?.defaultEditor).toBe("code");
+	});
+
+	it.each([String.raw`C:\tools\nvim\bin\nvim.exe`, String.raw`C:\Users\Alex\editor.exe`])(
+		"preserves a legacy literal editor path %s across an unrelated save",
+		async (editor) => {
+			const path = core.filesystem.configFilePath;
+			await Bun.write(
+				path,
+				`project_name: P\nstatuses: [To Do, Done]\nlabels: []\ndefault_editor: "${editor}" # My editor\n`,
+			);
+			core.filesystem.invalidateConfigCache();
+			const config = await core.filesystem.loadConfig();
+			expect(config?.defaultEditor).toBe(editor);
+			if (!config) throw new Error("Expected the config");
+			await core.filesystem.saveConfig({ ...config, maxColumnWidth: 25 });
+			core.filesystem.invalidateConfigCache();
+			expect((await core.filesystem.loadConfig())?.defaultEditor).toBe(editor);
+			expect(await Bun.file(path).text()).toContain("# My editor");
+		},
+	);
+
+	it("preserves custom keys with names inherited by JavaScript objects", async () => {
+		const path = core.filesystem.configFilePath;
+		await appendFile(path, 'constructor: "build"\ntoString: "display"\n__proto__: "prototype"\n');
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Expected the config");
+		await core.filesystem.saveConfig({ ...config, maxColumnWidth: 25 });
+		const parsed = Bun.YAML.parse(await Bun.file(path).text()) as Record<string, unknown>;
+		for (const [key, value] of Object.entries({
+			constructor: "build",
+			toString: "display",
+			["__proto__"]: "prototype",
+		}))
+			expect(parsed[key]).toBe(value);
+	});
+
+	it("refuses an owned setting change that would change a preserved custom YAML reference", async () => {
+		const path = core.filesystem.configFilePath;
+		const original =
+			'project_name: "References"\nstatuses: &workflow [To Do, Done]\nlabels: []\ncustom_workflow: *workflow\n';
+		await Bun.write(path, original);
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Expected the config");
+		await expect(core.filesystem.saveConfig({ ...config, statuses: ["To Do", "Review", "Done"] })).rejects.toThrow(
+			"Cannot save config",
+		);
+		expect(await Bun.file(path).text()).toBe(original);
+	});
+
+	it("refuses to remove an owned anchor still used by custom metadata", async () => {
+		const path = core.filesystem.configFilePath;
+		const original = `${await Bun.file(path).text()}default_editor: &editor "code"\ncustom_editor: *editor\n`;
+		await Bun.write(path, original);
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Expected the config");
+		await expect(core.filesystem.saveConfig({ ...config, defaultEditor: undefined })).rejects.toThrow(
+			"Cannot save config",
+		);
+		expect(await Bun.file(path).text()).toBe(original);
+	});
+
+	it("leaves the config unchanged when preserved YAML cannot be safely written", async () => {
+		const path = core.filesystem.configFilePath;
+		const original = `${await Bun.file(path).text()}custom-setting: ["unfinished\n`;
+		await Bun.write(path, original);
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Expected recognized settings to remain readable");
+		await expect(core.filesystem.saveConfig({ ...config, maxColumnWidth: 25 })).rejects.toThrow("Cannot save config");
+		expect(await Bun.file(path).text()).toBe(original);
+	});
+
 	it("configureAdvancedSettings keeps defaults when no changes requested", async () => {
 		const promptStub = createPromptStub([
 			{ installCompletions: false },
@@ -694,7 +881,7 @@ describe("defaultEditor when init runs again", () => {
 	for (const variable of ["EDITOR", "VISUAL"]) {
 		it(`does not write ${variable} into the config after the editor was cleared`, async () => {
 			await runInit({ EDITOR: "backlog-first-editor" });
-			expect(await editorLinesInConfigFile()).toEqual(['default_editor: "backlog-first-editor"']);
+			expect(await editorLinesInConfigFile()).toEqual(["default_editor: 'backlog-first-editor'"]);
 
 			const cleared = await $`bun ${CLI_PATH} config set defaultEditor ${""}`.cwd(projectDir).nothrow().quiet();
 			expect(cleared.exitCode).toBe(0);
@@ -717,10 +904,10 @@ describe("defaultEditor when init runs again", () => {
 
 	it("keeps the editor a first init took from VISUAL when init runs again", async () => {
 		await runInit({ VISUAL: "backlog-first-editor" });
-		expect(await editorLinesInConfigFile()).toEqual(['default_editor: "backlog-first-editor"']);
+		expect(await editorLinesInConfigFile()).toEqual(["default_editor: 'backlog-first-editor'"]);
 
 		await runInit({ EDITOR: "backlog-second-editor", VISUAL: "backlog-second-editor" });
-		expect(await editorLinesInConfigFile()).toEqual(['default_editor: "backlog-first-editor"']);
+		expect(await editorLinesInConfigFile()).toEqual(["default_editor: 'backlog-first-editor'"]);
 		expect(await configGetEditor()).toBe("backlog-first-editor");
 	});
 });
