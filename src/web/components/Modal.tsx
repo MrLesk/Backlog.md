@@ -8,6 +8,7 @@ interface ModalProps {
 	maxWidthClass?: string; // e.g., "max-w-4xl"
 	disableEscapeClose?: boolean; // when true, Escape and backdrop click won't close (child can handle it)
 	actions?: React.ReactNode; // optional actions rendered in header before close
+	headerNotice?: React.ReactNode;
 	initialFocusRef?: React.RefObject<HTMLElement | null>;
 }
 
@@ -19,6 +20,7 @@ const Modal: React.FC<ModalProps> = ({
 	maxWidthClass = "max-w-2xl",
 	disableEscapeClose,
 	actions,
+	headerNotice,
 	initialFocusRef,
 }) => {
 	const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -137,6 +139,7 @@ const Modal: React.FC<ModalProps> = ({
 							×
 						</button>
 					</div>
+					{headerNotice && <div className="w-full">{headerNotice}</div>}
 				</div>
 				<div className="px-6 pt-4 pb-6">{children}</div>
 			</div>

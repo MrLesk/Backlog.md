@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import { request as httpRequest } from "node:http";
 import { FileSystem } from "../file-system/operations.ts";
 import { BacklogServer } from "../server/index.ts";
 import { closeServer, createUniqueTestDir, listenOnEphemeralPort, safeCleanup } from "./test-utils.ts";
@@ -24,7 +25,94 @@ async function unusedLoopbackPort(): Promise<number> {
 	return port;
 }
 
+async function requestWithHost(
+	port: number,
+	path: string,
+	host: string,
+	method = "GET",
+	body?: unknown,
+): Promise<number> {
+	const content = body === undefined ? undefined : JSON.stringify(body);
+	return await new Promise((resolve, reject) => {
+		const request = httpRequest(
+			{
+				hostname: "127.0.0.1",
+				port,
+				path,
+				method,
+				headers: {
+					Host: host,
+					Origin: `http://${host}`,
+					...(content === undefined ? {} : { "Content-Type": "application/json" }),
+				},
+			},
+			(response) => {
+				response.resume();
+				resolve(response.statusCode ?? 0);
+			},
+		);
+		request.on("error", reject);
+		request.end(content);
+	});
+}
+
+async function websocketStatus(port: number, host: string, origin: string): Promise<number> {
+	return await new Promise((resolve, reject) => {
+		const request = httpRequest(
+			{
+				hostname: "127.0.0.1",
+				port,
+				headers: {
+					Host: host,
+					Origin: origin,
+					Connection: "Upgrade",
+					Upgrade: "websocket",
+					"Sec-WebSocket-Version": "13",
+					"Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+				},
+			},
+			(response) => {
+				response.resume();
+				resolve(response.statusCode ?? 0);
+			},
+		);
+		request.on("upgrade", (response, socket) => {
+			socket.destroy();
+			resolve(response.statusCode ?? 0);
+		});
+		request.on("error", reject);
+		request.end();
+	});
+}
+
 describe("BacklogServer loopback binding", () => {
+	it("rejects an unexpected Host on native routes and WebSocket upgrades", async () => {
+		server = new BacklogServer(TEST_DIR);
+		const port = await unusedLoopbackPort();
+		await server.start(port, false);
+		expect(await requestWithHost(port, "/api/config", `attacker.example:${port}`)).toBe(403);
+		expect(
+			await requestWithHost(port, "/api/config", `attacker.example:${port}`, "PUT", { projectName: "Changed" }),
+		).toBe(403);
+		expect(await requestWithHost(port, "/assets/test.txt", `attacker.example:${port}`)).toBe(403);
+		expect(await requestWithHost(port, "/api/config", `127.0.0.1:${port}`)).toBe(200);
+		// A forwarded port reaches the server under a local name with another port.
+		expect(await requestWithHost(port, "/api/config", "localhost:8080")).toBe(200);
+		expect(await websocketStatus(port, `attacker.example:${port}`, `http://attacker.example:${port}`)).toBe(403);
+		expect(await websocketStatus(port, `127.0.0.1:${port}`, "http://attacker.example")).toBe(403);
+	});
+
+	it("rejects a cross-origin write even with the expected Host", async () => {
+		server = new BacklogServer(TEST_DIR);
+		const port = await unusedLoopbackPort();
+		await server.start(port, false);
+		const response = await fetch(`http://127.0.0.1:${port}/api/config`, {
+			method: "PUT",
+			headers: { Origin: "http://attacker.example", "Content-Type": "application/json" },
+			body: JSON.stringify({ projectName: "Changed" }),
+		});
+		expect(response.status).toBe(403);
+	});
 	beforeEach(async () => {
 		TEST_DIR = createUniqueTestDir("server-hostname");
 		const filesystem = new FileSystem(TEST_DIR);
@@ -117,6 +205,8 @@ describe("BacklogServer loopback binding", () => {
 			expect(warnings.join("\n")).toContain("authentication");
 			expect(warnings.join("\n")).toContain("commands");
 			expect((await fetch(`http://127.0.0.1:${port}/api/status`)).status).toBe(200);
+			expect(await requestWithHost(port, "/api/config", `localhost:${port}`)).toBe(200);
+			expect(await requestWithHost(port, "/api/config", `attacker.example:${port}`)).toBe(403);
 		} finally {
 			serveSpy.mockRestore();
 			warnSpy.mockRestore();
@@ -161,27 +251,85 @@ describe("BacklogServer loopback binding", () => {
 		}
 	});
 
-	it("saves hostname settings for the next start and rejects invalid values", async () => {
+	it("only saves fields available in browser settings", async () => {
+		const filesystem = new FileSystem(TEST_DIR);
+		const original = await filesystem.loadConfig();
+		if (!original) throw new Error("Missing fixture config");
+		await filesystem.saveConfig({
+			...original,
+			browserHostname: "127.0.0.1",
+			defaultEditor: "vim",
+			onStatusChange: "echo safe",
+			definitionOfDone: ["old item"],
+		});
 		server = new BacklogServer(TEST_DIR);
 		const port = await unusedLoopbackPort();
 		await server.start(port, false);
 		const url = `http://127.0.0.1:${port}/api/config`;
 		const config = await (await fetch(url)).json();
+		await new FileSystem(TEST_DIR).saveConfig({ ...config, onStatusChange: "echo newer safe" });
 		const save = await fetch(url, {
 			method: "PUT",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ ...config, browserHostname: "::" }),
+			body: JSON.stringify({
+				...config,
+				projectName: "Updated project",
+				defaultPort: 6430,
+				autoOpenBrowser: false,
+				hideEmptyColumns: true,
+				// Wider than the Settings input suggests. The CLI accepts it, so the browser does too.
+				maxColumnWidth: 250,
+				zeroPaddedIds: 4,
+				definitionOfDone: [],
+				browserHostname: "::",
+				defaultEditor: "sh",
+				onStatusChange: "echo unsafe",
+				statuses: [],
+			}),
 		});
 		expect(save.status).toBe(200);
-		expect((await (await fetch(url)).json()).browserHostname).toBe("::");
+		const stored = await new FileSystem(TEST_DIR).loadConfig();
+		expect(stored?.projectName).toBe("Updated project");
+		expect(stored?.defaultPort).toBe(6430);
+		expect(stored?.autoOpenBrowser).toBe(false);
+		expect(stored?.hideEmptyColumns).toBe(true);
+		expect(stored?.maxColumnWidth).toBe(250);
+		expect(stored?.zeroPaddedIds).toBe(4);
+		expect(stored?.definitionOfDone).toEqual([]);
+		expect(stored?.browserHostname).toBe("127.0.0.1");
+		expect(stored?.defaultEditor).toBe("vim");
+		expect(stored?.onStatusChange).toBe("echo newer safe");
+		expect(stored?.statuses).toEqual(original.statuses);
 		expect(internals(server).server?.hostname).toBe("127.0.0.1");
 		const invalid = await fetch(url, {
 			method: "PUT",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ ...config, browserHostname: "http://example.com" }),
+			body: JSON.stringify({ projectName: " " }),
 		});
 		expect(invalid.status).toBe(400);
-		expect((await (await fetch(url)).json()).browserHostname).toBe("::");
+		expect((await new FileSystem(TEST_DIR).loadConfig())?.projectName).toBe("Updated project");
+	});
+
+	it("rejects settings values that could add another config field", async () => {
+		server = new BacklogServer(TEST_DIR);
+		const port = await unusedLoopbackPort();
+		await server.start(port, false);
+		const url = `http://127.0.0.1:${port}/api/config`;
+		for (const input of [
+			{ projectName: 'Valid name"\non_status_change: "echo unsafe' },
+			{ dateFormat: "YYYY-MM-DD\non_status_change: echo unsafe" },
+			{ defaultPort: "6420\non_status_change: echo unsafe" },
+		]) {
+			const response = await fetch(url, {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(input),
+			});
+			expect(response.status).toBe(400);
+		}
+		const stored = await new FileSystem(TEST_DIR).loadConfig();
+		expect(stored?.onStatusChange).toBeUndefined();
+		expect(stored?.projectName).toBe("Server Hostname");
 	});
 
 	it("serves lightweight browser bootstrap before the shared content corpus finishes loading", async () => {

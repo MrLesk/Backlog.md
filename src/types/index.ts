@@ -80,6 +80,8 @@ export interface Task {
 	branch?: string;
 	ordinal?: number;
 	filePath?: string;
+	/** Revision of the file read or written; conditional edits use it, and Markdown never stores it. */
+	revision?: string;
 	// Metadata fields
 	lastModified?: Date;
 	source?: "local" | "remote" | "archived" | "local-branch";
@@ -149,6 +151,7 @@ export interface TaskCreateInput {
 }
 
 export interface TaskUpdateInput {
+	expectedRevision?: string;
 	title?: string;
 	dueDate?: string | null;
 	description?: string;

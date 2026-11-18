@@ -73,6 +73,7 @@ export interface TaskVacancyResponse {
 }
 
 export type TaskUpdateRequest = Omit<Partial<Task>, "milestone" | "dueDate" | "project"> & {
+	expectedRevision?: string;
 	milestone?: string | null;
 	dueDate?: string | null;
 	project?: string | null;

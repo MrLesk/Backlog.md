@@ -107,6 +107,7 @@ import {
 	normalizeTaskIdentity,
 	taskIdsEqual,
 } from "../utils/task-path.ts";
+import { assertTaskRevision } from "../utils/task-revision.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
 import { sortByOrdinal } from "../utils/task-sorting.ts";
 import { attachSubtaskSummaries, findDirectSubtasks } from "../utils/task-subtasks.ts";
@@ -2448,6 +2449,7 @@ export class Core {
 		input: TaskUpdateInput,
 		statusResolver: (status: string) => Promise<string>,
 	): Promise<{ task: Task; mutated: boolean }> {
+		assertTaskRevision(task, input.expectedRevision);
 		assertSectionInputsSafe(input);
 		if (
 			input.acceptanceCriteria !== undefined ||
@@ -4184,11 +4186,18 @@ export class Core {
 		const moved = await this.fs.archiveDraft(draftId);
 
 		if (moved && autoCommitEnabled) {
-			await this.commitWrittenFile(
-				`backlog: Archive draft ${normalizeId(draftId, "draft")}`,
-				[moved.sourcePath],
-				moved.targetPath,
-			);
+			try {
+				await this.commitWrittenFile(
+					`backlog: Archive draft ${normalizeId(draftId, "draft")}`,
+					[moved.sourcePath],
+					moved.targetPath,
+				);
+			} catch (error) {
+				throw markRecordAlreadyMoved(
+					new ChangeNotCommittedError(`Draft ${normalizeId(draftId, "draft")} was archived`, error),
+					"archiveState",
+				);
+			}
 		}
 
 		return moved !== null;

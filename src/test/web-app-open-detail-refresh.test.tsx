@@ -183,6 +183,78 @@ afterEach(() => {
  * open task's detail is read again whenever the data refreshes, and only the newest read may land.
  */
 describe("open task detail across refreshes", () => {
+	it("retires reads before an own write but still notices a fresh restore to the same file revision", async () => {
+		const opened = { ...makeTask("TASK-2", "To Do"), revision: "opened" };
+		const first = { ...opened, priority: "high", revision: "first-save" };
+		const second = { ...opened, priority: "low", revision: "second-save" };
+		let current: Task = opened;
+		let holdReads = false;
+		const pending: Array<(detail: TaskDetail) => void> = [];
+		const detailFor = (task: Task) => toTaskDetail(task, { tasks: [task], archivedTasks: [], statuses });
+		const { container, sockets } = setupDom("http://localhost/tasks/TASK-2");
+		stubApi({
+			search: () => [{ type: "task", score: null, task: current }],
+			fetchTask: async () => holdReads
+				? await new Promise<TaskDetail>((resolve) => pending.push(resolve)) : detailFor(current),
+		});
+		let holdSearch = false;
+		let releaseSearch!: () => void;
+		const searchGate = new Promise<void>((resolve) => { releaseSearch = resolve; });
+		apiClient.search = async () => {
+			if (holdSearch) await searchGate;
+			return [{ type: "task", score: null, task: current }];
+		};
+		const originalUpdate = apiClient.updateTask;
+		restore.push(() => { apiClient.updateTask = originalUpdate; });
+		const revisions: Array<string | undefined> = [];
+		apiClient.updateTask = async (_id, updates) => {
+			revisions.push(updates.expectedRevision);
+			current = revisions.length === 1 ? first : second;
+			return current;
+		};
+		activeRoot = createRoot(container);
+		await act(async () => {
+			activeRoot?.render(<HealthCheckProvider><App /></HealthCheckProvider>);
+		});
+		await waitForText(container, "Task TASK-2");
+		const button = (text: string) => Array.from(container.querySelectorAll("button"))
+			.find((candidate) => candidate.textContent?.trim() === text)!;
+		await act(async () => { button("Edit").click(); });
+		const priority = Array.from(container.querySelectorAll("select"))
+			.find((select) => select.textContent?.includes("No Priority"))!;
+		const changePriority = async (value: string) => {
+			await act(async () => {
+				priority.value = value;
+				priority.dispatchEvent(new window.Event("change", { bubbles: true }));
+			});
+		};
+		holdReads = true;
+		await changePriority("high");
+		await waitFor("the first own detail refresh", () => pending.length > 0);
+		const firstRefresh = pending[0]!;
+		holdSearch = true;
+		await changePriority("low");
+		await settle(2);
+		await act(async () => { firstRefresh(detailFor(first)); });
+		await settle(2);
+		expect(revisions).toEqual(["opened", "first-save"]);
+		expect(priority.value).toBe("low");
+		expect(button("Save").disabled).toBe(false);
+		expect(container.textContent).not.toContain("A newer version of this task is available");
+
+		// A later read after Git restores the earlier bytes is a real incoming change.
+		current = first;
+		holdReads = false;
+		holdSearch = false;
+		await act(async () => {
+			releaseSearch();
+			for (const socket of sockets) socket.onmessage?.({ data: "tasks-updated" });
+		});
+		await waitForText(container, "A newer version of this task is available");
+		expect(button("Save").disabled).toBe(true);
+		expect(priority.value).toBe("low");
+	});
+
 	it("re-reads the detail on a refresh that changed nothing the browser can see", async () => {
 		const dependent = makeTask("TASK-2", "To Do", ["TASK-9"]);
 		// TASK-9 is a completed record: it never appears in the corpus the browser is sent.
