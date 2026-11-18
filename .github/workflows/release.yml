@@ -187,7 +187,7 @@ jobs:
           ref: ${{ github.sha }}
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: 26.12.1
+          node-version: 26.13.1
       - name: Install checksum-verified Bun
         run: node scripts/prepare-bun-runtime.cjs
       - uses: actions/cache@v6.1.0
@@ -257,12 +257,12 @@ jobs:
           cp LICENSE README.md dist/ 2>/dev/null || true
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: 26.12.1
+          node-version: 26.13.1
       - name: Configure npm for trusted publishing
         shell: bash
         run: |
           set -euo pipefail
-          npm install -g npm@12.2.1
+          npm install -g npm@12.2.3
           npm --version
       - name: Dry run trusted publish
         run: |
@@ -317,12 +317,12 @@ jobs:
         timeout-minutes: 15
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: 26.12.1
+          node-version: 26.13.1
       - name: Configure npm for trusted publishing
         shell: bash
         run: |
           set -euo pipefail
-          npm install -g npm@12.2.1
+          npm install -g npm@12.2.3
           npm --version
       - name: Wait for platform binary
         wait: binary
@@ -381,11 +381,11 @@ jobs:
       - *secure-tls
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: 26.12.1
+          node-version: 26.13.1
           registry-url: https://registry.npmjs.org
       - name: Use current npm
         shell: bash
-        run: npm install -g npm@12.2.1
+        run: npm install -g npm@12.2.3
       - name: Wait for platform package installability (Unix)
         background: true
         if: ${{ matrix.os != 'windows-latest' }}
@@ -529,7 +529,7 @@ jobs:
       - *secure-tls
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: 26.12.1
+          node-version: 26.13.1
           registry-url: https://registry.npmjs.org
       - name: Install and run backlog -v (Unix)
         if: ${{ matrix.os != 'windows-latest' }}
@@ -661,7 +661,7 @@ jobs:
           done
           echo "=== Final binaries ==="
           ls -lh binaries/
-      - uses: softprops/action-gh-release@v3.0.3
+      - uses: softprops/action-gh-release@v3.0.4
         with:
           files: binaries/*
 
@@ -679,7 +679,7 @@ jobs:
           TAG="${GITHUB_REF##refs/tags/v}"
           jq ".version = \"$TAG\"" package.json > tmp.json && mv tmp.json package.json
       - name: Commit version bump
-        uses: stefanzweifel/git-auto-commit-action@v7.2.0
+        uses: stefanzweifel/git-auto-commit-action@v7.2.1
         with:
           commit_message: "chore: sync package.json version to ${{ github.ref_name }} [skip ci]"
           branch: main
