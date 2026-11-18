@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { join } from "node:path";
+import { symlink } from "node:fs/promises";
+import { basename, join } from "node:path";
 import { Core } from "../core/backlog.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { serializeTask } from "../markdown/serializer.ts";
@@ -59,6 +60,66 @@ describe("BacklogServer draft task endpoints", () => {
 			server = null;
 		}
 		await safeCleanup(TEST_DIR);
+	});
+
+	it("archives a draft through its own lifecycle", async () => {
+		const { task } = await core.createTaskFromInput({ title: "Archive from browser", status: "Draft" });
+		const stored = await core.filesystem.loadDraft(task.id);
+		if (!stored?.filePath) throw new Error("Expected the record file");
+		const before = await Bun.file(stored.filePath).text();
+
+		const response = await request(`/api/tasks/${task.id}/archive`, { method: "POST" });
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ success: true });
+		expect(await Bun.file(stored.filePath).exists()).toBe(false);
+		expect(await Bun.file(join(TEST_DIR, "backlog", "archive", "drafts", basename(stored.filePath))).text()).toBe(
+			before,
+		);
+		const list = (await (await request("/api/drafts")).json()) as Task[];
+		expect(list.some((record) => record.id === task.id)).toBe(false);
+	});
+
+	it.each(["file", "symlink"])("leaves an existing archive %s and the source draft unchanged", async (kind) => {
+		const { task } = await core.createTaskFromInput({ title: "Archive collision", status: "Draft" });
+		const draft = await core.filesystem.loadDraft(task.id);
+		if (!draft?.filePath) throw new Error("Expected the draft file");
+		const before = await Bun.file(draft.filePath).text();
+		const archivePath = join(TEST_DIR, "backlog", "archive", "drafts", basename(draft.filePath));
+		const existingPath = kind === "symlink" ? join(TEST_DIR, "outside-archive.md") : archivePath;
+		await Bun.write(existingPath, "Keep this content");
+		if (kind === "symlink") await symlink(existingPath, archivePath);
+
+		const response = await request(`/api/tasks/${task.id}/archive`, { method: "POST" });
+
+		expect(response.ok).toBe(false);
+		expect(await Bun.file(existingPath).text()).toBe("Keep this content");
+		expect(await Bun.file(draft.filePath).text()).toBe(before);
+	});
+
+	it("reports 409 when archiving contends with a held draft lock", async () => {
+		await core.createTaskFromInput({ title: "Contended archive", status: "Draft" });
+		const reference = await core.filesystem.resolveDraftReference("DRAFT-1");
+		if (!reference) throw new Error("Expected the draft reference");
+		let release: () => void = () => {};
+		let held: Promise<unknown> | undefined;
+		try {
+			await new Promise<void>((ready) => {
+				held = core.filesystem.withDraftLock(reference, async () => {
+					ready();
+					await new Promise<void>((resolve) => {
+						release = resolve;
+					});
+				});
+			});
+			const response = await request("/api/tasks/DRAFT-1/archive", { method: "POST" });
+			expect(response.status).toBe(409);
+			expect(((await response.json()) as { error: string }).error).toContain("being modified by another process");
+			expect(await Bun.file(reference.filePath).exists()).toBe(true);
+		} finally {
+			release();
+			await held;
+		}
 	});
 
 	// Reporter flow from issue #915: create a draft, then edit it from the web Drafts page.
@@ -207,6 +268,9 @@ describe("BacklogServer draft task endpoints", () => {
 		const edit = await put("/api/tasks/DRAFT-1", { title: "Hijacked" });
 		expect(edit.status).toBe(409);
 		expect(((await edit.json()) as { error: string }).error).toContain("is ambiguous");
+		const archive = await request("/api/tasks/DRAFT-1/archive", { method: "POST" });
+		expect(archive.status).toBe(409);
+		expect(((await archive.json()) as { error: string }).error).toContain("is ambiguous");
 
 		expect(await Bun.file(join(draftsDir, "draft-1 - Alpha-one.md")).text()).toContain("Alpha one");
 		expect(await Bun.file(twinPath).text()).toContain("Alpha two");
@@ -225,5 +289,6 @@ describe("BacklogServer draft task endpoints", () => {
 
 		const write = await put("/api/tasks/DRAFT-9", { title: "Nope" });
 		expect(write.status).toBe(400);
+		expect((await request("/api/tasks/DRAFT-9/archive", { method: "POST" })).status).toBe(404);
 	});
 });

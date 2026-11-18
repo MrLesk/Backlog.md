@@ -4184,11 +4184,18 @@ export class Core {
 		const moved = await this.fs.archiveDraft(draftId);
 
 		if (moved && autoCommitEnabled) {
-			await this.commitWrittenFile(
-				`backlog: Archive draft ${normalizeId(draftId, "draft")}`,
-				[moved.sourcePath],
-				moved.targetPath,
-			);
+			try {
+				await this.commitWrittenFile(
+					`backlog: Archive draft ${normalizeId(draftId, "draft")}`,
+					[moved.sourcePath],
+					moved.targetPath,
+				);
+			} catch (error) {
+				throw markRecordAlreadyMoved(
+					new ChangeNotCommittedError(`Draft ${normalizeId(draftId, "draft")} was archived`, error),
+					"archiveState",
+				);
+			}
 		}
 
 		return moved !== null;

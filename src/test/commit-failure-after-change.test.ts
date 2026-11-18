@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { $ } from "bun";
 import { ChangeNotCommittedError, Core } from "../core/backlog.ts";
 import { McpServer } from "../mcp/server.ts";
 import { registerDocumentTools } from "../mcp/tools/documents/index.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import { BacklogServer } from "../server/index.ts";
+import type { Task } from "../types/index.ts";
 import { getTestCliPath } from "./test-cli.ts";
 import { createTestDirOutsideRepository, initializeTestProject, safeCleanup } from "./test-utils.ts";
 
@@ -119,6 +120,35 @@ describe("a change whose commit failed, through MCP", () => {
 });
 
 describe("a change whose commit failed, in core and over HTTP", () => {
+	it("reports an archived draft as moved when its commit fails", async () => {
+		const core = new Core(TEST_DIR);
+		const { task } = await core.createTaskFromInput({ title: "Archive draft", status: "Draft" });
+		const draft = await core.filesystem.loadDraft(task.id);
+		if (!draft?.filePath) throw new Error("Expected the draft file");
+		const before = await Bun.file(draft.filePath).text();
+		const server = new BacklogServer(TEST_DIR);
+		await server.start(0, false);
+		try {
+			await lockIndex();
+			const response = await fetch(`http://127.0.0.1:${server.getPort()}/api/tasks/${task.id}/archive`, {
+				method: "POST",
+			});
+
+			expect(response.status).toBe(500);
+			const body = (await response.json()) as { error: string; archiveState: string };
+			expect(body.error).toStartWith(`Draft ${task.id} was archived, ${COMMIT_FAILED}`);
+			expect(body.archiveState).toBe("moved");
+			expect(await Bun.file(draft.filePath).exists()).toBe(false);
+			expect(await Bun.file(join(TEST_DIR, "backlog", "archive", "drafts", basename(draft.filePath))).text()).toBe(
+				before,
+			);
+			const list = (await (await fetch(`http://127.0.0.1:${server.getPort()}/api/drafts`)).json()) as Task[];
+			expect(list.some((record) => record.id === task.id)).toBe(false);
+		} finally {
+			await server.stop();
+		}
+	});
+
 	it("throws one error type whose message names the change, and tags a task archive for the browser", async () => {
 		const core = new Core(TEST_DIR);
 		await lockIndex();
