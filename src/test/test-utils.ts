@@ -201,20 +201,18 @@ export const HAS_PSEUDO_TERMINAL = process.platform !== "win32";
 /**
  * Run the CLI in a pseudo-terminal, so the command sees a terminal on both its input and its output.
  *
- * Nobody types into this terminal, and nothing else ends a question asked in one. A command that
- * asks a question therefore needs `answer`: the keys to type once the question has been drawn.
- * Without it the run would last until the timeout, which is only there for a command that hangs.
+ * Each answer sends its keys once the corresponding text appears in the terminal.
  */
 export async function runCliInPseudoTerminal(
 	cliPath: string,
 	args: string[],
 	cwd: string,
-	answer?: { question: string; keys: string },
+	...answers: { question: string; keys: string }[]
 ): Promise<{ exitCode: number; output: string; timedOut: boolean }> {
 	const decoder = new TextDecoder();
 	const terminalClosed = Promise.withResolvers<void>();
 	let output = "";
-	let answered = false;
+	let nextAnswer = 0;
 	const child = Bun.spawn([process.execPath, cliPath, ...args], {
 		cwd,
 		terminal: {
@@ -222,8 +220,9 @@ export async function runCliInPseudoTerminal(
 			rows: 40,
 			data(terminal, chunk) {
 				output += decoder.decode(chunk, { stream: true });
-				if (answer && !answered && output.includes(answer.question)) {
-					answered = true;
+				const answer = answers[nextAnswer];
+				if (answer && output.includes(answer.question)) {
+					nextAnswer++;
 					terminal.write(answer.keys);
 				}
 			},
