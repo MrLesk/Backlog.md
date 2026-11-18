@@ -6,7 +6,7 @@ import { renderToString } from "react-dom/server";
 import type { Milestone, Task } from "../types/index.ts";
 import { ThemeProvider } from "../web/contexts/ThemeContext";
 import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
-import { apiClient } from "../web/lib/api.ts";
+import { ApiError, apiClient } from "../web/lib/api.ts";
 import { setNativeInputValue } from "./react-dom-input.ts";
 
 let activeRoot: Root | null = null;
@@ -252,6 +252,7 @@ describe("Web task popup Final Summary display", () => {
 		const originalUpdateTask = apiClient.updateTask.bind(apiClient);
 		const task: Task = {
 			id: "TASK-12B",
+			revision: "before-comment",
 			title: "Editable comments refresh",
 			status: "To Do",
 			assignee: [],
@@ -262,15 +263,23 @@ describe("Web task popup Final Summary display", () => {
 		};
 		const updatedTask: Task = {
 			...task,
+			revision: "after-comment",
 			comments: [
 				...(task.comments ?? []),
 				{ index: 2, author: "@reviewer", createdDate: "2025-01-03 12:00", body: "New comment" },
 			],
 		};
+		let writeCount = 0;
 		apiClient.updateTask = async (id, updates) => {
 			expect(id).toBe("TASK-12B");
-			expect(updates.commentsAppend).toEqual(["New comment"]);
-			expect(updates.commentAuthor).toBe("@reviewer");
+			writeCount++;
+			if (writeCount === 1) {
+				expect(updates.commentsAppend).toEqual(["New comment"]);
+				expect(updates.commentAuthor).toBe("@reviewer");
+				expect(updates.expectedRevision).toBe("before-comment");
+			} else {
+				expect(updates.expectedRevision).toBe("after-comment");
+			}
 			return updatedTask;
 		};
 
@@ -317,6 +326,12 @@ describe("Web task popup Final Summary display", () => {
 				clickElement(addButton as HTMLButtonElement);
 				await Promise.resolve();
 			});
+			// The own write is acknowledged before the parent receives its refreshed detail.
+			await act(async () => { clickElement(findButton(container as HTMLElement, "Cancel")!); });
+			await act(async () => { clickElement(findButton(container as HTMLElement, "Edit")!); });
+			await act(async () => { clickElement(findButton(container as HTMLElement, "Save")!); });
+			expect(writeCount).toBe(2);
+			await act(async () => { clickElement(findButton(container as HTMLElement, "Edit")!); });
 
 			await act(async () => {
 				activeRoot?.render(
@@ -330,16 +345,67 @@ describe("Web task popup Final Summary display", () => {
 			expect(container?.textContent).toContain("New comment");
 			expect(container?.textContent).toContain("Add comment");
 			expect(container?.textContent).toContain("Save");
+			expect(findButton(container as HTMLElement, "Save")?.disabled).toBe(false);
+			expect(container?.textContent).not.toContain("A newer version of this task is available");
 		} finally {
 			apiClient.updateTask = originalUpdateTask;
 		}
 	});
 
-	it("preserves dirty edit fields and applies clean refreshed fields while the modal stays open", async () => {
+	it("uses the acknowledged revision for a second metadata edit while the first response is delayed", async () => {
+		setupDom();
+		const task: Task = { id: "TASK-12C", revision: "opened", title: "Consecutive metadata edits", status: "To Do",
+			assignee: [], labels: [], dependencies: [], createdDate: "2025-01-01" };
+		const originalUpdate = apiClient.updateTask;
+		let releaseFirst!: () => void;
+		const firstResponse = new Promise<void>((resolve) => { releaseFirst = resolve; });
+		const writes: Array<{ priority?: string; expectedRevision?: string }> = [];
+		apiClient.updateTask = async (_id, updates) => {
+			writes.push(updates);
+			if (writes.length === 1) await firstResponse;
+			else if (updates.expectedRevision !== "first-save") throw new ApiError("Task changed", 409, "TASK_CHANGED");
+			return { ...task, priority: updates.priority, revision: writes.length === 1 ? "first-save" : "second-save" };
+		};
+		try {
+			const container = document.getElementById("root")!;
+			activeRoot = createRoot(container);
+			const renderTask = async (current: Task) => {
+				await act(async () => { activeRoot?.render(<ThemeProvider><TaskDetailsModal task={current} isOpen={true} onClose={() => {}} /></ThemeProvider>); });
+			};
+			await renderTask(task);
+			await act(async () => { clickElement(findButton(container, "Edit")!); });
+			const priority = Array.from(container.querySelectorAll("select")).find((select) => select.textContent?.includes("No Priority"))!;
+			const changePriority = async (value: string) => {
+				await act(async () => {
+					priority.value = value;
+					priority.dispatchEvent(new window.Event("change", { bubbles: true }));
+				});
+			};
+			await changePriority("high");
+			await changePriority("low");
+			await act(async () => { releaseFirst(); });
+			await waitFor(() => writes.length === 2);
+			expect(writes.map((write) => write.priority)).toEqual(["high", "low"]);
+			expect(writes.map((write) => write.expectedRevision)).toEqual(["opened", "first-save"]);
+			expect(findButton(container, "Save")?.disabled).toBe(false);
+			expect(container.textContent).not.toContain("A newer version of this task is available");
+			await renderTask({ ...task, priority: "low", revision: "second-save" });
+			expect(findButton(container, "Save")?.disabled).toBe(false);
+			await renderTask({ ...task, priority: "medium", revision: "external-change" });
+			expect(container.textContent).toContain("A newer version of this task is available");
+			expect(findButton(container, "Save")?.disabled).toBe(true);
+		} finally {
+			releaseFirst();
+			apiClient.updateTask = originalUpdate;
+		}
+	});
+
+	it("requires an explicit refresh to discard edits when a newer task arrives", async () => {
 		setupDom();
 
 		const task: Task = {
 			id: "TASK-13",
+			revision: "original-revision",
 			title: "Original title",
 			status: "To Do",
 			assignee: [],
@@ -353,6 +419,7 @@ describe("Web task popup Final Summary display", () => {
 		};
 		const refreshedTask: Task = {
 			...task,
+			revision: "new-revision",
 			title: "External title",
 			description: "External description",
 			implementationPlan: "External plan",
@@ -406,9 +473,124 @@ describe("Web task popup Final Summary display", () => {
 
 		expect(findInputByValue(container as HTMLElement, "Local title")).toBeTruthy();
 		expect(findTextareaByValue(container as HTMLElement, "Local description")).toBeTruthy();
-		expect(findTextareaByValue(container as HTMLElement, "External plan")).toBeTruthy();
-		expect(findTextareaByValue(container as HTMLElement, "External notes")).toBeTruthy();
-		expect(container?.textContent).toContain("Save");
+		expect(findTextareaByValue(container as HTMLElement, "Original plan")).toBeTruthy();
+		expect(findTextareaByValue(container as HTMLElement, "Original notes")).toBeTruthy();
+		expect(container?.textContent).toContain("A newer version of this task is available");
+		expect(findButton(container as HTMLElement, "Save")?.disabled).toBe(true);
+
+		const originalFetch = apiClient.fetchTask;
+		try {
+			apiClient.fetchTask = async () => refreshedTask as Awaited<ReturnType<typeof apiClient.fetchTask>>;
+			await act(async () => { clickElement(findButton(container as HTMLElement, "Refresh and discard edits")!); });
+			await flushReact();
+			expect(findInputByValue(container as HTMLElement, "External title")).toBeTruthy();
+			expect(findTextareaByValue(container as HTMLElement, "External description")).toBeTruthy();
+			expect(findTextareaByValue(container as HTMLElement, "External notes")).toBeTruthy();
+			expect(findButton(container as HTMLElement, "Save")?.disabled).toBe(false);
+			expect(container?.textContent).not.toContain("A newer version of this task is available");
+		} finally { apiClient.fetchTask = originalFetch; }
+	});
+
+	it("blocks a stale Save before its live notification arrives and uses the refreshed revision on retry", async () => {
+		setupDom();
+		const task: Task = { id: "TASK-14", revision: "opened", title: "Opened title", status: "To Do",
+			assignee: [], labels: [], dependencies: [], createdDate: "2026-11-16" };
+		const latest: Task = { ...task, revision: "newer", title: "Newer title", implementationNotes: "CLI addition" };
+		const originalUpdate = apiClient.updateTask;
+		const originalFetch = apiClient.fetchTask;
+		const container = document.getElementById("root")!;
+		activeRoot = createRoot(container);
+		let writes = 0;
+		try {
+			apiClient.updateTask = async (_id, updates) => {
+				writes++;
+				if (writes === 1) {
+					expect(updates.expectedRevision).toBe("opened");
+					throw new ApiError("Task changed", 409, undefined, { code: "TASK_CHANGED" });
+				}
+				expect(updates.expectedRevision).toBe("newer");
+				return { ...latest, ...updates, revision: "saved" } as Task;
+			};
+			apiClient.fetchTask = async () => latest as Awaited<ReturnType<typeof apiClient.fetchTask>>;
+			await act(async () => { activeRoot?.render(<ThemeProvider><TaskDetailsModal task={task} isOpen onClose={() => {}} /></ThemeProvider>); });
+			await act(async () => { clickElement(findButton(container, "Edit")!); });
+			await act(async () => { setFormValue(findInputByValue(container, "Opened title")!, "Unsaved title"); });
+			await act(async () => { clickElement(findButton(container, "Save")!); });
+			expect(container.textContent).toContain("A newer version of this task is available");
+			expect(findInputByValue(container, "Unsaved title")).toBeTruthy();
+			expect(findButton(container, "Save")?.disabled).toBe(true);
+			await act(async () => { window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true })); });
+			expect(writes).toBe(1);
+			await act(async () => { clickElement(findButton(container, "Refresh and discard edits")!); });
+			expect(findInputByValue(container, "Newer title")).toBeTruthy();
+			await act(async () => { clickElement(findButton(container, "Save")!); });
+			expect(writes).toBe(2);
+			expect(container.textContent).not.toContain("A newer version of this task is available");
+			expect(findButton(container, "Edit")).toBeTruthy();
+		} finally { apiClient.updateTask = originalUpdate; apiClient.fetchTask = originalFetch; }
+	});
+
+	it.each(["cancel", "reopen"])("retires a pending refresh after %s starts another edit session", async (action) => {
+		setupDom();
+		const task: Task = { id: "TASK-15", revision: "opened", title: "Refresh ownership", status: "To Do",
+			assignee: [], labels: [], dependencies: [], createdDate: "2026-11-16", implementationNotes: "Opened notes" };
+		const latest = { ...task, revision: "newer", implementationNotes: "External notes" };
+		const container = document.getElementById("root")!;
+		activeRoot = createRoot(container);
+		const render = async (value: Task, isOpen = true) => {
+			await act(async () => { activeRoot?.render(<ThemeProvider><TaskDetailsModal task={value} isOpen={isOpen} onClose={() => {}} /></ThemeProvider>); });
+		};
+		const originalFetch = apiClient.fetchTask;
+		let finish: (value: Awaited<ReturnType<typeof apiClient.fetchTask>>) => void = () => {};
+		try {
+			apiClient.fetchTask = () => new Promise(resolve => { finish = resolve; });
+			await render(task);
+			await act(async () => { clickElement(findButton(container, "Edit")!); });
+			await render(latest);
+			await act(async () => { clickElement(findButton(container, "Refresh and discard edits")!); });
+			if (action === "cancel") {
+				await act(async () => { clickElement(findButton(container, "Cancel")!); });
+			} else {
+				await render(latest, false);
+				await render(latest);
+			}
+			await act(async () => { clickElement(findButton(container, "Edit")!); });
+			await act(async () => { setFormValue(findTextareaByValue(container, "External notes")!, "New session notes"); });
+			await act(async () => { finish(latest as Awaited<ReturnType<typeof apiClient.fetchTask>>); });
+			expect(findTextareaByValue(container, "New session notes")).toBeTruthy();
+			expect(findButton(container, "Save")?.disabled).toBe(false);
+		} finally { apiClient.fetchTask = originalFetch; }
+	});
+
+	it.each(["fetch", "parent"])("keeps a newer live-update notice while refresh awaits %s", async (phase) => {
+		setupDom();
+		const opened: Task = { id: "TASK-16", revision: "a", title: "Refresh handoff", status: "To Do",
+			assignee: [], labels: [], dependencies: [], createdDate: "2026-11-16", implementationNotes: "Notes A" };
+		const second = { ...opened, revision: "b", implementationNotes: "Notes B" };
+		const third = { ...opened, revision: "c", implementationNotes: "Notes C" };
+		const container = document.getElementById("root")!;
+		activeRoot = createRoot(container);
+		const originalFetch = apiClient.fetchTask;
+		let finish: () => void = () => {};
+		const wait = new Promise<void>(resolve => { finish = resolve; });
+		const onSaved = () => phase === "parent" ? wait : Promise.resolve();
+		const render = async (value: Task) => {
+			await act(async () => { activeRoot?.render(<ThemeProvider><TaskDetailsModal task={value} isOpen onClose={() => {}} onSaved={onSaved} /></ThemeProvider>); });
+		};
+		try {
+			apiClient.fetchTask = async () => {
+				if (phase === "fetch") await wait;
+				return second as Awaited<ReturnType<typeof apiClient.fetchTask>>;
+			};
+			await render(opened);
+			await act(async () => { clickElement(findButton(container, "Edit")!); });
+			await render(second);
+			await act(async () => { clickElement(findButton(container, "Refresh and discard edits")!); });
+			await render(third);
+			await act(async () => { finish(); });
+			expect(container.textContent).toContain("A newer version of this task is available");
+			expect(findButton(container, "Save")?.disabled).toBe(true);
+		} finally { apiClient.fetchTask = originalFetch; }
 	});
 
 	it("preserves unsaved create fields when refreshed props change while the modal stays open", async () => {

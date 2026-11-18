@@ -70,6 +70,7 @@ import {
 	normalizeTaskIdentity,
 	taskIdsEqual,
 } from "../utils/task-path.ts";
+import { getTaskRevision } from "../utils/task-revision.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
 import { normalizeLegacyEditorConfig, serializeConfig } from "./config-serialization.ts";
@@ -948,6 +949,7 @@ export class FileSystem {
 		const content = serializeTask(normalizedTask, originalContent);
 
 		await this.writeRecordFile(filepath, content, loadedFromPath);
+		task.revision = getTaskRevision(content);
 		return filepath;
 	}
 
@@ -1359,6 +1361,7 @@ export class FileSystem {
 		const content = serializeTask({ ...task, id: draftId }, originalContent);
 
 		await this.writeRecordFile(filepath, content, loadedFromPath);
+		task.revision = getTaskRevision(content);
 		return filepath;
 	}
 

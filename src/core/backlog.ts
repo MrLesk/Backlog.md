@@ -107,6 +107,7 @@ import {
 	normalizeTaskIdentity,
 	taskIdsEqual,
 } from "../utils/task-path.ts";
+import { assertTaskRevision } from "../utils/task-revision.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts";
 import { sortByOrdinal } from "../utils/task-sorting.ts";
 import { attachSubtaskSummaries, findDirectSubtasks } from "../utils/task-subtasks.ts";
@@ -2448,6 +2449,7 @@ export class Core {
 		input: TaskUpdateInput,
 		statusResolver: (status: string) => Promise<string>,
 	): Promise<{ task: Task; mutated: boolean }> {
+		assertTaskRevision(task, input.expectedRevision);
 		assertSectionInputsSafe(input);
 		if (
 			input.acceptanceCriteria !== undefined ||

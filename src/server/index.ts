@@ -46,6 +46,7 @@ import {
 import { formatValidStatuses, getCanonicalStatuses, getValidStatuses } from "../utils/status.ts";
 import { isValidTaskId } from "../utils/task-id.ts";
 import { isAmbiguousTaskIdError, LOCAL_TASK_LOOKUP_HINT, taskNotFoundMessage } from "../utils/task-path.ts";
+import { TaskChangedError } from "../utils/task-revision.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -1157,6 +1158,12 @@ export class BacklogServer {
 		if (!dueDate.ok) return Response.json({ error: dueDate.error }, { status: 400 });
 
 		const updateInput: TaskUpdateInput = {};
+		if ("expectedRevision" in updates) {
+			if (typeof updates.expectedRevision !== "string" || !updates.expectedRevision) {
+				return Response.json({ error: "expectedRevision must be a non-empty string." }, { status: 400 });
+			}
+			updateInput.expectedRevision = updates.expectedRevision;
+		}
 		for (const [field, inputField] of [
 			["definitionOfDoneRemove", "removeDefinitionOfDone"],
 			["definitionOfDoneCheck", "checkDefinitionOfDone"],
@@ -1276,6 +1283,9 @@ export class BacklogServer {
 				: await this.core.updateTaskFromInput(taskId, updateInput);
 			return Response.json(updatedTask);
 		} catch (error) {
+			if (error instanceof TaskChangedError) {
+				return Response.json({ error: error.message, code: "TASK_CHANGED" }, { status: 409 });
+			}
 			const message = formatErrorForWeb(error instanceof Error ? error.message : "Failed to update task");
 			// Editing a task into the Draft status demotes it, so the same "already moved" report the
 			// demote endpoint makes applies here: refresh, and do not invite a retry.

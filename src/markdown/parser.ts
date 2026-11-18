@@ -1,6 +1,7 @@
 import type { AcceptanceCriterion, Decision, Document, Milestone, ParsedMarkdown, Task } from "../types/index.ts";
 import { normalizeDueDate } from "../utils/due-date.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
+import { getTaskRevision } from "../utils/task-revision.ts";
 import { parseFrontmatter, preprocessFrontmatter } from "./frontmatter.ts";
 import {
 	AcceptanceCriteriaManager,
@@ -104,6 +105,7 @@ export function parseTask(content: string): Task {
 	const finalSummarySection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.finalSummary) || undefined;
 
 	return {
+		revision: getTaskRevision(content),
 		id,
 		title: String(frontmatter.title || ""),
 		status: String(frontmatter.status || ""),
