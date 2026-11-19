@@ -21,23 +21,24 @@ describe("getTaskStatistics", () => {
 		...partial,
 	});
 
-	test("counts board tasks plus archived tasks in the final status", () => {
+	test("uses the configured final status for progress and health, including archived work", () => {
 		const tasks = [
-			createTask({ id: "task-1", status: "To Do", dependencies: ["task-4"] }),
-			createTask({ id: "task-2", status: "Done" }),
-			createTask({ id: "task-3", status: "Done", source: "archived" }),
-			// Set aside rather than finished: neither open work nor finished work.
-			createTask({ id: "task-4", status: "To Do", source: "archived" }),
-			createTask({ id: "task-5", status: "In Progress", source: "archived" }),
+			createTask({ id: "task-1", status: "To Do", dependencies: ["task-3"] }),
+			createTask({ id: "task-2", status: "Closed", dependencies: ["task-4"] }),
+			createTask({ id: "task-3", status: "Closed", source: "archived" }),
+			// An unfinished archived task can still block its dependent.
+			createTask({ id: "task-4", status: "Done", source: "archived" }),
+			createTask({ id: "task-5", status: "Done", dependencies: ["task-4"] }),
 		];
 
-		const stats = getTaskStatistics(tasks, [], statuses);
-		expect(stats.totalTasks).toBe(3);
+		const stats = getTaskStatistics(tasks, [], ["To Do", "Done", "Closed"]);
+		expect(stats.totalTasks).toBe(4);
 		expect(stats.completedTasks).toBe(2);
+		expect(stats.completionPercentage).toBe(50);
 		expect(stats.statusCounts.get("To Do")).toBe(1);
-		expect(stats.statusCounts.get("In Progress")).toBe(0);
-		expect(stats.projectHealth.blockedTasks.map((task) => task.id)).toEqual(["task-1"]);
-		expect(stats.projectHealth.staleTasks.map((task) => task.id)).toEqual(["task-1"]);
+		expect(stats.statusCounts.get("Done")).toBe(1);
+		expect(stats.projectHealth.blockedTasks.map((task) => task.id)).toEqual(["task-5"]);
+		expect(stats.projectHealth.staleTasks.map((task) => task.id)).toEqual(["task-1", "task-5"]);
 	});
 
 	test("measures completion age across legacy and explicit UTC timestamps", () => {
@@ -250,7 +251,7 @@ describe("getTaskStatistics", () => {
 			{
 				id: "task-2",
 				title: "Completed Task",
-				status: "Done",
+				status: "Closed",
 				createdDate: twentyDaysAgo.toISOString().split("T")[0] as string,
 				updatedDate: fifteenDaysAgo.toISOString().split("T")[0] as string, // Completed after 5 days
 				assignee: [],
@@ -261,7 +262,7 @@ describe("getTaskStatistics", () => {
 			{
 				id: "task-3",
 				title: "Recently Completed",
-				status: "Done",
+				status: "Closed",
 				createdDate: tenDaysAgo.toISOString().split("T")[0] as string,
 				updatedDate: fiveDaysAgo.toISOString().split("T")[0] as string, // Completed after 5 days
 				assignee: [],
@@ -271,7 +272,7 @@ describe("getTaskStatistics", () => {
 			},
 		];
 
-		const stats = getTaskStatistics(tasks, [], statuses);
+		const stats = getTaskStatistics(tasks, [], ["To Do", "In Progress", "Closed"]);
 
 		// Task 1: 10 days (active, so uses current age)
 		// Task 2: 5 days (completed, so uses creation to completion time)
