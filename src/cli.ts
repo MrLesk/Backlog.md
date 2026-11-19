@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { readFile } from "node:fs/promises";
-import { dirname, isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { stdin as input } from "node:process";
 import { createInterface } from "node:readline/promises";
 import * as clack from "@clack/prompts";
@@ -4796,7 +4796,7 @@ boardCmd
 			} else {
 				// Use filename argument or default to Backlog.md
 				const outputFile = filename || "Backlog.md";
-				const outputPath = join(cwd, outputFile as string);
+				const outputPath = resolve(cwd, outputFile as string);
 
 				// Check if file exists and handle overwrite confirmation
 				const fileExists = await Bun.file(outputPath).exists();
