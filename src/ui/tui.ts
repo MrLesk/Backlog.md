@@ -7,7 +7,7 @@
 
 import { stdin as input, stdout as output } from "node:process";
 import type { ProgramInterface, ScreenInterface, ScreenOptions } from "neo-neo-bblessed";
-import { screen as blessedScreen, box, program as createProgram } from "neo-neo-bblessed";
+import { screen as blessedScreen, program as createProgram, scrollabletext } from "neo-neo-bblessed";
 
 type ErrorConstructor = new () => unknown;
 
@@ -241,11 +241,15 @@ export async function scrollableViewer(content: string): Promise<void> {
 			style: {},
 		});
 
-		const viewer = box({
+		// bblessed needs keyboard input enabled before the widget registers its mouse handlers.
+		screen.key(["escape", "q", "C-c"], () => {
+			screen.destroy();
+			resolve();
+		});
+
+		const viewer = scrollabletext({
 			parent: screen,
 			content,
-			scrollable: true,
-			alwaysScroll: true,
 			keys: true,
 			vi: true,
 			mouse: true,
@@ -258,12 +262,6 @@ export async function scrollableViewer(content: string): Promise<void> {
 		});
 
 		addScrollKeys(viewer, screen);
-
-		screen.key(["escape", "q", "C-c"], () => {
-			screen.destroy();
-			resolve();
-		});
-
 		viewer.focus();
 		screen.render();
 	});

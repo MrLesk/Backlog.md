@@ -3,7 +3,13 @@ import { mkdir } from "node:fs/promises";
 import { $ } from "bun";
 import { Core } from "../index.ts";
 import { getTestCliPath } from "./test-cli.ts";
-import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup } from "./test-utils.ts";
+import {
+	createUniqueTestDir,
+	HAS_PSEUDO_TERMINAL,
+	initializeFilesystemTestProject,
+	runCliInPseudoTerminal,
+	safeCleanup,
+} from "./test-utils.ts";
 
 let TEST_DIR: string;
 
@@ -46,6 +52,26 @@ describe("CLI doc view command", () => {
 		const stdout = result.stdout.toString();
 		expect(stdout).toContain("Architecture Overview");
 		expect(stdout).toContain("Service topology and indexing architecture details.");
+	});
+
+	it.skipIf(!HAS_PSEUDO_TERMINAL).each([
+		["End", "\u001b[F"],
+		["the mouse wheel", "\u001b[<65;10;10M"],
+	])("scrolls to the last line of a long document with %s", async (_control, keys) => {
+		const content = ["StartOfDocument", ...Array(40).fill("."), "EndOfDocument"].join("\n");
+		await new Core(TEST_DIR).updateDocumentFromInput({ id: "doc-1", content }, false);
+
+		const viewer = await runCliInPseudoTerminal(
+			cliPath,
+			["doc", "view", "doc-1"],
+			TEST_DIR,
+			{ question: "StartOfDocument", keys },
+			{ question: "EndOfDocument", keys: "q" },
+		);
+
+		expect(viewer.timedOut).toBe(false);
+		expect(viewer.exitCode).toBe(0);
+		expect(viewer.output).toContain("EndOfDocument");
 	});
 
 	it("falls back to plain output without --plain when not attached to a TTY", async () => {
