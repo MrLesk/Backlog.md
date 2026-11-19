@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-11-19T20:21:00Z'
-updated_date: '2026-11-19T20:27:00Z'
+updated_date: '2026-11-19T20:53:00Z'
 labels: []
 dependencies: []
 references:
@@ -61,10 +61,16 @@ Switching Git branches while backlog board is open can update hundreds of task f
 On main the portable 40-file test counted 80 full active-task reads. A second regression test reproduced an older status being published after another edit arrived during the previous read.
 
 Bun 1.4.4 on an Apple M5, current main c03a60e1. In a temporary Git repository, the branch switch moved all 1,353 tasks from To Do to In Progress. Main crossed the 1 GiB stop point before the board finished. With shared reads and grouped redraws, the compiled board displayed all 1,353 updated cards in 2.32 seconds and peaked at 262.7 MiB resident (156.6 MiB idle). The watcher-only run finished with eight active-task listings and at most one at a time. The 567-test macOS platform profile and two interactive terminal tests passed. Both watcher and view regression suites are included in the Windows/macOS CI profile.
+
+Windows 11 Pro x64, Intel Core i9-9900K, NTFS, Bun 1.4.4. Both compiled boards ran in a Windows pseudoconsole against the same two Git commits. Switching branches changed only the status line in 1,353 synthetic task files. Timing started at git switch and ended when the rendered column counts matched the destination. Memory is the board process's peak working set.
+
+On main (c03a60e1), Git finished in 1.74 s. At 82.8 s the board still showed all 1,353 cards in To Do and crossed the 1 GiB stop threshold (1,039.9 MiB observed, 119.2 MiB idle). On the PR (680b12fd), Git finished in 1.85 s. The board showed 0 To Do and 1,353 In Progress at 29.1 s and peaked at 250.6 MiB (119.8 MiB idle).
+
+A second PR process stayed open for three consecutive switches. It displayed all 1,353 cards in In Progress, To Do, then In Progress in 28.5 s, 35.7 s, and 29.8 s. Its lifetime peak working set reached 225.0, 281.3, then 394.4 MiB. All 20 watcher and unified-view regression tests passed locally on Windows.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Share active and archived task reads during file changes, discard a read superseded by a newer edit, and publish each group of updates to the terminal in order. The full 1,353-task switch finished on macOS while preserving task identity and selection.
+Share active and archived task reads during file changes, discard a read superseded by a newer edit, and publish each group of updates to the terminal in order. The full 1,353-task switch finished on macOS while preserving task identity and selection. On Windows, the compiled board also displayed all 1,353 updates and peaked at 250.6 MiB on the single switch.
 <!-- SECTION:FINAL_SUMMARY:END -->
