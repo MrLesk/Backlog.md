@@ -133,6 +133,8 @@ export class ContentStore {
 	private rootWatchersInitialized = false;
 	private configWatcherActive = false;
 	private rootWatcherEpoch = 0;
+	/** Watcher epoch whose task corpus reload is queued and has not started; see scheduleWatchedTaskCorpusRefresh. */
+	private queuedTaskCorpusRefreshEpoch: number | null = null;
 	private readonly contentRefreshGenerations: Record<ContentCollection, number> = {
 		tasks: 0,
 		documents: 0,
@@ -1090,7 +1092,7 @@ export class ContentStore {
 		const watcher: FSWatcher = watch(tasksDir, { recursive: false }, (eventType, filename) => {
 			const file = this.normalizeFilename(filename);
 			if (!file || !/^[a-zA-Z]+-/.test(file) || !file.endsWith(".md")) {
-				void this.enqueueRoot(epoch, async () => this.refreshTasksFromDisk(undefined, epoch));
+				this.scheduleWatchedTaskCorpusRefresh(epoch);
 				return;
 			}
 
@@ -1173,7 +1175,7 @@ export class ContentStore {
 		const watchers = [watcher];
 		for (const directory of archivedTaskDirs) {
 			const archivedWatcher = watch(directory, { recursive: false }, () => {
-				void this.enqueueRoot(epoch, async () => this.refreshTasksFromDisk(undefined, epoch));
+				this.scheduleWatchedTaskCorpusRefresh(epoch);
 			});
 			this.attachWatcherErrorHandler(archivedWatcher, "archived tasks");
 			watchers.push(archivedWatcher);
@@ -2113,6 +2115,19 @@ export class ContentStore {
 			}
 		});
 		return run;
+	}
+
+	/**
+	 * Queue a full task corpus reload for a watcher event. Events that arrive while one is queued
+	 * fold into it: the queued reload has not read the disk yet, so it will see their changes too.
+	 */
+	private scheduleWatchedTaskCorpusRefresh(epoch: number): void {
+		if (this.queuedTaskCorpusRefreshEpoch === epoch) return;
+		this.queuedTaskCorpusRefreshEpoch = epoch;
+		void this.enqueueRoot(epoch, async () => {
+			this.queuedTaskCorpusRefreshEpoch = null;
+			await this.refreshTasksFromDisk(undefined, epoch);
+		});
 	}
 
 	private enqueueRoot(epoch: number, fn: () => Promise<void>): Promise<void> {

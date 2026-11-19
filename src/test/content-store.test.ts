@@ -1514,6 +1514,33 @@ describe("ContentStore", () => {
 		}
 	});
 
+	it("folds a burst of archived-task events into one queued corpus reload", async () => {
+		store.dispose();
+		await filesystem.saveTask(sampleTask);
+		const callbacks = new Map<string, CapturedWatchCallback>();
+		const watchSpy = captureWatchCallbacks(callbacks);
+		try {
+			store = new ContentStore(filesystem, undefined, true);
+			await store.ensureInitialized();
+			const internals = store as unknown as { chainTail: Promise<void> };
+			const listTasksSpy = spyOn(filesystem, "listTasks");
+			const archivedWatcher = getCapturedWatcher(callbacks, filesystem.archiveTasksDir);
+			// Written past the store, so only the corpus reload can publish it.
+			await Bun.write(
+				join(filesystem.tasksDir, "task-2 - Burst-addition.md"),
+				serializeTask({ ...sampleTask, id: "task-2", title: "Burst addition" }),
+			);
+
+			for (let index = 0; index < 20; index++) archivedWatcher("rename", `task-${index} - Archived.md`);
+			await internals.chainTail;
+
+			expect(store.getTasks().map((task) => task.title)).toContain("Burst addition");
+			expect(listTasksSpy.mock.calls.length).toBe(1);
+		} finally {
+			watchSpy.mockRestore();
+		}
+	});
+
 	it("keeps targeted delayed writes alive across unrelated wildcard no-ops", async () => {
 		store.dispose();
 		await Promise.all([

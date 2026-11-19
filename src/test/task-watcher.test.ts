@@ -145,6 +145,51 @@ describe("task watcher reconciliation", () => {
 		expect(task.status).toBe("In Progress");
 	});
 
+	it("shares corpus reads across a burst of task edits", async () => {
+		const taskCount = 40;
+		const fileNames: string[] = [];
+		for (let index = 1; index <= taskCount; index++) {
+			const fileName = `task-${index} - Burst-${index}.md`;
+			fileNames.push(fileName);
+			await Bun.write(
+				join(core.filesystem.tasksDir, fileName),
+				serializeTask(sampleTask(`task-${index}`, `Burst ${index}`)),
+			);
+		}
+		const initialTasks = await core.filesystem.listTasks();
+		const changedTitles: string[] = [];
+		let resolveAllChanged: (() => void) | undefined;
+		const allChanged = new Promise<void>((resolve) => {
+			resolveAllChanged = resolve;
+		});
+		const listTasksSpy = spyOn(core.filesystem, "listTasks");
+		const handle = watchTasks(
+			core,
+			{
+				onTaskChanged(task) {
+					changedTitles.push(task.title);
+					if (changedTitles.length === taskCount) resolveAllChanged?.();
+				},
+			},
+			initialTasks,
+		);
+		stopWatcher = handle.stop;
+
+		// A checkout or rebase rewrites every task file at once.
+		for (const [index, fileName] of fileNames.entries()) {
+			await Bun.write(
+				join(core.filesystem.tasksDir, fileName),
+				serializeTask(sampleTask(`task-${index + 1}`, `Burst ${index + 1}`, "Done")),
+			);
+		}
+		for (const fileName of fileNames) watcherCallback("change", fileName);
+
+		await withTimeout(allChanged, "burst task edit publication", getPlatformTimeout(5000));
+		expect(changedTitles.sort()).toEqual(fileNames.map((_, index) => `Burst ${index + 1}`).sort());
+		// Each task needs two stable reads, so one read per task per event would make 2 x taskCount.
+		expect(listTasksSpy.mock.calls.length).toBeLessThan(taskCount);
+	});
+
 	it("confirms archive and delete absence from one event without duplicate removals", async () => {
 		const archiveDir = join(testDir, "backlog", "archive", "tasks");
 		await mkdir(archiveDir, { recursive: true });
