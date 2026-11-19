@@ -149,10 +149,10 @@ jobs:
           git fetch --no-tags origin "$HEAD"
           echo "from=$(git merge-base "$BASE" "$HEAD")" >> "$GITHUB_OUTPUT"
 
-      - uses: MrLesk/groma.md-action@v1.2.2
+      - uses: MrLesk/groma.md-action@v1.2.4
         id: map
         with:
-          groma-version: '0.7.6'
+          groma-version: '0.7.8'
           output: groma-comparison
           theme: ${{ env.GROMA_THEME }}
           from: ${{ steps.commits.outputs.from }}
@@ -183,9 +183,9 @@ jobs:
 
       - parallel:
           - name: Build the current architecture map
-            uses: MrLesk/groma.md-action@v1.2.2
+            uses: MrLesk/groma.md-action@v1.2.4
             with:
-              groma-version: '0.7.6'
+              groma-version: '0.7.8'
               output: ${{ runner.temp }}/groma-site
               theme: ${{ env.GROMA_THEME }}
 

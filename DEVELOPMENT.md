@@ -1,6 +1,6 @@
 ## Local Development
 
-> **Runtime requirements:** Use Bun 1.4.4 and Node.js 26.12.1 or later, matching CI and the Nix development shell.
+> **Runtime requirements:** CI and the Nix development shell use Bun 1.4.4 and Node.js 26.13.1.
 
 Run these commands to bootstrap the project:
 
@@ -46,14 +46,18 @@ bun run check
 
 For contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-The pinned npm 12.2.1 build tool updates its bundled dependencies, but still
-includes ip-address 10.7.2, affected by
-[GHSA-rxp7-6hxx-x8q5](https://github.com/advisories/GHSA-rxp7-6hxx-x8q5),
-and Undici 6.29.0, which predates the
-[6.29.1 security fixes](https://github.com/nodejs/undici/releases/tag/v6.29.1).
-These are remaining upstream build-tool advisories. npm is not bundled into
-Backlog's native executable, and Backlog does not impose build-tool versions
-on users' Node installations.
+The TUI library `neo-neo-bblessed` installs Jimp, whose plugins require Zod 3.
+The lockfile resolves this dependency to 3.25.76.
+`bun audit` reports [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5)
+for that version. The CLI and browser bundle excludes Jimp and its Zod copy.
+The bundled MCP adapter uses Zod 4.6.7, which includes the fix.
+
+The external Groma map action installs its own Node.js 26.12.1 and npm 12.2.1.
+These versions are fixed in the [action](https://github.com/MrLesk/groma.md-action/blob/v1.2.4/action.yml)
+and its [installer](https://github.com/MrLesk/groma.md-action/blob/v1.2.4/prepare-trust.mjs).
+That npm copy still contains ip-address 10.7.2
+([advisory](https://github.com/advisories/GHSA-rxp7-6hxx-x8q5)) and Undici 6.29.0
+([upstream fix](https://github.com/nodejs/undici/releases/tag/v6.29.1)).
 
 ## Standalone Builds
 
@@ -84,7 +88,7 @@ SSL_CERT_FILE=/path/to/incident-filtered-ca-bundle.pem bun run update-nix
 The command requires patched Node 26.12.1 or later and a readable, nonempty
 filtered CA bundle before resolving the generator. Inside `nix develop`, it uses
 the local bun2nix only after verifying version 2.1.2. Otherwise it requires npm
-12.2.0 or later (CI and Nix pin 12.2.1) and downloads the exact bun2nix 2.1.2
+12.2.0 or later (CI and Nix pin 12.2.3) and downloads the exact bun2nix 2.1.2
 package through native npm under that same Node, with explicit `--cafile` and `--strict-ssl=true`. npm retains
 its normal authentication, registry and proxy configuration. The generator then
 runs locally; it does not download packages through Bun. Commit the resulting
@@ -110,11 +114,11 @@ unified x64 runtime. It requires SSE4.2 and selects CPU-specific paths at
 runtime. Dependency installation, the non-compile bundle build, the development
 shell, and the installed application all use that runtime. Project format and
 lint commands use the Biome version pinned in `bun.lock` rather than a second
-Nix-provided version. The development shell's Node uses official 26.12.1
-archives with published SHA-256 digests, preserving the release's bundled
-security fixes, and npm 12.2.1 from its integrity-pinned registry archive; Linux binaries are adapted with header order preserved by `patchelf --no-sort`. The flake also
-applies upstream Brotli commit `0ed4268a4401abcb4472096340477cf4af7d1a2b`
-for CVE-2026-111497 to the shell's curl and Git, avoiding a full Nixpkgs rebuild.
+Nix-provided version. The development shell uses official Node.js 26.13.1
+archives with published SHA-256 digests and npm 12.2.3 from its integrity-pinned
+registry archive. On Linux, `patchelf --no-sort` preserves the Node binary's header
+order. The pinned Nixpkgs provides Brotli 1.2.1, which includes the decoder fix for
+CVE-2026-111497 used by curl and Git.
 The development shell pins tools without overriding the host's Git/npm
 certificate or proxy settings. Build checks use their own filtered certificate
 bundle. Commands that download dependencies use an explicit CA bundle as shown
@@ -280,7 +284,7 @@ provenance automatically. Follow the steps below to keep the setup healthy.
   `backlog.md-windows-x64`.
 - Remove the legacy `NODE_AUTH_TOKEN` repository secret. Publishing now uses
   the GitHub-issued OIDC token, so no long-lived npm tokens should remain.
-- The workflow pins Node.js 26.12.1 and npm 12.2.1 for trusted publishing.
+- The workflow pins Node.js 26.13.1 and npm 12.2.3 for trusted publishing.
   Review both pins together when updating release tooling.
 
 ### Publishing steps

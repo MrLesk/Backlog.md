@@ -2,7 +2,7 @@
   "scanners": [
     {
       "id": "react",
-      "source": "@groma/scanner-react@0.2.1",
+      "source": "@groma/scanner-react@0.2.3",
       "include": [
         "**/*.ts",
         "**/*.tsx",
@@ -26,7 +26,7 @@
     },
     {
       "id": "typescript",
-      "source": "@groma/scanner-typescript@0.2.1",
+      "source": "@groma/scanner-typescript@0.2.4",
       "include": [
         "**/*.ts",
         "**/*.tsx",

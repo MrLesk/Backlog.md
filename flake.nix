@@ -30,18 +30,6 @@
             inherit system;
             overlays = [ bun2nix.overlays.default ];
           };
-          # Scope the Brotli fix to developer network tools, avoiding a Nixpkgs-wide rebuild.
-          brotliRuntime = pkgs.brotli.overrideAttrs (old: {
-            patches = (old.patches or [ ]) ++ [
-              (pkgs.fetchurl {
-                # CVE-2026-111497; the same upstream fix shipped in Node 26.12.1.
-                url = "https://github.com/google/brotli/commit/0ed4268a4401abcb4472096340477cf4af7d1a2b.patch";
-                hash = "sha256-gzyh1x7thb3jwhxjpu4xATh3Qbiqi5qCJRNAlKZ3thk=";
-              })
-            ];
-          });
-          curlRuntime = pkgs.curl.override { brotli = brotliRuntime; };
-          gitRuntime = pkgs.git.override { curl = curlRuntime; };
           avx2BunArchive = pkgs.fetchurl {
             # Pin an AVX2-only control independently of the packaged Bun runtime.
             url = "https://github.com/oven-sh/bun/releases/download/bun-v1.3.13/bun-linux-x64.zip";
@@ -79,25 +67,25 @@
           nodeSource = {
             x86_64-linux = {
               platform = "linux-x64";
-              hash = "sha256-YXCy1HThxib0PP863BGN+f47VzJYpPw9hQyNvGsHm70=";
+              hash = "sha256-XAY+Rrqw+8HBfMRF1/8SnL3NBHG+btg7arhk+BQ7yGQ=";
             };
             aarch64-linux = {
               platform = "linux-arm64";
-              hash = "sha256-QqoEkiWR7l1NvHdA1FJiGs8oUII52qUS9e6MR+4iT9s=";
+              hash = "sha256-ieGFMTjbUei4LT6YupwNPylWoo5eVeobfhLSWq6S1d0=";
             };
             aarch64-darwin = {
               platform = "darwin-arm64";
-              hash = "sha256-GIML9Ej+GHxlDcKMmKqMlo7R1Att0DLAgecKOEob9mA=";
+              hash = "sha256-r2IC9TcKOlIJ6F3FQ3WN/Z9EyHJmJqI2cwzWA6Z6hVk=";
             };
           }.${system};
           npmSource = pkgs.fetchurl {
-            url = "https://registry.npmjs.org/npm/-/npm-12.2.1.tgz";
-            hash = "sha512-bKCmFRVT/BB+YPEYbZwQ1XUI3N5t4xKSpU1MxOjo7z3iWzKBJ0ZXRC1xFdEN+TC7N5TdywaBzf2dMXGJq/e2PQ==";
+            url = "https://registry.npmjs.org/npm/-/npm-12.2.3.tgz";
+            hash = "sha512-ovmNRRe76Jvcp1E6iOePQ6H9Zr4XMOrqgfaeGNhtRvP3XSl2Lo/a9C1N5/jRlLLrsqCem/omgGdZHpZ5a6yn1Q==";
           };
           # Preserve the release's security fixes instead of relinking older Nixpkgs libraries.
           nodeRuntime = pkgs.stdenvNoCC.mkDerivation rec {
             pname = "nodejs";
-            version = "26.12.1";
+            version = "26.13.1";
             src = pkgs.fetchurl {
               url = "https://nodejs.org/dist/v${version}/node-v${version}-${nodeSource.platform}.tar.xz";
               inherit (nodeSource) hash;
@@ -139,7 +127,7 @@
               npm_version="$("$out/bin/node" "$out/lib/node_modules/npm/bin/npm-cli.js" --version)"
               echo "Packaged Node: $node_version; npm: $npm_version"
               test "$node_version" = "v${version}"
-              test "$npm_version" = "12.2.1"
+              test "$npm_version" = "12.2.3"
               test "$(head -n 1 "$out/lib/node_modules/npm/bin/npm-cli.js")" = "#!$out/bin/node"
               test "$(head -n 1 "$out/lib/node_modules/npm/bin/npx-cli.js")" = "#!$out/bin/node"
               runHook postInstallCheck
@@ -260,10 +248,10 @@
           };
 
           checks.development-tools = pkgs.runCommand "backlog-development-tools" (buildTrust // {
-            nativeBuildInputs = [ nodeRuntime curlRuntime gitRuntime ];
+            nativeBuildInputs = [ nodeRuntime pkgs.curl pkgs.git ];
           }) ''
-            node -e 'const assert = require("node:assert/strict"); assert.equal(process.version, "v26.12.1"); assert.equal(process.versions.ares, "1.34.9"); assert.equal(typeof require("node:zlib").constants.BROTLI_DECODER_ERROR_FORMAT_BLOCK_SWITCH, "number");'
-            test "$(npm --version)" = "12.2.1"
+            node -e 'const assert = require("node:assert/strict"); assert.equal(process.version, "v26.13.1"); assert.equal(process.versions.ares, "1.34.9"); assert.equal(typeof require("node:zlib").constants.BROTLI_DECODER_ERROR_FORMAT_BLOCK_SWITCH, "number");'
+            test "$(npm --version)" = "12.2.3"
             test -s "$SSL_CERT_FILE"
             test -d "$SSL_CERT_DIR"
             test -f "$(dirname "$GIT_PROXY_SSL_CAINFO")"
@@ -283,8 +271,8 @@
               bunRuntime
               pkgs.bun2nix
               nodeRuntime
-              gitRuntime
-              curlRuntime
+              pkgs.git
+              pkgs.curl
             ];
           };
         }
