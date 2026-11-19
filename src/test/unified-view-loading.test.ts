@@ -200,5 +200,15 @@ describe("loadTasksForUnifiedView", () => {
 		expect(state.tasks).toEqual([first, added]);
 		expect(state.selectedTask).toBe(added);
 		expect(published).toHaveLength(3);
+
+		const addedDone = { ...added, status: "Done" };
+		await Promise.all([
+			callbacks.onTaskChanged?.(addedDone),
+			callbacks.onTaskRemoved?.(first.id),
+			callbacks.onTaskAdded?.(first),
+		]);
+		expect(state.tasks).toEqual([addedDone, first]);
+		expect(state.selectedTask).toBe(addedDone);
+		expect(published).toHaveLength(4);
 	});
 });

@@ -1,6 +1,7 @@
 import { type FSWatcher, watch } from "node:fs";
 import { stat } from "node:fs/promises";
 import type { Core } from "../core/backlog.ts";
+import type { FileSystem, WorkingCopyTaskLists } from "../file-system/operations.ts";
 import type { Task } from "../types/index.ts";
 import { hasAnyPrefix } from "./prefix-config.ts";
 import { extractTaskIdFromFilename, normalizeTaskId, normalizeTaskIdentity, taskIdsEqual } from "./task-path.ts";
@@ -73,6 +74,27 @@ async function readTaskFileSnapshot(tasksDir: string): Promise<TaskFileSnapshot>
 	}
 }
 
+/** Changes that arrive during a disk read share the next read, so it includes those changes. */
+function createSharedTaskReader(filesystem: FileSystem) {
+	let previousRead: Promise<void> = Promise.resolve();
+	let queuedRead: Promise<WorkingCopyTaskLists> | undefined;
+
+	return () => {
+		if (!queuedRead) {
+			queuedRead = previousRead.then(() => {
+				queuedRead = undefined;
+				return filesystem.readWorkingCopyTaskLists();
+			});
+			// The next read can start after either success or failure, without retaining the task lists.
+			previousRead = queuedRead.then(
+				() => undefined,
+				() => undefined,
+			);
+		}
+		return queuedRead;
+	};
+}
+
 /**
  * Watch the current checkout's backlog/tasks directory and emit incremental updates.
  * A single filesystem event is reconciled until task content is stable or absence is
@@ -89,6 +111,7 @@ export function watchTasks(
 	);
 	let stopped = false;
 	let directoryGeneration = 0;
+	const readTasks = createSharedTaskReader(core.filesystem);
 
 	const reconcile = async (taskId: string, state: TaskReconciliation, eventGeneration: number): Promise<void> => {
 		let previousCandidateSignature: string | null | undefined;
@@ -99,10 +122,11 @@ export function watchTasks(
 
 			let task: Task | null = null;
 			try {
-				task = await core.filesystem.loadTask(taskId);
+				task = await core.filesystem.loadTask(taskId, readTasks);
 			} catch {
 				continue;
 			}
+			if (stopped || eventGeneration !== state.generation) return;
 
 			if (!isUsableTask(task, taskId)) {
 				previousCandidateSignature = task === null ? null : undefined;

@@ -145,6 +145,95 @@ describe("task watcher reconciliation", () => {
 		expect(task.status).toBe("In Progress");
 	});
 
+	it("shares corpus reads across a burst of task edits", async () => {
+		const taskCount = 40;
+		const fileNames: string[] = [];
+		for (let index = 1; index <= taskCount; index++) {
+			const fileName = `task-${index} - Burst-${index}.md`;
+			fileNames.push(fileName);
+			await Bun.write(
+				join(core.filesystem.tasksDir, fileName),
+				serializeTask(sampleTask(`task-${index}`, `Burst ${index}`)),
+			);
+		}
+		const initialTasks = await core.filesystem.listTasks();
+		const changedStatuses = new Map<string, string>();
+		const allChanged = Promise.withResolvers<void>();
+		const listTasksSpy = spyOn(core.filesystem, "listTasks");
+		const handle = watchTasks(
+			core,
+			{
+				onTaskChanged(task) {
+					changedStatuses.set(task.id, task.status);
+					if (changedStatuses.size === taskCount) allChanged.resolve();
+				},
+			},
+			initialTasks,
+		);
+		stopWatcher = handle.stop;
+
+		// A checkout or rebase rewrites every task file at once.
+		for (const [index, fileName] of fileNames.entries()) {
+			await Bun.write(
+				join(core.filesystem.tasksDir, fileName),
+				serializeTask(sampleTask(`task-${index + 1}`, `Burst ${index + 1}`, "Done")),
+			);
+		}
+		for (const fileName of fileNames) watcherCallback("change", fileName);
+
+		await withTimeout(allChanged.promise, "burst task edit publication", getPlatformTimeout(5000));
+		expect(changedStatuses).toEqual(new Map(initialTasks.map((task) => [task.id, "Done"])));
+		// Each task needs two stable reads, so one read per task per event would make 2 x taskCount.
+		expect(listTasksSpy.mock.calls.length).toBeLessThan(taskCount);
+	});
+
+	it("publishes the latest status when another edit arrives during a read", async () => {
+		const task = sampleTask("task-1", "Overlapping edits");
+		const fileName = "task-1 - Overlapping-edits.md";
+		const path = join(core.filesystem.tasksDir, fileName);
+		await Bun.write(path, serializeTask(task));
+		const initial = await core.filesystem.listTasks();
+
+		const secondRead = Promise.withResolvers<void>();
+		const releaseRead = Promise.withResolvers<void>();
+		const listTasks = core.filesystem.listTasks.bind(core.filesystem);
+		let reads = 0;
+		const spy = spyOn(core.filesystem, "listTasks").mockImplementation(async () => {
+			const tasks = await listTasks();
+			if (++reads === 2) {
+				secondRead.resolve();
+				await releaseRead.promise;
+			}
+			return tasks;
+		});
+		const statuses: string[] = [];
+		const finished = Promise.withResolvers<void>();
+		stopWatcher = watchTasks(
+			core,
+			{
+				onTaskChanged(task) {
+					statuses.push(task.status);
+					if (task.status === "Done") finished.resolve();
+				},
+			},
+			initial,
+		).stop;
+
+		try {
+			await Bun.write(path, serializeTask({ ...task, status: "In Progress" }));
+			watcherCallback("change", fileName);
+			await withTimeout(secondRead.promise, "second read of the first edit", getPlatformTimeout(1200));
+			await Bun.write(path, serializeTask({ ...task, status: "Done" }));
+			watcherCallback("change", fileName);
+			releaseRead.resolve();
+			await withTimeout(finished.promise, "latest status", getPlatformTimeout(1200));
+			expect(statuses).toEqual(["Done"]);
+		} finally {
+			releaseRead.resolve();
+			spy.mockRestore();
+		}
+	});
+
 	it("confirms archive and delete absence from one event without duplicate removals", async () => {
 		const archiveDir = join(testDir, "backlog", "archive", "tasks");
 		await mkdir(archiveDir, { recursive: true });
