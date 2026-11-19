@@ -499,6 +499,23 @@ describe("Web board filters", () => {
 		expect(text).not.toContain("Write docs");
 	});
 
+	it("uses the configured final status for each milestone lane's progress", () => {
+		const container = renderBoardPage("http://localhost/board?lane=milestone", {
+			statuses: ["Open", "Done", "Closed"],
+			tasks: [
+				createTask({ id: "task-1", title: "Waiting for closure", milestone: "m-1", status: "DONE" }),
+				createTask({ id: "task-2", title: "Ready to ship", milestone: "m-2", status: "CLOSED" }),
+			],
+		});
+		expect(container.textContent).toContain("Waiting for closure");
+		expect(container.textContent).toContain("Ready to ship");
+		const headers = Array.from(container.querySelectorAll("button"));
+		for (const [milestone, progress] of [["m-1", "0%"], ["m-2", "100%"]] as const) {
+			const header = headers.find((button) => button.textContent?.includes(milestone));
+			expect(Array.from(header?.querySelectorAll("span") ?? []).map((span) => span.textContent)).toContain(progress);
+		}
+	});
+
 	it("shows cleanup on the final configured status column when it is not named Done", () => {
 		const container = renderBoardPage(undefined, {
 			statuses: ["To Do", "Review", "Closed"],

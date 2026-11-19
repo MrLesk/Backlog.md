@@ -36,15 +36,19 @@ describe("buildMilestoneBuckets", () => {
 		expect(none?.statusCounts.Done).toBe(1);
 	});
 
-	it("marks milestones completed when all tasks are done", () => {
-		const doneTasks = [
-			makeTask({ id: "task-1", milestone: "M1", status: "Done" }),
-			makeTask({ id: "task-2", milestone: "M1", status: "Done" }),
+	it("counts only the configured final status toward milestone completion", () => {
+		const tasks = [
+			makeTask({ id: "task-1", milestone: "M1", status: "CLOSED" }),
+			makeTask({ id: "task-2", milestone: "M2", status: "Done" }),
+			makeTask({ id: "task-3", milestone: "M2", status: "Incomplete" }),
 		];
-		const milestones: Milestone[] = [{ id: "M1", title: "M1", description: "", rawContent: "" }];
-		const buckets = buildMilestoneBuckets(doneTasks, milestones, ["To Do", "In Progress", "Done"]);
-		const m1 = buckets.find((b) => b.label === "M1");
-		expect(m1?.isCompleted).toBe(true);
+		const buckets = buildMilestoneBuckets(tasks, [], ["Incomplete", "Done", "Closed"]);
+		expect(buckets.find((bucket) => bucket.milestone === "M1")).toMatchObject({
+			isCompleted: true,
+			progress: 100,
+			statusCounts: { Closed: 1 },
+		});
+		expect(buckets.find((bucket) => bucket.milestone === "M2")).toMatchObject({ isCompleted: false, doneCount: 0 });
 	});
 
 	it("keeps active milestones when archived titles are reused", () => {

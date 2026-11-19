@@ -1,6 +1,6 @@
 import type { Task } from "../types/index.ts";
 import { getPriorityValues, normalizePriorityValue } from "../utils/priority-config.ts";
-import { isTerminalStatus } from "../utils/terminal-status.ts";
+import { createStatusResolver, isTerminalStatus } from "../utils/terminal-status.ts";
 import { parseStoredUtcDate } from "../utils/utc-timestamp.ts";
 
 export interface TaskStatistics {
@@ -31,6 +31,7 @@ export function getTaskStatistics(
 	statuses: string[],
 	priorityOrder?: readonly string[],
 ): TaskStatistics {
+	const resolveStatus = createStatusResolver(statuses);
 	const statusCounts = new Map<string, number>();
 	const priorityCounts = new Map<string, number>();
 
@@ -65,8 +66,8 @@ export function getTaskStatistics(
 		}
 
 		// Count by status
-		const currentCount = statusCounts.get(task.status) || 0;
-		statusCounts.set(task.status, currentCount + 1);
+		const status = resolveStatus(task.status);
+		statusCounts.set(status, (statusCounts.get(status) ?? 0) + 1);
 
 		// Count completed tasks
 		if (completed) {

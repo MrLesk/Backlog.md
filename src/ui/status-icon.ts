@@ -1,4 +1,5 @@
-/* Status icon and color mappings for consistent UI display */
+import { DEFAULT_STATUSES } from "../constants/index.ts";
+import { isTerminalStatus } from "../utils/terminal-status.ts";
 
 export interface StatusStyle {
 	icon: string;
@@ -10,9 +11,9 @@ export interface StatusStyle {
  * @param status - The task status
  * @returns The icon and color for the status
  */
-export function getStatusStyle(status: string): StatusStyle {
+export function getStatusStyle(status: string, completed = isTerminalStatus(status, DEFAULT_STATUSES)): StatusStyle {
+	if (completed) return { icon: "✔", color: "green" };
 	const statusMap: Record<string, StatusStyle> = {
-		done: { icon: "✔", color: "green" },
 		"in progress": { icon: "◒", color: "yellow" },
 		blocked: { icon: "●", color: "red" },
 		"to do": { icon: "○", color: "default" },
@@ -25,21 +26,12 @@ export function getStatusStyle(status: string): StatusStyle {
 }
 
 /**
- * Get just the color for a status (for backward compatibility)
- * @param status - The task status
- * @returns The color for the status
- */
-export function getStatusColor(status: string): string {
-	return getStatusStyle(status).color;
-}
-
-/**
  * Get just the icon for a status
  * @param status - The task status
  * @returns The icon for the status
  */
-export function getStatusIcon(status: string): string {
-	return getStatusStyle(status).icon;
+export function getStatusIcon(status: string, completed?: boolean): string {
+	return getStatusStyle(status, completed).icon;
 }
 
 /**
@@ -55,7 +47,12 @@ export function wrapStatusColor(text: string, color: string): string {
  * @param status - The task status
  * @returns The formatted status string with icon
  */
-export function formatStatusWithIcon(status: string): string {
-	const style = getStatusStyle(status);
+export function formatStatusWithIcon(status: string, completed?: boolean): string {
+	const style = getStatusStyle(status, completed);
 	return `${style.icon} ${status}`;
+}
+
+export function formatColoredStatus(status: string, completed: boolean): string {
+	const { icon, color } = getStatusStyle(status, completed);
+	return wrapStatusColor(`${icon} ${status}`, color);
 }

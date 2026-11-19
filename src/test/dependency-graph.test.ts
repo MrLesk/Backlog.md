@@ -40,6 +40,13 @@ function nodeIds(graph: DependencyGraph, direction: "dependencies" | "dependents
 }
 
 describe("buildDependencyGraph", () => {
+	it("uses the selected draft's status when an older project has a task with the same ID", () => {
+		const draft = task("draft-1", [], { status: "Draft" });
+		const boardTask = task("draft-1", [], { status: "Closed" });
+		const graph = buildDependencyGraph(draft, { tasks: [boardTask], statuses: ["Open", "Closed"] });
+		expect(graph.nodes[0]).toMatchObject({ status: "Draft", completed: false });
+	});
+
 	it("separates direct from transitive in both directions", () => {
 		const graph = graphFor("task-3", [
 			task("task-1"),

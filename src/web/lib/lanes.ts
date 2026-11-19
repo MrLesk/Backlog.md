@@ -1,4 +1,5 @@
 import type { Milestone, Task } from "../../types";
+import { createStatusResolver, isTerminalStatus } from "../../utils/terminal-status.ts";
 import { parseStoredUtcDate } from "../../utils/utc-timestamp.ts";
 import { getMilestoneLabel, milestoneKey, normalizeMilestoneName } from "../utils/milestones";
 
@@ -203,8 +204,8 @@ export function buildLanes(
 	];
 }
 
-export function sortTasksForStatus(tasks: Task[], status: string): Task[] {
-	const isDoneStatus = status.toLowerCase().includes("done") || status.toLowerCase().includes("complete");
+export function sortTasksForStatus(tasks: Task[], status: string, statuses: readonly string[]): Task[] {
+	const completed = isTerminalStatus(status, statuses);
 
 	return tasks.slice().sort((a, b) => {
 		// Tasks with ordinal come before tasks without
@@ -220,14 +221,14 @@ export function sortTasksForStatus(tasks: Task[], status: string): Task[] {
 			return a.ordinal - b.ordinal;
 		}
 
-		const aDate = isDoneStatus ? a.updatedDate || a.createdDate : a.createdDate;
-		const bDate = isDoneStatus ? b.updatedDate || b.createdDate : b.createdDate;
+		const aDate = completed ? a.updatedDate || a.createdDate : a.createdDate;
+		const bDate = completed ? b.updatedDate || b.createdDate : b.createdDate;
 		const aTime = parseStoredUtcDate(aDate)?.getTime();
 		const bTime = parseStoredUtcDate(bDate)?.getTime();
 		if (aTime !== undefined && bTime !== undefined) {
-			return isDoneStatus ? bTime - aTime : aTime - bTime;
+			return completed ? bTime - aTime : aTime - bTime;
 		}
-		return isDoneStatus ? bDate.localeCompare(aDate) : aDate.localeCompare(bDate);
+		return completed ? bDate.localeCompare(aDate) : aDate.localeCompare(bDate);
 	});
 }
 
@@ -239,6 +240,7 @@ function normalizeMilestoneValue(value: string | null): string | undefined {
 
 export function buildGlobalOrderedTaskIdsForMilestoneLaneReorder(params: {
 	tasks: Task[];
+	statuses: readonly string[];
 	taskId: string;
 	targetStatus: string;
 	targetMilestone: string | null;
@@ -262,7 +264,7 @@ export function buildGlobalOrderedTaskIdsForMilestoneLaneReorder(params: {
 	});
 
 	const statusTasks = nextTasks.filter((task) => (task.status ?? "") === targetStatus);
-	const templateIds = sortTasksForStatus(statusTasks, targetStatus).map((task) => task.id);
+	const templateIds = sortTasksForStatus(statusTasks, targetStatus, params.statuses).map((task) => task.id);
 
 	if (templateIds.length === 0) {
 		return params.laneOrderedTaskIds;
@@ -367,8 +369,9 @@ export function groupTasksByLaneAndStatus(
 		ensureStatusMap(lane.key);
 	}
 
+	const resolveStatus = createStatusResolver(statuses);
 	for (const task of normalizedTasks) {
-		const statusKey = task.status ?? "";
+		const statusKey = resolveStatus(task.status ?? "");
 		const laneKey = mode === "milestone" ? laneKeyFromMilestone(task.milestone) : DEFAULT_LANE_KEY;
 		const statusMap = ensureStatusMap(laneKey);
 
@@ -382,7 +385,7 @@ export function groupTasksByLaneAndStatus(
 
 	for (const [, statusMap] of result) {
 		for (const [status, list] of statusMap) {
-			statusMap.set(status, sortTasksForStatus(list, status));
+			statusMap.set(status, sortTasksForStatus(list, status, statuses));
 		}
 	}
 

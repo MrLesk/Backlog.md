@@ -26,8 +26,8 @@ describe("updateReadmeWithBoard", () => {
 	let originalCwd: string;
 	let readmePath: string;
 
-	const tasks = [makeTask("task-1", "First", "To Do"), makeTask("task-2", "Second", "Done")];
-	const statuses = ["To Do", "Done"];
+	const tasks = [makeTask("task-1", "First", "OPEN"), makeTask("task-2", "Second", "CLOSED")];
+	const statuses = ["OPEN", "DONE", "CLOSED"];
 
 	beforeEach(async () => {
 		testDir = await mkdtemp(join(tmpdir(), "readme-board-"));
@@ -49,7 +49,7 @@ describe("updateReadmeWithBoard", () => {
 		const content = await Bun.file(readmePath).text();
 		const boardSection = content.slice(content.indexOf(BOARD_START) + BOARD_START.length, content.indexOf(BOARD_END));
 		expect(boardSection).toContain("## 📊 TestProject Project Status");
-		expect(boardSection).toContain("| To Do | Done |");
+		expect(boardSection).toContain("| OPEN | DONE | CLOSED |\n| --- | --- | --- |");
 		expect(boardSection).toContain("TASK-1");
 		expect(boardSection).toContain("TASK-2");
 		// The export metadata header stays out of the README; only the table is embedded.

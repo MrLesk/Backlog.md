@@ -74,7 +74,7 @@ describe("subtask ordering consistency", () => {
 
 	it("agrees with the board columns and with the comparator the web list sorts by", async () => {
 		const tasks = await core.loadTasks();
-		const [column] = prepareBoardColumns(tasks, ["To Do"]);
+		const [column] = prepareBoardColumns(tasks, ["To Do", "Done"]);
 
 		expect(column?.tasks.map((task) => task.id)).toEqual(EXPECTED_ORDER);
 		// The web task list sorts with this same comparator, so a corpus already in its order
@@ -82,6 +82,23 @@ describe("subtask ordering consistency", () => {
 		expect(tasks.map((task) => task.id)).toEqual(
 			[...tasks].sort((left, right) => compareTaskIds(left.id, right.id)).map((task) => task.id),
 		);
+	});
+
+	it("reverses the fallback ID order only in the configured final column", () => {
+		const statuses = ["Done", "Closed"];
+		const tasks = [
+			createTask("TASK-1", { status: "Done" }),
+			createTask("TASK-2", { status: "Done" }),
+			createTask("TASK-3", { status: "Closed" }),
+			createTask("TASK-4", { status: "Closed" }),
+			createTask("TASK-5", { status: "Legacy" }),
+		];
+		const columns = prepareBoardColumns(tasks, statuses);
+		expect(columns.map((column) => column.tasks.map((task) => task.id))).toEqual([
+			["TASK-1", "TASK-2"],
+			["TASK-4", "TASK-3"],
+			["TASK-5"],
+		]);
 	});
 
 	it("agrees with the CLI plain and JSON task lists", async () => {

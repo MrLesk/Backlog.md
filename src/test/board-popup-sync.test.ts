@@ -81,7 +81,7 @@ async function withBoardPopup(
 	run: (context: {
 		screen: ScreenInterface & EmittingWidget;
 		/** Push a new task list through the board's update funnel, exactly as the watcher does. */
-		publishTasks: (tasks: Task[]) => Promise<void>;
+		publishTasks: (tasks: Task[], statuses?: string[]) => Promise<void>;
 		popupBody: () => TestWidget | undefined;
 		text: () => string;
 		focused: () => EmittingWidget | undefined;
@@ -115,9 +115,9 @@ async function withBoardPopup(
 
 		await run({
 			screen,
-			publishTasks: async (tasks) => {
+			publishTasks: async (tasks, statuses = BOARD_STATUSES) => {
 				expect(subscriber).toBeDefined();
-				subscriber?.(tasks, BOARD_STATUSES);
+				subscriber?.(tasks, statuses);
 				await Bun.sleep(30);
 			},
 			popupBody: () => findPopupBody(screen),
@@ -165,6 +165,15 @@ describe("board task popup stays in sync with live task state", () => {
 				expect(text()).toContain("Edited title");
 			},
 		);
+	});
+
+	it("updates the popup's completion mark when the configured final column changes", async () => {
+		const tasks = [createTask(), OTHER_TASK];
+		await withBoardPopup({ tasks }, async ({ publishTasks, text }) => {
+			expect(text()).toMatch(/○ To Do[^\n]*TASK-1/);
+			await publishTasks(tasks, ["Done", "To Do"]);
+			expect(text()).toMatch(/✔ To Do[^\n]*TASK-1/);
+		});
 	});
 
 	it("rebuilds the popup when the task changes outside the board", async () => {

@@ -82,6 +82,18 @@ describe("CLI plain output for AI agents", () => {
 		);
 	});
 
+	it("marks only the configured final status as finished in task detail", async () => {
+		const core = new Core(TEST_DIR);
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Expected project config");
+		await core.filesystem.saveConfig({ ...config, statuses: ["To Do", "Done", "Closed"] });
+
+		const middle = await $`bun ${cliPath} task edit 1 -s Done --plain`.cwd(TEST_DIR).quiet();
+		const final = await $`bun ${cliPath} task edit 1 -s Closed --plain`.cwd(TEST_DIR).quiet();
+		expect(middle.stdout.toString()).toContain("Status: ○ Done");
+		expect(final.stdout.toString()).toContain("Status: ✔ Closed");
+	});
+
 	afterEach(async () => {
 		await safeCleanup(TEST_DIR);
 	});

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiClient } from '../lib/api';
 import type { TaskStatistics } from '../../core/statistics';
 import type { Task } from '../../types';
+import { isTerminalStatus } from '../../utils/terminal-status';
 import { formatPriorityLabel } from '../../utils/priority-config';
 import LoadingSpinner from './LoadingSpinner';
 import StoredDate from './StoredDate';
@@ -12,6 +13,7 @@ interface StatisticsData extends Omit<TaskStatistics, 'statusCounts' | 'priority
 }
 
 interface StatisticsProps {
+	statuses: string[];
 	tasks?: Task[];
 	isLoading?: boolean;
 	onEditTask?: (task: Task) => void;
@@ -20,6 +22,7 @@ interface StatisticsProps {
 }
 
 const Statistics: React.FC<StatisticsProps> = ({
+	statuses,
 	tasks: _tasks,
 	isLoading: externalLoading,
 	onEditTask,
@@ -158,6 +161,13 @@ const Statistics: React.FC<StatisticsProps> = ({
 	};
 
 	const StatusIcon = ({ status }: { status: string }) => {
+		if (isTerminalStatus(status, statuses)) {
+			return (
+				<svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 24 24">
+					<path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+				</svg>
+			);
+		}
 		switch (status.toLowerCase()) {
 			case 'to do':
 				return (
@@ -169,12 +179,6 @@ const Statistics: React.FC<StatisticsProps> = ({
 				return (
 					<svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-					</svg>
-				);
-			case 'done':
-				return (
-					<svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 24 24">
-						<path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
 					</svg>
 				);
 			default:
@@ -216,12 +220,9 @@ const Statistics: React.FC<StatisticsProps> = ({
 	};
 
 	const getStatusColor = (status: string) => {
-		switch (status.toLowerCase()) {
-			case 'to do': return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200';
-			case 'in progress': return 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200';
-			case 'done': return 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200';
-			default: return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200';
-		}
+		if (isTerminalStatus(status, statuses)) return 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200';
+		if (status.toLowerCase() === 'in progress') return 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200';
+		return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200';
 	};
 
 	const getPriorityColor = (priority: string) => {

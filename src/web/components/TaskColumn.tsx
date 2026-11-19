@@ -7,6 +7,7 @@ import TaskCard from './TaskCard';
 
 interface TaskColumnProps {
   title: string;
+  isTerminal?: boolean;
   tasks: Task[];
   onTaskUpdate: (taskId: string, updates: Partial<Task>) => void;
   onEditTask: (task: Task) => void;
@@ -61,6 +62,7 @@ const sortByCreatedDate = (tasks: Task[], direction: CreatedDateSortDirection): 
 
 const TaskColumn: React.FC<TaskColumnProps> = ({
   title,
+  isTerminal,
   tasks,
   onTaskUpdate,
   onEditTask,
@@ -136,7 +138,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
 
   const getStatusBadgeClass = (status: string) => {
     const statusLower = status.toLowerCase();
-    if (statusLower.includes('done') || statusLower.includes('complete')) {
+    if (isTerminal) {
       return 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 transition-colors duration-200';
     }
     if (statusLower.includes('progress') || statusLower.includes('doing')) {

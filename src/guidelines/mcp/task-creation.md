@@ -6,8 +6,7 @@ This guide provides detailed instructions for creating well-structured tasks. Yo
 
 **IMPORTANT - Always use filters when searching:**
 - Use `task_search` with query parameter (e.g., query="desktop app")
-- Use `task_list` with status filter to exclude completed work (e.g., status="To Do" or status="In Progress")
-- Never list all tasks including "Done" status without explicit user request
+- To find unfinished work with `task_list`, filter by a configured status before the last column. Only the last configured status is finished. List the whole backlog, including finished work, only when the user asks.
 - Never search without a query or limit - this can overwhelm the context window
 
 Use `task_view` to read full context of related tasks.

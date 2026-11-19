@@ -21,6 +21,7 @@ import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts
 import { compareTaskIds, sortTasks } from "../utils/task-sorting.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
 import { taskContentSignature } from "../utils/task-watcher.ts";
+import { isTerminalStatus } from "../utils/terminal-status.ts";
 import { formatUtcDateForDisplay } from "../utils/utc-date-display.ts";
 import { openConfirmPopup } from "./components/confirm-popup.ts";
 import { createFilterHeader, type FilterHeader, type FilterState } from "./components/filter-header.ts";
@@ -85,12 +86,7 @@ type ColumnView = {
 	highlightedIndex?: number;
 };
 
-function isDoneStatus(status: string): boolean {
-	const normalized = status.trim().toLowerCase();
-	return normalized === "done" || normalized === "completed" || normalized === "complete";
-}
-
-function buildColumnTasks(status: string, items: Task[], byId: Map<string, Task>): Task[] {
+function buildColumnTasks(items: Task[], byId: Map<string, Task>, completed: boolean): Task[] {
 	const topLevel: Task[] = [];
 	const childrenByParent = new Map<string, Task[]>();
 	const sorted = items.slice().sort((a, b) => {
@@ -109,8 +105,7 @@ function buildColumnTasks(status: string, items: Task[], byId: Map<string, Task>
 			return 1;
 		}
 
-		const columnIsDone = isDoneStatus(status);
-		if (columnIsDone) {
+		if (completed) {
 			return compareTaskIds(b.id, a.id);
 		}
 
@@ -139,13 +134,17 @@ function buildColumnTasks(status: string, items: Task[], byId: Map<string, Task>
 	return ordered;
 }
 
-export function prepareBoardColumns(tasks: Task[], statuses: string[]): ColumnData[] {
-	const { orderedStatuses, groupedTasks } = buildKanbanStatusGroups(tasks, statuses);
+export function prepareBoardColumns(
+	tasks: Task[],
+	configuredStatuses: string[],
+	columnOrder = configuredStatuses,
+): ColumnData[] {
+	const { orderedStatuses, groupedTasks } = buildKanbanStatusGroups(tasks, columnOrder);
 	const byId = new Map<string, Task>(tasks.map((task) => [task.id, task]));
 
 	return orderedStatuses.map((status) => {
 		const items = groupedTasks.get(status) ?? [];
-		const orderedTasks = buildColumnTasks(status, items, byId);
+		const orderedTasks = buildColumnTasks(items, byId, isTerminalStatus(status, configuredStatuses));
 		return { status, tasks: orderedTasks };
 	});
 }
@@ -201,8 +200,8 @@ function buildRenderedTaskListItems(
 	};
 }
 
-function formatColumnLabel(status: string, count: number): string {
-	return `\u00A0${getStatusIcon(status)} ${status || "No Status"} (${count})\u00A0`;
+function formatColumnLabel(status: string, count: number, configuredStatuses: string[]): string {
+	return `\u00A0${getStatusIcon(status, isTerminalStatus(status, configuredStatuses))} ${status || "No Status"} (${count})\u00A0`;
 }
 
 /**
@@ -375,6 +374,8 @@ export async function renderBoardTui(
 		let currentColumnsData: ColumnData[] = [];
 		let configuredWorkflowStatuses = [...statuses];
 		let currentStatuses = initialColumns.map((column) => column.status);
+		const prepareCurrentColumns = (tasks: Task[]) =>
+			prepareBoardColumns(tasks, configuredWorkflowStatuses, currentStatuses);
 		let hideEmptyColumns = options?.hideEmptyColumns ?? false;
 		let pendingSettingWrite: Promise<void> | null = null;
 		let currentCol = 0;
@@ -548,9 +549,7 @@ export async function renderBoardTui(
 		/** The target column's real task ids minus `excludeIds`: the base the ghost inserts into. */
 		const getInsertionBase = (targetStatus: string, excludeIds: string[]): string[] => {
 			const excluded = new Set(excludeIds);
-			const column = prepareBoardColumns(getFilteredTasks(), currentStatuses).find(
-				(candidate) => candidate.status === targetStatus,
-			);
+			const column = prepareCurrentColumns(getFilteredTasks()).find((candidate) => candidate.status === targetStatus);
 			return (column?.tasks ?? []).filter((task) => !excluded.has(task.id)).map((task) => task.id);
 		};
 
@@ -674,7 +673,7 @@ export async function renderBoardTui(
 					height: "100%",
 					border: { type: "line" },
 					style: { border: { fg: "gray" } },
-					label: formatColumnLabel(columnData.status, columnData.tasks.length),
+					label: formatColumnLabel(columnData.status, columnData.tasks.length, configuredWorkflowStatuses),
 				});
 
 				const taskList = list({
@@ -819,7 +818,9 @@ export async function renderBoardTui(
 				column.plainItems = renderedItems.plain;
 				column.highlightedIndex = undefined;
 				column.list.setItems(renderedItems.rich);
-				column.box.setLabel?.(formatColumnLabel(columnData.status, columnData.tasks.length));
+				column.box.setLabel?.(
+					formatColumnLabel(columnData.status, columnData.tasks.length, configuredWorkflowStatuses),
+				);
 			});
 			restoreSelection(selectedTaskId);
 		};
@@ -833,29 +834,26 @@ export async function renderBoardTui(
 		// Pure function to calculate the projected board state
 		const getProjectedColumns = (allTasks: Task[], operation: MoveOperation | null): ColumnData[] => {
 			if (!operation) {
-				return prepareBoardColumns(allTasks, currentStatuses);
+				return prepareCurrentColumns(allTasks);
 			}
 
 			const movingTask = allTasks.find((t) => t.id === operation.taskId);
 			if (!movingTask) {
-				return prepareBoardColumns(allTasks, currentStatuses);
+				return prepareCurrentColumns(allTasks);
 			}
 
 			// 1. Lift the previewed tasks out of their columns, keeping board display order
 			//    so a collapsed set lands as one block in the order it appears on the board.
 			const movingIds = new Set(getPreviewMovingIds(operation));
 			const blockTasks: Task[] = [];
-			for (const column of prepareBoardColumns(allTasks, currentStatuses)) {
+			for (const column of prepareCurrentColumns(allTasks)) {
 				for (const task of column.tasks) {
 					if (movingIds.has(task.id)) blockTasks.push(task);
 				}
 			}
 
 			// 2. Prepare columns without the moving tasks
-			const columns = prepareBoardColumns(
-				allTasks.filter((t) => !movingIds.has(t.id)),
-				currentStatuses,
-			);
+			const columns = prepareCurrentColumns(allTasks.filter((t) => !movingIds.has(t.id)));
 
 			// 3. Insert the moving block into the target column at the target index
 			const targetColumn = columns.find((c) => c.status === operation.targetStatus);
@@ -1178,8 +1176,8 @@ export async function renderBoardTui(
 			const tasksChanged = !areBoardTaskCollectionsEqual(currentTasks, nextTasks);
 			const statusesChanged =
 				nextStatuses.length > 0 &&
-				(nextStatuses.length !== currentStatuses.length ||
-					nextStatuses.some((status, index) => status !== currentStatuses[index]));
+				(nextStatuses.length !== configuredWorkflowStatuses.length ||
+					nextStatuses.some((status, index) => status !== configuredWorkflowStatuses[index]));
 			if (!tasksChanged && !statusesChanged) return;
 
 			// Update source of truth
@@ -1532,17 +1530,20 @@ export async function renderBoardTui(
 			if (notice) showTransientFooter(notice);
 		};
 
+		const popupSignature = (task: Task) =>
+			`${isTerminalStatus(task.status, configuredWorkflowStatuses)}:${taskContentSignature(task)}`;
+
 		const openTaskPopup = async (task: Task): Promise<void> => {
 			popupOpen = true;
+			const signature = popupSignature(task);
 
-			const popup = await createTaskPopup(
-				screen,
-				task,
+			const popup = await createTaskPopup(screen, task, {
 				resolveMilestoneLabel,
-				options?.dateFormat,
+				dateFormat: options?.dateFormat,
 				configuredProjects,
-				options?.priorities,
-			);
+				configuredPriorities: options?.priorities,
+				configuredStatuses: configuredWorkflowStatuses,
+			});
 			if (!popup) {
 				popupOpen = false;
 				openPopup = null;
@@ -1550,7 +1551,7 @@ export async function renderBoardTui(
 			}
 
 			const { contentArea, close } = popup;
-			openPopup = { taskId: task.id, signature: taskContentSignature(task), close };
+			openPopup = { taskId: task.id, signature, close };
 
 			contentArea.key(["escape", "q"], () => {
 				closeOpenPopup();
@@ -1604,7 +1605,7 @@ export async function renderBoardTui(
 				return;
 			}
 			// Rebuilding only on a content change keeps the watcher echo of an in-popup edit invisible.
-			if (taskContentSignature(nextTask) === current.signature) return;
+			if (popupSignature(nextTask) === current.signature) return;
 			closeOpenPopup();
 			await openTaskPopup(nextTask);
 			// The board may have moved on again while the popup was rebuilding.
@@ -1678,9 +1679,7 @@ export async function renderBoardTui(
 			const targetStatus = operation.targetStatus;
 
 			// No-op guard: the set already sits exactly where the preview lands it.
-			const realColumn = prepareBoardColumns(currentTasks, currentStatuses).find(
-				(c) => c.status === operation.targetStatus,
-			);
+			const realColumn = prepareCurrentColumns(currentTasks).find((c) => c.status === operation.targetStatus);
 			const realIds = (realColumn?.tasks ?? []).map((task) => task.id);
 			if (realIds.length === orderedTaskIds.length && realIds.every((id, index) => id === orderedTaskIds[index])) {
 				moveOp = null;

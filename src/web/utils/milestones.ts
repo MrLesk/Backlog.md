@@ -8,9 +8,9 @@ export {
 	collectArchivedMilestoneKeys,
 	collectMilestoneIds,
 	getMilestoneLabel,
-	isDoneStatus,
 	milestoneKey,
 	normalizeMilestoneName,
+	summarizeMilestoneTasks,
 	validateMilestoneName,
 } from "../../core/milestones.ts";
 

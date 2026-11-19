@@ -4,7 +4,7 @@ import { apiClient, type ReorderTaskPayload } from '../lib/api';
 import { buildLanes, DEFAULT_LANE_KEY, groupTasksByLaneAndStatus, type LaneMode, sortTasksForStatus } from '../lib/lanes';
 import { collectAvailableLabels, labelsToLower } from '../../utils/label-filter';
 import { collectArchivedMilestoneKeys, milestoneKey } from '../utils/milestones';
-import { getTerminalStatus } from '../../utils/terminal-status';
+import { createStatusResolver, getTerminalStatus } from '../../utils/terminal-status';
 import { getPriorityOptions, normalizePriorityValue } from '../../utils/priority-config';
 import { getProjectValues, matchesProjectFilter } from '../../utils/project-config';
 import { getTaskTypeValues, matchesTaskTypeFilter } from '../../utils/task-type-config';
@@ -97,6 +97,7 @@ const Board: React.FC<BoardProps> = ({
   const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
   const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({});
   const terminalStatus = getTerminalStatus(statuses);
+  const resolveStatus = useMemo(() => createStatusResolver(statuses), [statuses]);
   const priorityOptions = useMemo(
     () => [{ label: 'All priorities', value: '' }, ...getPriorityOptions(availablePriorities)],
     [availablePriorities]
@@ -361,7 +362,7 @@ const Board: React.FC<BoardProps> = ({
     // the cards happened to be clicked. Unresolvable IDs stay in the request so the server can
     // report them per task.
     const orderedTasks = statuses.flatMap((status) =>
-      sortTasksForStatus(selectedTasks.filter((task) => task.status === status), status)
+      sortTasksForStatus(selectedTasks.filter((task) => resolveStatus(task.status) === status), status, statuses)
     );
     const orderedIds = new Set(orderedTasks.map((task) => task.id));
     const taskIds = [
@@ -375,7 +376,7 @@ const Board: React.FC<BoardProps> = ({
       selectedTasks.length === taskIds.length &&
       selectedTasks.every(
         (task) =>
-          task.status === targetStatus &&
+          resolveStatus(task.status) === targetStatus &&
           (targetMilestone === undefined ||
             canonicalizeMilestone(task.milestone) === canonicalizeMilestone(targetMilestone))
       );
@@ -513,22 +514,10 @@ const Board: React.FC<BoardProps> = ({
     return count;
   };
 
-  const countDoneTasksInLane = (laneKey: string): number => {
-    const statusMap = laneMetadataTasksByLane.get(laneKey);
-    if (!statusMap) return 0;
-    let count = 0;
-    for (const [status, taskList] of statusMap) {
-      if (status.toLowerCase().includes('done') || status.toLowerCase().includes('complete')) {
-        count += taskList.length;
-      }
-    }
-    return count;
-  };
-
   const getLaneProgress = (laneKey: string): number => {
     const total = laneTaskCount(laneKey);
-    if (total === 0) return 0;
-    const done = countDoneTasksInLane(laneKey);
+    if (total === 0 || !terminalStatus) return 0;
+    const done = laneMetadataTasksByLane.get(laneKey)?.get(terminalStatus)?.length ?? 0;
     return Math.round((done / total) * 100);
   };
 
@@ -885,6 +874,7 @@ const Board: React.FC<BoardProps> = ({
                         <div key={`${lane.key}-${status}`} className="min-w-0">
                           <TaskColumn
                             title={status}
+                            isTerminal={status === terminalStatus}
                             tasks={getTasksForLane(lane.key, status)}
                             onTaskUpdate={handleTaskUpdate}
                             onEditTask={onEditTask}
@@ -918,6 +908,7 @@ const Board: React.FC<BoardProps> = ({
               <div key={status} className="flex-1 min-w-[16rem]">
                 <TaskColumn
                   title={status}
+                  isTerminal={status === terminalStatus}
                   tasks={getTasksForLane(DEFAULT_LANE_KEY, status)}
                   onTaskUpdate={handleTaskUpdate}
                   onEditTask={onEditTask}

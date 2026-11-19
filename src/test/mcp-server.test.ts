@@ -150,7 +150,7 @@ describe("McpServer bootstrap", () => {
 		TEST_DIR = createUniqueTestDir("mcp-server-guides");
 
 		expect(MCP_TASK_EXECUTION_GUIDE).toContain(
-			"Do not check acceptance criteria, write the final summary, or move the task to Done from this guide alone",
+			"Do not check acceptance criteria, write the final summary, or move the task to the configured final status from this guide alone",
 		);
 		expect(MCP_TASK_EXECUTION_GUIDE).toContain("verify each acceptance criterion with objective evidence");
 		expect(MCP_TASK_FINALIZATION_GUIDE).toContain("Check only proven items");

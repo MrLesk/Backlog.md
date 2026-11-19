@@ -1,4 +1,5 @@
 import type { Milestone, MilestoneBucket, MilestoneSummary, Task } from "../types/index.ts";
+import { createStatusResolver, isTerminalStatus } from "../utils/terminal-status.ts";
 
 const NO_MILESTONE_KEY = "__none";
 
@@ -257,12 +258,18 @@ export function getMilestoneLabel(milestoneId: string | undefined, milestoneEnti
 	return entity?.title || milestoneId;
 }
 
-/**
- * Check if a status represents a "done" state
- */
-export function isDoneStatus(status?: string | null): boolean {
-	const normalized = (status ?? "").toLowerCase();
-	return normalized.includes("done") || normalized.includes("complete");
+export function summarizeMilestoneTasks(tasks: Task[], statuses: string[]) {
+	const statusCounts: Record<string, number> = Object.fromEntries(statuses.map((status) => [status, 0]));
+	const resolveStatus = createStatusResolver(statuses);
+	let doneCount = 0;
+	for (const task of tasks) {
+		const status = resolveStatus(task.status ?? "");
+		statusCounts[status] = (statusCounts[status] ?? 0) + 1;
+		if (isTerminalStatus(status, statuses)) doneCount++;
+	}
+
+	const total = tasks.length;
+	return { statusCounts, total, doneCount, progress: total > 0 ? Math.round((doneCount / total) * 100) : 0 };
 }
 
 /**
@@ -281,18 +288,7 @@ function createBucket(
 		return bucketMilestoneKey ? taskMilestoneKey === bucketMilestoneKey : !taskMilestoneKey;
 	});
 
-	const counts: Record<string, number> = {};
-	for (const status of statuses) {
-		counts[status] = 0;
-	}
-	for (const task of bucketTasks) {
-		const status = task.status ?? "";
-		counts[status] = (counts[status] ?? 0) + 1;
-	}
-
-	const doneCount = bucketTasks.filter((t) => isDoneStatus(t.status)).length;
-	const progress = bucketTasks.length > 0 ? Math.round((doneCount / bucketTasks.length) * 100) : 0;
-	const isCompleted = bucketTasks.length > 0 && doneCount === bucketTasks.length;
+	const summary = summarizeMilestoneTasks(bucketTasks, statuses);
 
 	const key = bucketMilestoneKey ? bucketMilestoneKey : NO_MILESTONE_KEY;
 	const label = getMilestoneLabel(milestoneId, milestoneEntities);
@@ -302,12 +298,9 @@ function createBucket(
 		label,
 		milestone: milestoneId,
 		isNoMilestone,
-		isCompleted,
+		isCompleted: summary.total > 0 && summary.doneCount === summary.total,
 		tasks: bucketTasks,
-		statusCounts: counts,
-		total: bucketTasks.length,
-		doneCount,
-		progress,
+		...summary,
 	};
 }
 
