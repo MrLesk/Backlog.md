@@ -75,6 +75,11 @@ import { sortByTaskId } from "../utils/task-sorting.ts";
 import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
 import { normalizeLegacyEditorConfig, serializeConfig } from "./config-serialization.ts";
 
+export interface WorkingCopyTaskLists {
+	activeTasks: Task[];
+	archivedTasks: Task[];
+}
+
 // Interface for task path resolution context
 interface TaskPathContext {
 	filesystem: {
@@ -1000,10 +1005,15 @@ export class FileSystem {
 		return movedFrom;
 	}
 
-	async loadTask(taskId: string): Promise<Task | null> {
+	async readWorkingCopyTaskLists(): Promise<WorkingCopyTaskLists> {
+		const [activeTasks, archivedTasks] = await Promise.all([this.listTasks(), this.listArchivedTasks()]);
+		return { activeTasks, archivedTasks };
+	}
+
+	async loadTask(taskId: string, readTasks = () => this.readWorkingCopyTaskLists()): Promise<Task | null> {
 		try {
 			const tasksDir = await this.getTasksDir();
-			const [activeTasks, archivedTasks] = await Promise.all([this.listTasks(), this.listArchivedTasks()]);
+			const { activeTasks, archivedTasks } = await readTasks();
 			const identityMatches = [...activeTasks, ...archivedTasks].filter((task) => taskIdsEqual(taskId, task.id));
 			if (identityMatches.length > 1) {
 				throw new AmbiguousTaskIdError(

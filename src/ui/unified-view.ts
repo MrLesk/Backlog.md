@@ -2,6 +2,7 @@
  * Unified view manager that handles Tab switching between task views and kanban board
  */
 
+import { setImmediate } from "node:timers/promises";
 import type { Core } from "../core/backlog.ts";
 import { findLocalDuplicateTaskIds } from "../core/duplicate-task-repair.ts";
 import type { LabelMatchMode, Milestone, Task, TaskCreateInput } from "../types/index.ts";
@@ -100,7 +101,19 @@ export function createUnifiedTaskUpdateCallbacks(
 	getState: () => UnifiedTaskState,
 	onStateChanged: (state: UnifiedTaskState) => void,
 ): TaskWatcherCallbacks {
-	const publish = (update: UnifiedTaskUpdate) => onStateChanged(applyUnifiedTaskUpdate(getState(), update));
+	let pendingUpdates: UnifiedTaskUpdate[] = [];
+	let publication: Promise<void> | undefined;
+	const publish = (update: UnifiedTaskUpdate) => {
+		pendingUpdates.push(update);
+		// Apply file events in order, then redraw the active view once for the whole batch.
+		publication ??= setImmediate().then(() => {
+			const updates = pendingUpdates;
+			pendingUpdates = [];
+			publication = undefined;
+			onStateChanged(updates.reduce(applyUnifiedTaskUpdate, getState()));
+		});
+		return publication;
+	};
 	return {
 		onTaskAdded: (task) => publish({ type: "upsert", task }),
 		onTaskChanged: (task) => publish({ type: "upsert", task }),
