@@ -3,6 +3,13 @@ export function formatUtcTimestamp(date = new Date()): string {
 	return `${date.toISOString().slice(0, 19)}Z`;
 }
 
+/** Normalize a stored time on write. A calendar date or an unreadable value keeps its meaning. */
+export function normalizeStoredTimestamp(value: string): string {
+	if (!value.includes(":")) return value;
+	const instant = parseStoredUtcDate(value);
+	return instant ? formatUtcTimestamp(instant) : value;
+}
+
 /** Read stored instants consistently: legacy timezone-less values mean UTC on every host. */
 export function parseStoredUtcDate(dateStr: string | undefined): Date | null {
 	const match = (dateStr ?? "")

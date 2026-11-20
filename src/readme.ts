@@ -1,6 +1,7 @@
 import { join } from "node:path";
-import { formatBoardExportTimestamp, generateKanbanBoardTable } from "./board.ts";
+import { generateKanbanBoardTable } from "./board.ts";
 import type { Task } from "./types/index.ts";
+import { formatUtcTimestamp } from "./utils/utc-timestamp.ts";
 
 const BOARD_START = "<!-- BOARD_START -->";
 const BOARD_END = "<!-- BOARD_END -->";
@@ -15,7 +16,7 @@ export async function updateReadmeWithBoard(tasks: Task[], statuses: string[], p
 	}
 
 	const boardTable = generateKanbanBoardTable(tasks, statuses).trimEnd();
-	const timestamp = formatBoardExportTimestamp();
+	const timestamp = formatUtcTimestamp();
 
 	// Create the board section with a nice title
 	const versionText = version ? ` (${version})` : "";

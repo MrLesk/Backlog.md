@@ -111,19 +111,15 @@ describe("Core.reorderTask", () => {
 		}
 	};
 
-	it("preserves updatedDate when editing only ordinal", async () => {
-		await core.createTask(
-			buildTask("task-1", "To Do", 1000, {
-				updatedDate: "2025-01-02 12:00",
-			}),
-			false,
-		);
+	it("preserves the previous update time when editing only the ordinal of a legacy task", async () => {
+		const legacy = buildTask("task-1", "To Do", 1000, { updatedDate: "2025-01-02 12:00" });
+		await Bun.write(join(core.filesystem.tasksDir, "task-1 - Task-task-1.md"), serializeTask(legacy));
 
 		await core.updateTaskFromInput("task-1", { ordinal: 2000 }, false);
 
 		const updatedTask = await core.filesystem.loadTask("task-1");
 		expect(updatedTask?.ordinal).toBe(2000);
-		expect(updatedTask?.updatedDate).toBe("2025-01-02 12:00");
+		expect(updatedTask?.updatedDate).toBe("2025-01-02T12:00:00Z");
 	});
 
 	it("does not add updatedDate when editing only ordinal on a task without one", async () => {
@@ -187,7 +183,7 @@ describe("Core.reorderTask", () => {
 		const updatedTask1 = await core.filesystem.loadTask("task-1");
 		const updatedTask2 = await core.filesystem.loadTask("task-2");
 		expect(updatedTask1?.ordinal).toBe(3000);
-		expect(updatedTask1?.updatedDate).toBe("2025-01-02 12:00");
+		expect(updatedTask1?.updatedDate).toBe("2025-01-02T12:00:00Z");
 		expect(updatedTask2?.ordinal).toBe(4000);
 		expect(updatedTask2?.updatedDate).toBeUndefined();
 	});
@@ -220,7 +216,7 @@ describe("Core.reorderTask", () => {
 		const task2 = await core.filesystem.loadTask("task-2");
 		const task3 = await core.filesystem.loadTask("task-3");
 		expect(task2?.ordinal).toBe(2000);
-		expect(task3?.updatedDate).toBe("2025-01-02 12:00");
+		expect(task3?.updatedDate).toBe("2025-01-02T12:00:00Z");
 	});
 
 	it("rebalances ordinals when collisions exist", async () => {

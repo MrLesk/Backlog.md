@@ -224,18 +224,30 @@ describe("task and draft unknown frontmatter", () => {
 
 	it("keeps metadata when the TUI closes an edited task or draft", async () => {
 		const core = new Core(root);
+		let edit = false;
 		const editor = spyOn(core, "openEditor").mockImplementation(async (path) => {
-			await Bun.write(path, `${await Bun.file(path).text()}\nEditor addition\n`);
+			if (edit) await Bun.write(path, `${await Bun.file(path).text()}\nEditor addition\n`);
 			return true;
 		});
 		try {
 			for (const id of ["TASK-1", "DRAFT-1"]) {
 				const path = await writeRecord(id);
-				const selected = { ...parseTask(await Bun.file(path).text()), filePath: path };
-				const result = await core.editTaskInTui(id, {} as Parameters<Core["editTaskInTui"]>[1], selected);
+				const original = (await Bun.file(path).text())
+					.replace("created_date: 2026-01-01", "created_date: 2026-01-01 01:00")
+					.replace("\n---\n", "\n---  \n");
+				await Bun.write(path, original);
+				const selected = { ...parseTask(original), filePath: path };
+				edit = false;
+				const screen = {} as Parameters<Core["editTaskInTui"]>[1];
+				expect((await core.editTaskInTui(id, screen, selected)).changed).toBe(false);
+				expect(await Bun.file(path).text()).toBe(original);
+				edit = true;
+				const result = await core.editTaskInTui(id, screen, selected);
 				expect(result.changed).toBe(true);
 				const saved = await expectMetadata(path);
+				expect(saved).toContain("\n---  \n");
 				expect(saved).toContain("Editor addition");
+				expect(parseTask(saved).createdDate).toBe("2026-01-01T01:00:00Z");
 				expect(parseTask(saved).updatedDate).toMatch(/Z$/);
 			}
 		} finally {

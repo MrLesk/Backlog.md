@@ -115,7 +115,7 @@ import { attachSubtaskSummaries, findDirectSubtasks } from "../utils/task-subtas
 import { formatValidTaskTypeValues, resolveTaskTypeValue } from "../utils/task-type-config.ts";
 import { upsertTaskUpdatedDate } from "../utils/task-updated-date.ts";
 import { isTerminalStatus } from "../utils/terminal-status.ts";
-import { formatUtcTimestamp, parseStoredUtcDate } from "../utils/utc-timestamp.ts";
+import { formatUtcTimestamp, normalizeStoredTimestamp, parseStoredUtcDate } from "../utils/utc-timestamp.ts";
 import { moveWithoutReplacing } from "./archived-task-move.ts";
 import { migrateConfig, needsMigration } from "./config-migration.ts";
 import { ContentStore, type TaskCorpusSnapshot } from "./content-store.ts";
@@ -4571,7 +4571,10 @@ export class Core {
 			// Compare the actual planned source so first-write marker migration also gets a timestamp.
 			const original = await readFile(this.fs.contentRecordFilePath("decision", existing), "utf8");
 			try {
-				if (serializeDecision(updated, original) !== original) updated.updatedDate = formatUtcTimestamp();
+				if (serializeDecision(updated, original) !== original) {
+					updated.date = normalizeStoredTimestamp(existing.date);
+					updated.updatedDate = formatUtcTimestamp();
+				}
 			} catch (error) {
 				refuseBrokenFrontmatterReference(error);
 			}

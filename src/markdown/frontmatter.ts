@@ -32,7 +32,8 @@ export function parseFrontmatter(
 							state.input
 								.slice(start, state.position)
 								.trim()
-								.replace(/^(?:[!&]\S+\s+)*/, ""),
+								.replace(/^(?:[!&]\S+\s+)*/, "")
+								.replace(/^(['"])(.*)\1$/, "$2"),
 						);
 					}
 				}

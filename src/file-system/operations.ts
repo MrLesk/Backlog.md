@@ -74,6 +74,7 @@ import {
 import { getTaskRevision } from "../utils/task-revision.ts";
 import { sortByTaskId } from "../utils/task-sorting.ts";
 import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
+import { normalizeStoredTimestamp } from "../utils/utc-timestamp.ts";
 import { normalizeLegacyEditorConfig, serializeConfig } from "./config-serialization.ts";
 
 export interface WorkingCopyTaskLists {
@@ -332,6 +333,11 @@ function decisionFileName(decision: ContentRecord): string {
 /** Whether `path` is `directory` itself or lies inside it. Both are real paths, with links resolved. */
 function isWithinDirectory(directory: string, path: string): boolean {
 	return path === directory || path.startsWith(`${directory}${sep}`);
+}
+
+function normalizeRecordTimestamps(record: Task | Document): void {
+	record.createdDate = normalizeStoredTimestamp(record.createdDate);
+	if (record.updatedDate) record.updatedDate = normalizeStoredTimestamp(record.updatedDate);
 }
 
 /**
@@ -952,6 +958,7 @@ export class FileSystem {
 				? existingTask.parentTaskId
 				: normalizedParentTaskId;
 
+		normalizeRecordTimestamps(task);
 		// Normalize new task IDs before serialization, but preserve existing file identity on updates.
 		const normalizedTask = {
 			...task,
@@ -1389,6 +1396,7 @@ export class FileSystem {
 		const { id: draftId, filePath: filepath, loadedFromPath } = await this.resolveTaskWriteTarget(task, true);
 		const originalFile = loadedFromPath ? Bun.file(loadedFromPath) : undefined;
 		const originalContent = sourceContent ?? ((await originalFile?.exists()) ? await originalFile?.text() : undefined);
+		normalizeRecordTimestamps(task);
 		// Normalize the draft ID to uppercase before serialization
 		const content = serializeTask({ ...task, id: draftId }, originalContent);
 
@@ -1648,6 +1656,7 @@ export class FileSystem {
 		const originalFile = loadedFromPath ? Bun.file(loadedFromPath) : undefined;
 		const originalContent = (await originalFile?.exists()) ? await originalFile?.text() : undefined;
 
+		normalizeRecordTimestamps(document);
 		const movedFrom = await this.writeRecordFile(
 			filepath,
 			serializeDocument(document, originalContent),
