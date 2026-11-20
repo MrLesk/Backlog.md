@@ -290,6 +290,8 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 			title: {
 				type: "string",
 				maxLength: 200,
+				description:
+					"New title in Markdown. Task files keep their filename. Draft files are renamed to match the title.",
 			},
 			description: {
 				type: "string",

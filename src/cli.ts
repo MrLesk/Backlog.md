@@ -3846,7 +3846,7 @@ const taskEditCommand = addHelpSchema(taskCmd.command("edit [taskIds...]"), {
 		},
 	],
 	optional: [
-		{ name: "title", type: "String", description: "Replacement task title" },
+		{ name: "title", type: "String", description: "New title in the Markdown file. The task keeps its filename." },
 		{ name: "description", type: "Markdown", description: "Replacement description" },
 		{ name: "status", type: statusType, description: "Project task status; case-insensitive" },
 		{ name: "type", type: taskType, description: "Replacement task type; case-insensitive" },
