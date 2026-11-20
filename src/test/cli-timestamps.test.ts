@@ -9,7 +9,7 @@ import { getTestCliPath } from "./test-cli.ts";
 import { createTestDirOutsideRepository, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = getTestCliPath();
-const UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/;
+const UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
 describe("stored UTC timestamps", () => {
 	let testDir: string;
@@ -67,13 +67,14 @@ describe("stored UTC timestamps", () => {
 		);
 	});
 
-	it("preserves historical creation values on read and edit, including midnight and date-only values", async () => {
+	it("preserves source on read and normalizes timed creation values on edit", async () => {
 		const values = [
 			["2026-10-18 00:00", "2026-10-18T00:00:00Z"],
 			["2026-10-18T00:00", "2026-10-18T00:00:00Z"],
 			["2026-10-18T00:00:00Z", "2026-10-18T00:00:00Z"],
 			["2026-10-18t00:00:00", "2026-10-18T00:00:00Z"],
 			["2026-10-18  08:00:00 +08:00", "2026-10-18T00:00:00Z"],
+			["2026-10-18T00:15:29.987+02:00", "2026-10-17T22:15:29Z"],
 			["2026-10-18", "2026-10-18"],
 		] as const;
 		for (const [index, [created, publicDate]] of values.entries()) {
@@ -92,8 +93,8 @@ describe("stored UTC timestamps", () => {
 			expect(await Bun.file(path).text()).toBe(original);
 			await cli("task", "edit", String(id), "--notes", "Reviewed");
 			const raw = await Bun.file(path).text();
-			expect(parseTask(raw).createdDate).toBe(created);
-			expect(parseFrontmatter(raw).data.created_date).toBe(created);
+			expect(parseTask(raw).createdDate).toBe(publicDate);
+			expect(parseFrontmatter(raw).data.created_date).toBe(publicDate);
 			expect(parseTask(raw).updatedDate).toMatch(UTC_TIMESTAMP);
 			expect(parseTask(raw).dueDate).toBe("2026-10-20");
 		}
@@ -109,7 +110,7 @@ describe("stored UTC timestamps", () => {
 		const path = join(core.filesystem.docsDir, doc.path);
 		const opaque = "custom_timestamp: &stamp 2026-10-18T00:00:00-08:00\ncustom_alias: *stamp\n";
 		const original = (await Bun.file(path).text())
-			.replace(/created_date:.*\n/, "created_date: 2026-10-18T00:00:00Z\n")
+			.replace(/created_date:.*\n/, "created_date: 2026-10-18T02:00:13.987+02:00\n")
 			.replace(/\n---\n/, `\n${opaque}---\n`);
 		await Bun.write(path, original);
 		await cli("doc", "update", "doc-1", "--content", "Updated guide");
@@ -117,10 +118,41 @@ describe("stored UTC timestamps", () => {
 		expect(updatedRaw).toContain(opaque);
 		expect(parseFrontmatter(updatedRaw).data.custom_timestamp).toBeInstanceOf(Date);
 		const updated = await core.getDocument("doc-1");
-		expect(updated?.createdDate).toBe("2026-10-18T00:00:00Z");
+		expect(updated?.createdDate).toBe("2026-10-18T00:00:13Z");
 		expect(updated?.updatedDate).toMatch(UTC_TIMESTAMP);
 		await cli("decision", "create", "Use UTC", "--plain");
 		expect((await core.getDecision("decision-1"))?.date).toMatch(UTC_TIMESTAMP);
+	});
+
+	it.each([
+		{
+			kind: "draft",
+			id: "draft-1",
+			folder: "drafts",
+			dateKey: "created_date",
+			create: ["task", "create", "Legacy", "--draft"],
+		},
+		{
+			kind: "decision",
+			id: "decision-1",
+			folder: "decisions",
+			dateKey: "date",
+			create: ["decision", "create", "Legacy"],
+		},
+	])("normalizes a legacy $kind timestamp only after a change", async ({ kind, id, folder, dateKey, create }) => {
+		await cli(...create);
+		const path = join(testDir, "backlog", folder, `${id} - Legacy.md`);
+		const legacy = (await Bun.file(path).text()).replace(
+			new RegExp(`^${dateKey}:.*$`, "m"),
+			`${dateKey}: '2026-10-18 01:15:31 +0200'`,
+		);
+		await Bun.write(path, legacy);
+		await cli(kind, "edit", id, "--title", "Legacy");
+		expect(await Bun.file(path).text()).toBe(legacy);
+		await cli(kind, "edit", id, kind === "draft" ? "--description" : "--context", "Changed");
+		const header = parseFrontmatter(await Bun.file(path).text(), [dateKey, "updated_date"]).data;
+		expect(header[dateKey]).toBe("2026-10-17T23:15:31Z");
+		expect(header.updated_date).toMatch(UTC_TIMESTAMP);
 	});
 
 	it("keeps a comment before an unquoted timestamp outside the stored date value", async () => {
@@ -136,13 +168,26 @@ describe("stored UTC timestamps", () => {
 		}
 	});
 
-	it("keeps newly generated UTC midnight as a timestamp with minute precision", async () => {
+	it("stores the actual UTC second without milliseconds", async () => {
 		setSystemTime(new Date("2026-10-19T00:00:49.123Z"));
 		const { task } = await core.createTaskFromInput({ title: "Midnight" });
-		expect(task.createdDate).toBe("2026-10-19T00:00:00Z");
-		expect((await core.filesystem.loadTask(task.id))?.createdDate).toBe("2026-10-19T00:00:00Z");
+		const { task: draft } = await core.createTaskFromInput({ title: "Midnight draft", status: "Draft" });
 		const doc = await core.createDocumentFromInput({ title: "Midnight guide" });
-		expect(doc.createdDate).toBe("2026-10-19T00:00:00Z");
-		expect((await core.createDecisionFromInput({ title: "Midnight choice" })).date).toBe("2026-10-19T00:00:00Z");
+		const decision = await core.createDecisionFromInput({ title: "Midnight choice" });
+
+		setSystemTime(new Date("2026-10-19T00:01:23.987Z"));
+		await core.editTaskOrDraft(task.id, { description: "Updated task" });
+		await core.editTaskOrDraft(draft.id, { description: "Updated draft" });
+		await core.updateDocumentFromInput({ id: doc.id, content: "Updated guide" });
+		await core.updateDecisionFromInput(decision.id, { context: "Updated context" });
+
+		const dates = { createdDate: "2026-10-19T00:00:49Z", updatedDate: "2026-10-19T00:01:23Z" };
+		expect(await core.filesystem.loadTask(task.id)).toMatchObject(dates);
+		expect(await core.filesystem.loadDraft(draft.id)).toMatchObject(dates);
+		expect(await core.getDocument(doc.id)).toMatchObject(dates);
+		expect(await core.getDecision(decision.id)).toMatchObject({
+			date: dates.createdDate,
+			updatedDate: dates.updatedDate,
+		});
 	});
 });

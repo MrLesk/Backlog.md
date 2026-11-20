@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, setSystemTime } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
@@ -12,6 +12,7 @@ const normalizeCliOutput = (output: string) => output.replace(/\r\n/g, "\n").rep
 
 let TEST_DIR: string;
 const CLI_PATH = getTestCliPath();
+const EDIT_TIME = "2026-10-19T12:34:56Z";
 
 describe("CLI Integration", () => {
 	beforeEach(async () => {
@@ -20,6 +21,7 @@ describe("CLI Integration", () => {
 	});
 
 	afterEach(async () => {
+		setSystemTime();
 		await safeCleanup(TEST_DIR);
 	});
 
@@ -222,6 +224,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should update task title, description, and status", async () => {
+			setSystemTime(new Date(EDIT_TIME));
 			const core = new Core(TEST_DIR);
 
 			// Create a test task
@@ -258,8 +261,7 @@ describe("CLI Integration", () => {
 			expect(updatedTask?.title).toBe("Updated Title");
 			expect(extractStructuredSection(updatedTask?.rawContent || "", "description")).toBe("Updated description");
 			expect(updatedTask?.status).toBe("In Progress");
-			const today = `${new Date().toISOString().slice(0, 16)}:00Z`;
-			expect(updatedTask?.updatedDate).toBe(today);
+			expect(updatedTask?.updatedDate).toBe(EDIT_TIME);
 		});
 
 		it("should replace labels from repeated CLI label flags", async () => {
@@ -487,6 +489,7 @@ describe("CLI Integration", () => {
 		});
 
 		it("should automatically set updated_date field when editing", async () => {
+			setSystemTime(new Date(EDIT_TIME));
 			const core = new Core(TEST_DIR);
 
 			// Create a test task
@@ -509,12 +512,12 @@ describe("CLI Integration", () => {
 
 			// Verify updated_date was automatically set to today's date
 			const updatedTask = await core.filesystem.loadTask("task-6");
-			const today = `${new Date().toISOString().slice(0, 16)}:00Z`;
-			expect(updatedTask?.updatedDate).toBe(today);
+			expect(updatedTask?.updatedDate).toBe(EDIT_TIME);
 			expect(updatedTask?.createdDate).toBe("2025-06-07"); // Should remain unchanged
 		});
 
 		it("should preserve YAML frontmatter formatting", async () => {
+			setSystemTime(new Date(EDIT_TIME));
 			const core = new Core(TEST_DIR);
 
 			// Create a test task
@@ -549,8 +552,7 @@ describe("CLI Integration", () => {
 			expect(updatedTask?.status).toBe("In Progress");
 			expect(updatedTask?.assignee).toEqual(["testuser"]);
 			expect(updatedTask?.createdDate).toBe("2025-06-08");
-			const today = `${new Date().toISOString().slice(0, 16)}:00Z`;
-			expect(updatedTask?.updatedDate).toBe(today);
+			expect(updatedTask?.updatedDate).toBe(EDIT_TIME);
 			expect(updatedTask?.labels).toEqual(["yaml", "test"]);
 			expect(updatedTask?.dependencies).toEqual(["task-1"]);
 			expect(updatedTask?.rawContent).toBe("Testing YAML preservation");

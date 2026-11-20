@@ -1,7 +1,7 @@
 import { isAbsolute, relative } from "node:path";
 import { ARCHIVED_TASK_DIRECTORIES } from "../constants/index.ts";
 import type { Task } from "../types/index.ts";
-import { canonicalTaskId, taskIdsEqual } from "../utils/task-path.ts";
+import { canonicalTaskId, extractTaskIdFromFilename, taskIdsEqual } from "../utils/task-path.ts";
 import { compareTaskIds } from "../utils/task-sorting.ts";
 import { parseStoredUtcDate } from "../utils/utc-timestamp.ts";
 import type { TaskDirectoryType } from "./cross-branch-tasks.ts";
@@ -54,14 +54,22 @@ function joinPosix(...parts: string[]): string {
 		.join("/");
 }
 
-export function normalizeTaskLifecyclePath(path: string, backlogDirectory: string): string {
+/** Compare filenames across branches without treating ID padding or an archive move as a new task. */
+export function normalizeTaskIdentityPath(path: string, backlogDirectory: string, taskId: string): string {
+	const filename = taskFilename(path);
+	const separator = filename.indexOf(" - ");
+	let normalizedPath = path;
+	if (separator >= 0 && filenameHasId(path, taskId)) {
+		const directory = path.slice(0, path.length - filename.length);
+		normalizedPath = `${directory}${canonicalTaskId(taskId).toLowerCase()}${filename.slice(separator)}`;
+	}
 	for (const lifecycleDirectory of ARCHIVED_TASK_DIRECTORIES) {
 		const lifecyclePrefix = `${backlogDirectory}/${lifecycleDirectory}/`;
-		if (path.startsWith(lifecyclePrefix)) {
-			return `${backlogDirectory}/tasks/${path.slice(lifecyclePrefix.length)}`;
+		if (normalizedPath.startsWith(lifecyclePrefix)) {
+			return `${backlogDirectory}/tasks/${normalizedPath.slice(lifecyclePrefix.length)}`;
 		}
 	}
-	return path;
+	return normalizedPath;
 }
 
 function normalizeRecordPath(record: TaskIdentityRecord, context: TaskIdentityPathContext): string {
@@ -90,7 +98,7 @@ function normalizeRecordPath(record: TaskIdentityRecord, context: TaskIdentityPa
 		path = joinPosix(projectPrefix, path);
 	}
 
-	return normalizeTaskLifecyclePath(path, repositoryBacklogDirectory);
+	return normalizeTaskIdentityPath(path, repositoryBacklogDirectory, record.id);
 }
 
 function recordKey(record: TaskIdentityRecord): string {
@@ -154,6 +162,97 @@ function liveRecords(identity: TaskIdentity): TaskIdentityRecord[] {
 	return identity.records.filter((record) => record.type === "task" || record.type === "archived");
 }
 
+function taskFilename(path: string): string {
+	return toPosixPath(path).split("/").at(-1) ?? path;
+}
+
+function filenameHasId(path: string, taskId: string): boolean {
+	const filenameId = extractTaskIdFromFilename(taskFilename(path));
+	return filenameId !== null && taskIdsEqual(filenameId, taskId);
+}
+
+function filenameTitle(path: string): string {
+	const filename = taskFilename(path);
+	const separator = filename.indexOf(" - ");
+	return separator === -1 ? filename : filename.slice(separator + 3);
+}
+
+/** A different title in the filename is the only reason to look up creation times. */
+export function idsWithDifferentFilenameTitles(
+	branchFiles: Iterable<{ id: string; path: string }>,
+	workingTasks: Task[],
+): Set<string> {
+	const firstTitle = new Map<string, string>();
+	const changed = new Set<string>();
+	const compare = (taskId: string, path: string) => {
+		const id = canonicalTaskId(taskId);
+		if (changed.has(id)) return;
+		const title = filenameTitle(path);
+		const first = firstTitle.get(id);
+		if (first === undefined) firstTitle.set(id, title);
+		else if (first !== title) changed.add(id);
+	};
+	for (const file of branchFiles) compare(file.id, file.path);
+	for (const task of workingTasks) {
+		if (task.filePath && filenameHasId(task.filePath, task.id)) compare(task.id, task.filePath);
+	}
+	return changed;
+}
+
+function creationSecond(record: TaskIdentityRecord): number | undefined {
+	if (!record.task || !taskIdsEqual(record.task.id, record.id) || !filenameHasId(record.path, record.id))
+		return undefined;
+	const value = record.task.createdDate;
+	// A day-only date has no creation time. Legacy timestamps without a zone use UTC.
+	if (!value?.includes(":")) return undefined;
+	const date = parseStoredUtcDate(value);
+	return date ? Math.floor(date.getTime() / 1000) : undefined;
+}
+
+function duplicatePathsInOneBranch(records: TaskIdentityRecord[]): Set<string> {
+	if (records.length < 2) return new Set();
+	const pathsByBranch = new Map<string, Set<string>>();
+	for (const record of records) {
+		const branch = record.workingCopy ? "working-copy" : `branch:${record.branch}`;
+		const paths = pathsByBranch.get(branch) ?? new Set<string>();
+		paths.add(toPosixPath(record.path));
+		pathsByBranch.set(branch, paths);
+	}
+	return new Set([...pathsByBranch.values()].filter((paths) => paths.size > 1).flatMap((paths) => [...paths]));
+}
+
+/** A creation time links copies with different filenames. Other records keep their path identity. */
+function mergeRenamedIdentities(group: TaskIdentityGroup): void {
+	if (group.identities.size < 2) return;
+	const paths = [...group.identities.values()];
+	if (new Set(paths.map((identity) => filenameTitle(identity.path))).size < 2) return;
+	const bySecond = new Map<number, { paths: Set<string>; records: TaskIdentityRecord[] }>();
+	for (const identity of paths) {
+		for (const record of liveRecords(identity)) {
+			const second = creationSecond(record);
+			if (second === undefined) continue;
+			const copies = bySecond.get(second) ?? { paths: new Set<string>(), records: [] };
+			copies.paths.add(identity.path);
+			copies.records.push(record);
+			bySecond.set(second, copies);
+		}
+	}
+	const matched = new Set<TaskIdentityRecord>();
+	for (const [second, copies] of bySecond) {
+		if (copies.paths.size < 2 || new Set([...copies.paths].map(filenameTitle)).size < 2) continue;
+		if (duplicatePathsInOneBranch(copies.records).size > 0) continue;
+		const [path] = [...copies.paths].sort();
+		if (!path) continue;
+		group.identities.set(`created\0${second}`, { path, records: copies.records });
+		for (const record of copies.records) matched.add(record);
+	}
+	if (matched.size === 0) return;
+	for (const identity of paths) {
+		identity.records = identity.records.filter((record) => !matched.has(record));
+		if (identity.records.length === 0) group.identities.delete(identity.path);
+	}
+}
+
 export class TaskIdentityIndex {
 	private readonly groups = new Map<string, TaskIdentityGroup>();
 	private readonly records: TaskIdentityRecord[];
@@ -174,6 +273,7 @@ export class TaskIdentityIndex {
 			group.identities.set(path, identity);
 			this.groups.set(canonicalId, group);
 		}
+		for (const group of this.groups.values()) mergeRenamedIdentities(group);
 	}
 
 	withWorkingCopyCorpus(activeTasks: Task[], archivedTasks: Task[]): TaskIdentityIndex {
@@ -234,14 +334,7 @@ export class TaskIdentityIndex {
 			}
 		}
 		for (const identity of liveIdentities) {
-			const workingPaths = new Set(
-				liveRecords(identity)
-					.filter((record) => record.workingCopy)
-					.map((record) => toPosixPath(record.path)),
-			);
-			if (workingPaths.size > 1) {
-				for (const path of workingPaths) candidates.add(path);
-			}
+			for (const path of duplicatePathsInOneBranch(liveRecords(identity))) candidates.add(path);
 		}
 		return [...candidates].sort((left, right) => left.localeCompare(right));
 	}
@@ -303,13 +396,24 @@ export class TaskIdentityIndex {
 	}
 
 	getFingerprint(): string {
-		return this.records
-			.map(
-				(record) =>
-					`${record.branch}\0${normalizeRecordPath(record, this.context)}\0${record.id}\0${record.type}\0${record.workingCopy ? "1" : "0"}`,
-			)
-			.sort((left, right) => left.localeCompare(right))
-			.join("\n");
+		const entries: string[] = [];
+		for (const group of this.groups.values()) {
+			for (const [identityKey, identity] of group.identities) {
+				for (const record of identity.records) {
+					entries.push(
+						[
+							record.branch,
+							normalizeRecordPath(record, this.context),
+							identityKey,
+							record.id,
+							record.type,
+							record.workingCopy ? "1" : "0",
+						].join("\0"),
+					);
+				}
+			}
+		}
+		return entries.sort((left, right) => left.localeCompare(right)).join("\n");
 	}
 
 	/**
@@ -319,10 +423,16 @@ export class TaskIdentityIndex {
 	 * claimant can be missing from the corpus while still contesting the ID here.
 	 */
 	getContestedIds(): Set<string> {
-		const contested = new Set<string>();
+		return new Set(this.getConflictingRecords().keys());
+	}
+
+	/** Doctor shows each branch and path that claims a conflicting ID. */
+	getConflictingRecords(): Map<string, TaskIdentityRecord[]> {
+		const contested = new Map<string, TaskIdentityRecord[]>();
 		for (const group of this.groups.values()) {
-			const claimants = [...group.identities.values()].filter((identity) => liveRecords(identity).length > 0);
-			if (claimants.length > 1) contested.add(group.id);
+			if (this.ambiguousCandidates(group).length > 0) {
+				contested.set(group.id, [...group.identities.values()].flatMap(liveRecords));
+			}
 		}
 		return contested;
 	}

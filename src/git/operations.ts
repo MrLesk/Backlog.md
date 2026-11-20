@@ -19,6 +19,11 @@ export interface GitBranchTip {
 	current: boolean;
 }
 
+export interface GitTreeBlob {
+	id: string;
+	isSymlink: boolean;
+}
+
 export interface GitIndexEntry {
 	mode: string;
 	objectId: string;
@@ -718,25 +723,27 @@ export class GitOperations {
 		return null;
 	}
 	async stageFileMove(fromPath: string, toPath: string): Promise<string | null> {
-		const toContext = await this.getPathContext(toPath);
-		const repoRoot = toContext?.repoRoot ?? this.projectRoot;
-		if (!(await this.isRepository(repoRoot))) {
-			return null;
-		}
-		const relativeFrom = await this.getRelativePathForRepo(fromPath, repoRoot);
-		const relativeTo = toContext?.relativePath ?? (await this.getRelativePathForRepo(toPath, repoRoot));
+		// A move stages directory entries. Resolve linked directories, keeping each
+		// filename as written even when the entry itself is a link or only changes case.
+		const from = resolve(this.projectRoot, fromPath);
+		const to = resolve(this.projectRoot, toPath);
+		const source = await this.withResolvedFolder(from);
+		const destination = await this.withResolvedFolder(to);
+		const repoRoot = (destination && (await this.resolveRepoRoot(destination.directory))) ?? this.projectRoot;
+		if (!(await this.isRepository(repoRoot))) return null;
 
-		// Stage the deletion of the old file and addition of the new file
-		// Git will automatically detect this as a rename if the content is similar enough
-		try {
-			// First try to stage the removal of the old file (if it still exists)
-			await this.execGit(["add", "--all", relativeFrom ?? fromPath], { cwd: repoRoot });
-		} catch {
-			// If the old file doesn't exist, that's okay - it was already moved
+		const oldName = this.normalizeGitPath(relative(repoRoot, source?.path ?? from));
+		const newName = this.normalizeGitPath(relative(repoRoot, destination?.path ?? to));
+		if (oldName !== newName && oldName.toLowerCase() === newName.toLowerCase()) {
+			// On a case-insensitive disk the old spelling still opens the new file. Remove
+			// its exact index entry first so Git can stage the new spelling.
+			await this.execGit(["update-index", "--force-remove", "--", oldName], { cwd: repoRoot });
+		} else if ((await this.getIndexEntries(fromPath)).length > 0) {
+			await this.execGit(["add", "--all", "--", oldName], { cwd: repoRoot });
 		}
 
 		// Always stage the new file location
-		await this.execGit(["add", relativeTo ?? toPath], { cwd: repoRoot });
+		await this.execGit(["add", "--", newName], { cwd: repoRoot });
 		return repoRoot === this.projectRoot ? null : repoRoot;
 	}
 
@@ -936,8 +943,8 @@ export class GitOperations {
 	 * so a caller can tell a copy identical to one it already holds from a changed one without
 	 * reading either.
 	 */
-	async listTreeBlobs(ref: string, path: string): Promise<Map<string, string>> {
-		const blobs = new Map<string, string>();
+	async listTreeBlobs(ref: string, path: string): Promise<Map<string, GitTreeBlob>> {
+		const blobs = new Map<string, GitTreeBlob>();
 		if (!(await this.isRepository())) {
 			return blobs;
 		}
@@ -945,9 +952,9 @@ export class GitOperations {
 		for (const record of stdout.split("\0")) {
 			const tab = record.indexOf("\t");
 			if (tab < 0) continue;
-			const [, type, oid] = record.slice(0, tab).split(" ");
+			const [mode, type, oid] = record.slice(0, tab).split(" ");
 			if (type !== "blob" || !oid) continue;
-			blobs.set(record.slice(tab + 1), oid);
+			blobs.set(record.slice(tab + 1), { id: oid, isSymlink: mode === "120000" });
 		}
 		return blobs;
 	}
@@ -970,9 +977,19 @@ export class GitOperations {
 		}
 	}
 	/** Read a project-relative path, as returned by the tree and history listings. */
-	async showFile(ref: string, filePath: string): Promise<string> {
+	async showFile(ref: string, filePath: string, followSymlink = false): Promise<string> {
 		if (!(await this.isRepository())) {
 			return "";
+		}
+		if (followSymlink) {
+			// Git follows the link inside this commit. A missing or out-of-tree target has no blob.
+			const { stdout } = await this.execGit(["cat-file", "--batch", "--follow-symlinks", "-z"], {
+				readOnly: true,
+				input: `${ref}:./${filePath}\0`,
+			});
+			const headerEnd = stdout.indexOf("\n");
+			if (!/^[0-9a-f]+ blob \d+$/.test(stdout.slice(0, headerEnd))) return "";
+			return stdout.slice(headerEnd + 1, -1);
 		}
 		const { stdout } = await this.execGit(["show", `${ref}:./${filePath}`], { readOnly: true });
 		return stdout;
@@ -1296,7 +1313,16 @@ export class GitOperations {
 	 * path is new or changed in Git. See {@link changedFileLinkPath}.
 	 */
 	private async resolveExistingPath(absolutePath: string): Promise<string | null> {
-		return (await this.changedFileLinkPath(absolutePath)) ?? (await realpath(absolutePath).catch(() => null));
+		const entry = await lstat(absolutePath).catch(() => null);
+		if (!entry) return null;
+		// The caller supplies the filename as spelled in Git. A regular file's last
+		// component must keep that spelling on case-insensitive disks during a rename.
+		if (entry.isFile()) return (await this.withResolvedFolder(absolutePath))?.path ?? null;
+		if (entry.isSymbolicLink()) {
+			const linkPath = await this.changedFileLinkPath(absolutePath);
+			if (linkPath) return linkPath;
+		}
+		return await realpath(absolutePath).catch(() => null);
 	}
 
 	/**
@@ -1317,8 +1343,6 @@ export class GitOperations {
 	 * lookup just before `update-ref`.
 	 */
 	private async changedFileLinkPath(absolutePath: string): Promise<string | null> {
-		const link = await lstat(absolutePath).catch(() => null);
-		if (!link?.isSymbolicLink()) return null;
 		// A link to a folder is resolved like any other folder on the way.
 		if ((await stat(absolutePath).catch(() => null))?.isDirectory()) return null;
 

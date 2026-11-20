@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { chmod, mkdir, readdir, rmdir, unlink } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { chmod, mkdir, readdir, rename, rmdir, symlink, unlink } from "node:fs/promises";
+import { dirname, join, relative } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import {
@@ -11,7 +11,8 @@ import {
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 import { AmbiguousTaskIdError } from "../utils/task-path.ts";
-import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
+import { getTestCliPath } from "./test-cli.ts";
+import { createUniqueTestDir, getPlatformTimeout, isWindows, safeCleanup, waitUntil } from "./test-utils.ts";
 
 let testDir: string;
 let core: Core;
@@ -60,6 +61,63 @@ afterEach(async () => {
 });
 
 describe("duplicate task diagnosis", () => {
+	it.each(isWindows() ? ["regular", "separate CLI"] : ["regular", "separate CLI", "tracked link", "dangling link"])(
+		"publishes the resolved ID after retitling a %s with a warm branch cache",
+		async (kind) => {
+			core = new Core(testDir, { enableWatchers: true });
+			await $`git init -b main`.cwd(testDir).quiet();
+			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Missing test config");
+			await core.filesystem.saveConfig({ ...config, checkActiveBranches: true, taskResolutionStrategy: "most_recent" });
+			const oldPath = await writeTask(core.filesystem.tasksDir, "task-1 - Original.md", {
+				...makeTask("TASK-1", "Original"),
+				createdDate: "2026-07-01T12:30:51Z",
+				updatedDate: "2099-01-01T12:00:00Z",
+			});
+			const target = join(testDir, "notes", "task.md");
+			if (kind === "tracked link" || kind === "dangling link") {
+				await mkdir(dirname(target));
+				await rename(oldPath, target);
+				await symlink(relative(dirname(oldPath), target), oldPath);
+			}
+			await $`git add .`.cwd(testDir).quiet();
+			await $`git commit -m "Original task"`.cwd(testDir).quiet();
+			await $`git switch -c original`.cwd(testDir).quiet();
+			if (kind === "dangling link") {
+				await $`git rm notes/task.md`.cwd(testDir).quiet();
+				await $`git commit -m "Remove target from this branch"`.cwd(testDir).quiet();
+			}
+			await $`git switch main`.cwd(testDir).quiet();
+			expect((await core.getTask("1"))?.title).toBe("Original");
+			const store = await core.getContentStore();
+			expect(
+				store.getTaskCorpusSnapshot().branchStateEntries?.map((entry) => [entry.id, entry.branch, Boolean(entry.task)]),
+			).toEqual([["TASK-1", "original", false]]);
+			const observations: string[] = [];
+			const unsubscribe = store.subscribe((event) => {
+				if (event.type !== "tasks") return;
+				const resolved = store.resolveTaskForRead("1");
+				observations.push(resolved.status === "found" ? resolved.task.title : resolved.status);
+			});
+			if (kind === "separate CLI") {
+				await $`bun ${getTestCliPath()} task edit 1 --title Renamed`.cwd(testDir).quiet();
+			} else {
+				await core.editTask("1", { title: "Renamed" }, false, { includeCrossBranch: false });
+			}
+			await waitUntil(
+				() => observations.some((value) => value !== "Original"),
+				"retitled task publication",
+				getPlatformTimeout(3000),
+			);
+			unsubscribe();
+			const expected = kind === "dangling link" ? "ambiguous" : "found";
+			expect(new Set(observations)).toEqual(new Set([expected === "found" ? "Renamed" : "ambiguous"]));
+			expect(store.resolveTaskForMutation("1").status).toBe(expected);
+			const plan = await core.previewDuplicateTaskIdRepair({ includeBranches: true });
+			expect(plan.crossBranchFindings.map((finding) => finding.id)).toEqual(expected === "ambiguous" ? ["TASK-1"] : []);
+		},
+	);
+
 	it("publishes a genuine duplicate change once while unchanged previews stay silent", async () => {
 		await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
 		const store = await core.getContentStore();
@@ -127,6 +185,45 @@ describe("duplicate task diagnosis", () => {
 		await expect(core.filesystem.loadTask("TASK-1")).rejects.toBeInstanceOf(AmbiguousTaskIdError);
 	});
 
+	it("ignores ID padding across branches and reports both padded paths when one branch contains both", async () => {
+		await $`git init -b main`.cwd(testDir).quiet();
+		const config = await core.filesystem.loadConfig();
+		if (!config) throw new Error("Missing test config");
+		await core.filesystem.saveConfig({ ...config, checkActiveBranches: true, taskResolutionStrategy: "most_recent" });
+		const task = { ...makeTask("TASK-1", "Shared"), updatedDate: "2099-01-01T00:00:00Z" };
+		const plainPath = await writeTask(core.filesystem.tasksDir, "task-1 - Shared.md", task);
+		const paddedPath = join(core.filesystem.tasksDir, "task-01 - Shared.md");
+		await $`git add .`.cwd(testDir).quiet();
+		await $`git commit -m "Shared task"`.cwd(testDir).quiet();
+		await $`git switch -c padded`.cwd(testDir).quiet();
+		await $`git mv -- ${plainPath} ${paddedPath}`.cwd(testDir).quiet();
+		await $`git commit -m "Pad filename ID"`.cwd(testDir).quiet();
+		await $`git switch main`.cwd(testDir).quiet();
+
+		const read = core.gitOps.showFile.bind(core.gitOps);
+		const readPaths: string[] = [];
+		core.gitOps.showFile = async (ref, path, followSymlink) => {
+			readPaths.push(path);
+			return await read(ref, path, followSymlink);
+		};
+		expect((await core.previewDuplicateTaskIdRepair({ includeBranches: true })).crossBranchFindings).toEqual([]);
+		expect((await core.getTask("1"))?.title).toBe("Shared");
+		expect(readPaths).toEqual([]);
+
+		await $`git switch padded`.cwd(testDir).quiet();
+		await writeTask(core.filesystem.tasksDir, "task-1 - Shared.md", task);
+		await $`git add .`.cwd(testDir).quiet();
+		await $`git commit -m "Introduce a second real file"`.cwd(testDir).quiet();
+		await $`git switch main`.cwd(testDir).quiet();
+		const conflict = await core.previewDuplicateTaskIdRepair({ includeBranches: true });
+		expect(
+			conflict.crossBranchFindings[0]?.locations
+				.filter((entry) => entry.branch === "padded")
+				.map((entry) => entry.path),
+		).toEqual(["backlog/tasks/task-01 - Shared.md", "backlog/tasks/task-1 - Shared.md"]);
+		await expect(core.getTask("1")).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+	});
+
 	it("does not overwrite or remove either file through the low-level save path", async () => {
 		const alphaPath = await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
 		const betaPath = await writeTask(core.filesystem.tasksDir, "task-01 - Beta.md", makeTask("TASK-01", "Beta"));
@@ -140,35 +237,56 @@ describe("duplicate task diagnosis", () => {
 		expect(await Promise.all([alphaPath, betaPath].map(async (path) => await Bun.file(path).text()))).toEqual(before);
 	});
 
-	it("reports path-distinct cross-branch collisions without preparing a repair", async () => {
-		await $`git init -b main`.cwd(testDir).quiet();
-		const config = await core.filesystem.loadConfig();
-		if (!config) throw new Error("Missing test config");
-		config.checkActiveBranches = true;
-		config.activeBranchDays = 30;
-		config.remoteOperations = false;
-		await core.filesystem.saveConfig(config);
-		const alphaPath = await writeTask(core.filesystem.tasksDir, "task-1 - Alpha.md", makeTask("TASK-1", "Alpha"));
-		await $`git add .`.cwd(testDir).quiet();
-		await $`git commit -m "main task"`.cwd(testDir).quiet();
-		await $`git switch -c feature`.cwd(testDir).quiet();
-		await unlink(alphaPath);
-		await writeTask(core.filesystem.tasksDir, "task-1 - Beta.md", makeTask("TASK-1", "Beta"));
-		await $`git add -A`.cwd(testDir).quiet();
-		await $`git commit -m "feature task"`.cwd(testDir).quiet();
-		await $`git switch main`.cwd(testDir).quiet();
+	it.each([
+		["task-1", "2026-01-01", "2026-01-01", true],
+		["task-1", "2026-01-01T12:01:31Z", "2026-01-01T13:01:31+01:00", false],
+		["task-1", "2026-01-01T12:01:31Z", "2026-01-01T12:01:32Z", true],
+		["task-2", "2026-01-01T12:01:31Z", "2026-01-01T12:01:31Z", true],
+	] as const)(
+		"checks a local %s filename and cross-branch creation dates %s and %s",
+		async (filenameId, firstDate, secondDate, conflict) => {
+			await $`git init -b main`.cwd(testDir).quiet();
+			const config = await core.filesystem.loadConfig();
+			if (!config) throw new Error("Missing test config");
+			config.checkActiveBranches = true;
+			config.activeBranchDays = 30;
+			config.remoteOperations = false;
+			await core.filesystem.saveConfig(config);
+			const alphaPath = await writeTask(core.filesystem.tasksDir, `${filenameId} - Alpha.md`, {
+				...makeTask("TASK-1", "Alpha"),
+				createdDate: firstDate,
+			});
+			await $`git add .`.cwd(testDir).quiet();
+			await $`git commit -m "main task"`.cwd(testDir).quiet();
+			await $`git switch -c feature`.cwd(testDir).quiet();
+			await unlink(alphaPath);
+			await writeTask(core.filesystem.tasksDir, "task-1 - Beta.md", {
+				...makeTask("TASK-1", "Beta"),
+				createdDate: secondDate,
+			});
+			await $`git add -A`.cwd(testDir).quiet();
+			await $`git commit -m "feature task"`.cwd(testDir).quiet();
+			await $`git switch main`.cwd(testDir).quiet();
 
-		const plan = await core.previewDuplicateTaskIdRepair({ includeBranches: true });
-		expect(plan.groups).toEqual([]);
-		expect(plan.changes).toEqual([]);
-		expect(plan.crossBranchFindings).toHaveLength(1);
-		expect(plan.crossBranchFindings[0]?.id).toBe("TASK-1");
-		expect(plan.crossBranchFindings[0]?.locations.map((location) => location.branch).sort()).toEqual([
-			"feature",
-			"main",
-		]);
-		expect(plan.repairable).toBe(false);
-	});
+			const plan = await core.previewDuplicateTaskIdRepair({ includeBranches: true });
+			expect(plan.groups).toEqual([]);
+			expect(plan.changes).toEqual([]);
+			expect(plan.crossBranchFindings.map((finding) => finding.id)).toEqual(conflict ? ["TASK-1"] : []);
+			if (conflict) {
+				expect(plan.crossBranchFindings[0]?.locations.map((location) => location.branch).sort()).toEqual([
+					"feature",
+					"main",
+				]);
+				await expect(core.getTask("1")).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+				await expect(core.editTask("1", { title: "Would change the wrong task" })).rejects.toBeInstanceOf(
+					AmbiguousTaskIdError,
+				);
+			} else {
+				expect((await core.getTask("1"))?.title).toBe("Alpha");
+			}
+			expect(plan.repairable).toBe(false);
+		},
+	);
 });
 
 describe("duplicate task repair", () => {

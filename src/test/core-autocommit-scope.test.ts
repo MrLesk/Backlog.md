@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, rename } from "node:fs/promises";
+import { mkdir, readdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
@@ -65,6 +65,23 @@ describe("core auto-commit scoping", () => {
 
 		await expectOwnedCommit("backlog/decisions/");
 	});
+
+	for (const [before, after] of [
+		["Before", "After"],
+		["Guide", "GUIDE"],
+	] as const) {
+		it(`commits both filenames when a task title changes from ${before} to ${after}`, async () => {
+			const { task } = await core.createTaskFromInput({ title: before }, true);
+			await seedUnrelatedDirtyState();
+
+			const edited = await core.updateTaskFromInput(task.id, { title: after }, true);
+			const newPath = join(core.filesystem.tasksDir, `task-1 - ${after}.md`);
+			expect(edited.filePath).toBe(newPath);
+			expect(await readdir(core.filesystem.tasksDir)).toEqual([`task-1 - ${after}.md`]);
+			expect((await core.filesystem.loadTask(task.id))?.filePath).toBe(newPath);
+			await expectOwnedCommit(`backlog/tasks/task-1 - ${before}.md`, `backlog/tasks/task-1 - ${after}.md`);
+		});
+	}
 
 	it("bulk task updates commit only the updated task files", async () => {
 		const { task } = await core.createTaskFromInput({ title: "Bulk update", status: "To Do", description: "d" }, true);

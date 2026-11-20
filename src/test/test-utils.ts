@@ -13,6 +13,7 @@ import { $ } from "bun";
 import type { Core } from "../core/backlog.ts";
 import { initializeProject as initializeProjectShared } from "../core/init.ts";
 import type { FileSystem } from "../file-system/operations.ts";
+import type { GitTreeBlob } from "../git/operations.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 
@@ -60,8 +61,8 @@ export async function commitSamePathBranchTaskVariant(
 /**
  * Give each mocked commit/path a distinct blob ID unless a test explicitly shares content.
  */
-export function treeBlobs(commit: string, ...paths: string[]): Map<string, string> {
-	return new Map(paths.map((path) => [path, `${commit}:${path}`]));
+export function treeBlobs(commit: string, ...paths: string[]): Map<string, GitTreeBlob> {
+	return new Map(paths.map((path) => [path, { id: `${commit}:${path}`, isSymlink: false }]));
 }
 
 /**

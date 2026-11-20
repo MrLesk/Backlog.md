@@ -64,7 +64,7 @@ describe("decision supersession", () => {
 		expect(response.status).toBe(200);
 		const updated = await (await fetch(`http://127.0.0.1:${server.getPort()}/api/decisions/1`)).json();
 		expect(updated).toMatchObject({ supersededBy: "decision-2", context: "Later context", status: "accepted" });
-		expect(updated.updatedDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/);
+		expect(updated.updatedDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
 		expect(updated.updatedDate).not.toBe("2000-01-01T00:00:00Z");
 		expect(await readFile(file, "utf8")).toContain("owner: team # preserve source");
 	});
@@ -128,7 +128,7 @@ describe("decision supersession", () => {
 		await core.updateDecisionFromInput("1", { status: "superseded" });
 		const changed = await core.getDecision("1");
 		expect(changed?.updatedDate).not.toBe("2000-01-01T00:00:00Z");
-		expect(changed?.updatedDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/);
+		expect(changed?.updatedDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
 		await Bun.write(file, "---\nid: decision-1\ntitle: Original\nstatus: accepted\n---\n\n## Context\n\nLegacy\n");
 		await core.updateDecisionFromInput("1", {});
 		expect((await core.getDecision("1"))?.updatedDate).toBeDefined();

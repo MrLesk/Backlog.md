@@ -97,7 +97,7 @@ describe("task and draft unknown frontmatter", () => {
 			await $`bun ${CLI_PATH} task edit TASK-1 -s ${status}`.cwd(root).quiet();
 			const saved = await expectMetadata(path);
 			expect(parseTask(saved)).toMatchObject({ status, description: "test" });
-			expect(parseTask(saved).updatedDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/);
+			expect(parseTask(saved).updatedDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
 		}
 		const output = await $`bun ${CLI_PATH} task view TASK-1 --json`.cwd(root).text();
 		expect(output).not.toContain("example-capture");
@@ -170,7 +170,7 @@ describe("task and draft unknown frontmatter", () => {
 	});
 
 	it("keeps metadata through watched HTTP task/draft edits and status transitions", async () => {
-		const taskPath = await writeRecord("TASK-1", METADATA, "modified_files: [old]\n");
+		await writeRecord("TASK-1", METADATA, "modified_files: [old]\n");
 		await writeRecord("DRAFT-1");
 		server = new BacklogServer(root);
 		await server.start(0, false);
@@ -189,7 +189,7 @@ describe("task and draft unknown frontmatter", () => {
 			return body;
 		};
 		await put("TASK-1", { status: "In Progress", description: "HTTP body", modifiedFiles: [] });
-		await put("TASK-1", { title: "HTTP task", labels: ["http"] });
+		const { filePath: taskPath } = await put("TASK-1", { title: "HTTP task", labels: ["http"] });
 		expect(parseTask(await expectMetadata(taskPath)).description).toBe("HTTP body");
 		expect(parseMarkdown(await Bun.file(taskPath).text()).frontmatter).not.toHaveProperty("modified_files");
 		await put("DRAFT-1", { title: "HTTP draft", status: "Draft" });
@@ -224,18 +224,30 @@ describe("task and draft unknown frontmatter", () => {
 
 	it("keeps metadata when the TUI closes an edited task or draft", async () => {
 		const core = new Core(root);
+		let edit = false;
 		const editor = spyOn(core, "openEditor").mockImplementation(async (path) => {
-			await Bun.write(path, `${await Bun.file(path).text()}\nEditor addition\n`);
+			if (edit) await Bun.write(path, `${await Bun.file(path).text()}\nEditor addition\n`);
 			return true;
 		});
 		try {
 			for (const id of ["TASK-1", "DRAFT-1"]) {
 				const path = await writeRecord(id);
-				const selected = { ...parseTask(await Bun.file(path).text()), filePath: path };
-				const result = await core.editTaskInTui(id, {} as Parameters<Core["editTaskInTui"]>[1], selected);
+				const original = (await Bun.file(path).text())
+					.replace("created_date: 2026-01-01", "created_date: 2026-01-01 01:00")
+					.replace("\n---\n", "\n---  \n");
+				await Bun.write(path, original);
+				const selected = { ...parseTask(original), filePath: path };
+				edit = false;
+				const screen = {} as Parameters<Core["editTaskInTui"]>[1];
+				expect((await core.editTaskInTui(id, screen, selected)).changed).toBe(false);
+				expect(await Bun.file(path).text()).toBe(original);
+				edit = true;
+				const result = await core.editTaskInTui(id, screen, selected);
 				expect(result.changed).toBe(true);
 				const saved = await expectMetadata(path);
+				expect(saved).toContain("\n---  \n");
 				expect(saved).toContain("Editor addition");
+				expect(parseTask(saved).createdDate).toBe("2026-01-01T01:00:00Z");
 				expect(parseTask(saved).updatedDate).toMatch(/Z$/);
 			}
 		} finally {

@@ -290,6 +290,8 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 			title: {
 				type: "string",
 				maxLength: 200,
+				description:
+					"New title. Renames the task or draft file. Across branches, different task filenames match by ID and creation time to the second.",
 			},
 			description: {
 				type: "string",

@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Milestone, Task } from "./types/index.ts";
-import { parseStoredUtcDate } from "./utils/utc-timestamp.ts";
+import { formatUtcTimestamp, parseStoredUtcDate } from "./utils/utc-timestamp.ts";
 
 export interface BoardOptions {
 	statuses?: string[];
@@ -65,12 +65,8 @@ export function buildKanbanStatusGroups(
 	return { orderedStatuses, groupedTasks };
 }
 
-export function formatBoardExportTimestamp(): string {
-	return new Date().toISOString().replace("T", " ").slice(0, 19);
-}
-
 export function generateKanbanBoardWithMetadata(tasks: Task[], statuses: string[], projectName: string): string {
-	const timestamp = formatBoardExportTimestamp();
+	const timestamp = formatUtcTimestamp();
 	const header = `# Kanban Board Export (powered by Backlog.md)
 Generated on: ${timestamp}
 Project: ${projectName}
@@ -191,7 +187,7 @@ export function generateMilestoneGroupedBoard(
 	milestoneEntities: Milestone[],
 	projectName: string,
 ): string {
-	const timestamp = formatBoardExportTimestamp();
+	const timestamp = formatUtcTimestamp();
 
 	// Collect canonical milestone identifiers from milestone files and tasks.
 	// Task values can be either IDs or titles, so normalize aliases to one key.

@@ -30,7 +30,7 @@ remains fully synchronized and up-to-date.
 
 ### Key Understanding
 
-- **Tasks** live in `backlog/tasks/` as `task-<id> - <title>.md` files
+- **Tasks** live in `backlog/tasks/` as Markdown files. Use the task ID to look them up.
 - **You interact via CLI only**: `backlog task create`, `backlog task edit`, etc.
 - **Use `--plain`** for readable task context, or **use `--json`** when code needs structured fields
 - **Never bypass the CLI** - It handles Git, metadata, file naming, and relationships
@@ -57,7 +57,7 @@ remains fully synchronized and up-to-date.
 ### 📖 **UNDERSTANDING** (What you'll see when reading)
 
 - Markdown task files live under **`backlog/tasks/`** (drafts under **`backlog/drafts/`**)
-- Files are named: `task-<id> - <title>.md` (e.g., `task-42 - Add GraphQL resolver.md`)
+- A task filename includes its ID and title, for example `task-42 - Add-GraphQL-resolver.md`. A title edit renames the file. Links by task ID keep working. Use `backlog task view 42 --plain` to find the current path.
 - Project documentation is in **`backlog/docs/`**
 - Project decisions are in **`backlog/decisions/`**
 

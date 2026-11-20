@@ -153,6 +153,18 @@ describe.skipIf(isWindows())("auto-commit of record files reached through a symb
 		},
 	);
 
+	it.each(["Retitled", "LINKED TASK"])("commits the task link renamed to %s and its edited target", async (title) => {
+		await replaceWithCommittedLink(join(TEST_DIR, "backlog", "tasks", TASK_FILE), join(TEST_DIR, "notes", "task.md"));
+
+		expect((await backlog("task", "edit", "1", "--title", title)).exitCode).toBe(0);
+		expect(await lastCommit()).toEqual([
+			`A\tbacklog/tasks/task-1 - ${title.replace(" ", "-")}.md`,
+			`D\tbacklog/tasks/${TASK_FILE}`,
+			"M\tnotes/task.md",
+		]);
+		expect(await git("status", "--porcelain")).toBe("");
+	});
+
 	it("commits only the link on the first edit through a link that is not committed yet", async () => {
 		// A known corner of the rule in GitOperations.changedFileLinkPath: the link is new, so the link
 		// is the path that is staged, and the edit in the file it points to waits for the next commit.

@@ -294,16 +294,18 @@ describe("a title change moves only the file the record was loaded from", () => 
 			});
 		});
 
-		it(`draft: renames its own file to "${newTitle}" and leaves one file`, async () => {
-			await backlog(...DRAFT.createCommand, "Guide");
+		for (const kind of [TASK, DRAFT]) {
+			it(`${kind.label}: renames its own file to "${newTitle}" and leaves one file`, async () => {
+				await backlog(...kind.createCommand, "Guide");
 
-			const edited = await backlog("draft", "edit", "1", "-t", newTitle);
+				const edited = await backlog(kind.label, "edit", "1", "-t", newTitle);
 
-			expect(edited.exitCode).toBe(0);
-			expect(await readFolder(recordsDir(DRAFT))).toEqual({
-				[fileName(DRAFT, 1, newTitle)]: expect.stringContaining(`title: ${newTitle}\n`),
+				expect(edited.exitCode).toBe(0);
+				expect(await readFolder(recordsDir(kind))).toEqual({
+					[fileName(kind, 1, newTitle)]: expect.stringContaining(`title: ${newTitle}\n`),
+				});
 			});
-		});
+		}
 	}
 
 	it("document: refuses to rename onto another record's file and changes nothing", async () => {

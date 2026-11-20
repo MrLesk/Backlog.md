@@ -24,6 +24,7 @@ describe("exportKanbanBoardToFile", () => {
 			}));
 			await exportKanbanBoardToFile(tasks, ["To Do"], file, "Mixed timestamps");
 			const board = await Bun.file(file).text();
+			expect(board).toMatch(/^Generated on: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/m);
 			expect(board.indexOf("TASK-2")).toBeLessThan(board.indexOf("TASK-1"));
 		} finally {
 			await rm(dir, { recursive: true, force: true });
