@@ -3,6 +3,7 @@
 import { stdout as output } from "node:process";
 import type { BoxInterface, LineInterface, ScreenInterface, ScrollableTextInterface } from "neo-neo-bblessed";
 import { box, line, scrollabletext } from "neo-neo-bblessed";
+import { DEFAULT_STATUSES } from "../constants/index.ts";
 import { type Core, createRuntimeCore } from "../core/backlog.ts";
 import {
 	loadTaskDetail,
@@ -38,6 +39,7 @@ import { applyTaskFilters, createTaskSearchIndex } from "../utils/task-search.ts
 import { sectionTasks, sortTasks } from "../utils/task-sorting.ts";
 import { attachSubtaskSummaries } from "../utils/task-subtasks.ts";
 import { getTaskTypeValues, resolveTaskTypeValues } from "../utils/task-type-config.ts";
+import { isTerminalStatus } from "../utils/terminal-status.ts";
 import { formatChecklistItem } from "./checklist.ts";
 import { transformCodePaths } from "./code-path.ts";
 import { openConfirmPopup } from "./components/confirm-popup.ts";
@@ -55,7 +57,7 @@ import { formatHeading } from "./heading.ts";
 import { createLoadingScreen } from "./loading.ts";
 import { formatPriorityMarker } from "./priority-marker.ts";
 import { formatProjectBadge } from "./project.ts";
-import { formatStatusWithIcon, getStatusColor, wrapStatusColor } from "./status-icon.ts";
+import { formatColoredStatus } from "./status-icon.ts";
 import { archiveTaskFromTui, formatArchiveNotice, formatReadOnlyNotice } from "./task-lifecycle.ts";
 import { createTaskRowPrefix, type TaskRowPrefix } from "./task-row-prefix.ts";
 import { formatTaskTypeBadge } from "./task-type.ts";
@@ -319,7 +321,7 @@ export async function viewTaskEnhanced(
 		// Tasks already provided - no ContentStore loading
 		allTasks = options.tasks.filter((t) => t.id && t.id.trim() !== "" && hasAnyPrefix(t.id));
 		const config = await core.filesystem.loadConfig();
-		statuses = config?.statuses || ["To Do", "In Progress", "Done"];
+		statuses = config?.statuses ?? [...DEFAULT_STATUSES];
 		labels = config?.labels || [];
 		priorityOptions = getPriorityOptions(config);
 		configuredTaskTypes = getTaskTypeValues(config);
@@ -332,7 +334,7 @@ export async function viewTaskEnhanced(
 		try {
 			loadingScreen?.update("Loading configuration...");
 			const config = await core.filesystem.loadConfig();
-			statuses = config?.statuses || ["To Do", "In Progress", "Done"];
+			statuses = config?.statuses ?? [...DEFAULT_STATUSES];
 			labels = config?.labels || [];
 			priorityOptions = getPriorityOptions(config);
 			configuredTaskTypes = getTaskTypeValues(config);
@@ -834,7 +836,7 @@ export async function viewTaskEnhanced(
 	// that task is no longer among the rows, the selection moves to the first row.
 	function applyFilters() {
 		filteredTasks = listRows();
-		taskRowPrefix = createTaskRowPrefix(filteredTasks, { showStatus: true });
+		taskRowPrefix = createTaskRowPrefix(filteredTasks, { showStatus: true, statuses });
 
 		// Update the task list label
 		if (taskListPane.setLabel) {
@@ -1190,6 +1192,7 @@ export async function viewTaskEnhanced(
 			dateFormat,
 			configuredProjects,
 			configuredPriorities: priorityOrder,
+			configuredStatuses: statuses,
 		});
 
 		// Calculate header height based on content and available width
@@ -1529,7 +1532,7 @@ export async function viewTaskEnhanced(
 
 	// The rows the list shows. applyFilters() replaces them whenever the tasks or the filters change.
 	let filteredTasks = listRows();
-	let taskRowPrefix = createTaskRowPrefix(filteredTasks, { showStatus: true });
+	let taskRowPrefix = createTaskRowPrefix(filteredTasks, { showStatus: true, statuses });
 
 	// A list opened on a chosen task keeps showing that task's details even when the list has no
 	// rows (a draft opened in a project without tasks, for example). Otherwise it starts on its
@@ -1588,6 +1591,7 @@ export async function viewTaskEnhanced(
 }
 
 export interface TaskDetailContentOptions {
+	configuredStatuses?: readonly string[];
 	resolveMilestoneLabel?: (milestone: string) => string;
 	dateFormat?: string;
 	configuredProjects?: string[];
@@ -1601,7 +1605,7 @@ export function generateDetailContent(
 ): { headerContent: string[]; bodyContent: string[] } {
 	const { resolveMilestoneLabel, dateFormat, configuredProjects, configuredPriorities } = options;
 	const headerContent = [
-		` ${wrapStatusColor(formatStatusWithIcon(task.status), getStatusColor(task.status))} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
+		` ${formatColoredStatus(task.status, isTerminalStatus(task.status, options.configuredStatuses ?? DEFAULT_STATUSES))} {bold}{blue-fg}${task.id}{/blue-fg}{/bold} - ${task.title}`,
 	];
 
 	// Add cross-branch indicator if task is from another branch
@@ -1814,10 +1818,7 @@ export function generateDetailContent(
 export async function createTaskPopup(
 	screen: ScreenInterface,
 	task: Task,
-	resolveMilestoneLabel?: (milestone: string) => string,
-	dateFormat?: string,
-	configuredProjects?: string[],
-	configuredPriorities?: readonly string[],
+	options: TaskDetailContentOptions = {},
 ): Promise<{
 	background: BoxInterface;
 	popup: BoxInterface;
@@ -1854,12 +1855,7 @@ export async function createTaskPopup(
 
 	popup.setFront?.();
 
-	const { headerContent, bodyContent } = generateDetailContent(task, {
-		resolveMilestoneLabel,
-		dateFormat,
-		configuredProjects,
-		configuredPriorities,
-	});
+	const { headerContent, bodyContent } = generateDetailContent(task, options);
 
 	// Calculate header height based on content and available width
 	const popupWidth = typeof popup.width === "number" ? popup.width : 80;

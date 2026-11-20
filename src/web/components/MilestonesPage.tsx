@@ -1,41 +1,15 @@
 import React, { useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { apiClient } from "../lib/api";
-import { buildMilestoneBuckets, collectArchivedMilestoneKeys, isDoneStatus, milestoneKey } from "../utils/milestones";
+import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey, summarizeMilestoneTasks } from "../utils/milestones";
 import { type Milestone, type MilestoneBucket, type Task } from "../../types";
 import { createTaskSearchIndex } from "../../utils/task-search";
+import { isTerminalStatus } from "../../utils/terminal-status.ts";
 import MilestoneTaskRow from "./MilestoneTaskRow";
 import Modal from "./Modal";
 import StoredDate from "./StoredDate";
 
 type RemoveTaskHandling = "clear" | "reassign";
-
-const rebuildFilteredBucket = (
-	bucket: MilestoneBucket,
-	filteredTasks: Task[],
-	statuses: string[],
-): MilestoneBucket => {
-	const counts: Record<string, number> = {};
-	for (const status of statuses) {
-		counts[status] = 0;
-	}
-	for (const task of filteredTasks) {
-		const status = task.status ?? "";
-		counts[status] = (counts[status] ?? 0) + 1;
-	}
-
-	const doneCount = filteredTasks.filter((task) => isDoneStatus(task.status)).length;
-	const progress = filteredTasks.length > 0 ? Math.round((doneCount / filteredTasks.length) * 100) : 0;
-
-	return {
-		...bucket,
-		tasks: filteredTasks,
-		statusCounts: counts,
-		total: filteredTasks.length,
-		doneCount,
-		progress,
-	};
-};
 
 interface MilestonesPageProps {
 	tasks: Task[];
@@ -115,7 +89,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 
 		return buckets.map((bucket) => {
 			const filteredTasks = bucket.tasks.filter((task) => matchedTaskIds.has(task.id));
-			return rebuildFilteredBucket(bucket, filteredTasks, statuses);
+			return { ...bucket, tasks: filteredTasks, ...summarizeMilestoneTasks(filteredTasks, statuses) };
 		});
 	}, [buckets, isSearchActive, searchQueryTrimmed, statuses]);
 
@@ -415,7 +389,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 
 	const getStatusBadgeClass = (status?: string | null) => {
 		const normalized = (status ?? "").toLowerCase();
-		if (normalized.includes("done") || normalized.includes("complete")) {
+		if (isTerminalStatus(status, statuses)) {
 			return "bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300";
 		}
 		if (normalized.includes("progress")) {
@@ -439,14 +413,14 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 
 	const getStatusDotColor = (status?: string | null) => {
 		const normalized = (status ?? "").toLowerCase();
-		if (normalized.includes("done") || normalized.includes("complete")) return "#10b981";
+		if (isTerminalStatus(status, statuses)) return "#10b981";
 		if (normalized.includes("progress")) return "#3b82f6";
 		return "#6b7280";
 	};
 
 	const getInlineStatusClass = (status: string) => {
 		const normalized = status.toLowerCase();
-		if (normalized.includes("done") || normalized.includes("complete")) return "text-emerald-700 dark:text-emerald-300";
+		if (isTerminalStatus(status, statuses)) return "text-emerald-700 dark:text-emerald-300";
 		if (normalized.includes("progress")) return "text-blue-700 dark:text-blue-300";
 		return "text-gray-600 dark:text-gray-400";
 	};
@@ -454,8 +428,8 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const getSortedTasks = (bucketTasks: Task[]) => {
 		return bucketTasks.slice().sort((a, b) => {
 			// Done tasks go to the bottom
-			const aDone = isDoneStatus(a.status);
-			const bDone = isDoneStatus(b.status);
+			const aDone = isTerminalStatus(a.status, statuses);
+			const bDone = isTerminalStatus(b.status, statuses);
 			if (aDone !== bDone) return aDone ? 1 : -1;
 			// Sort by created date descending (newest first)
 			const aDate = a.createdDate ?? "";
@@ -468,7 +442,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 
 	// Render a milestone card (drop target)
 	const renderMilestoneCard = (bucket: MilestoneBucket, isEmpty: boolean) => {
-		const progress = bucket.total > 0 ? Math.round((bucket.doneCount / bucket.total) * 100) : 0;
+		const progress = bucket.progress;
 		const defaultExpanded = defaultExpandedByBucketKey[bucket.key] ?? (bucket.total > 0 && bucket.total <= 8);
 		const isExpanded = expandedBuckets[bucket.key] ?? defaultExpanded;
 		const listId = `milestone-${safeIdSegment(bucket.key)}`;
@@ -624,7 +598,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 										<MilestoneTaskRow
 											key={task.id}
 											task={task}
-											isDone={isDoneStatus(task.status)}
+											isDone={isTerminalStatus(task.status, statuses)}
 											statusBadgeClass={getStatusBadgeClass(task.status)}
 											priorityBadgeClass={getPriorityBadgeClass(task.priority)}
 											onEditTask={onEditTask}
@@ -652,7 +626,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const renderUnassignedSection = () => {
 		if (!unassignedBucket || (!isSearchActive && unassignedBucket.total === 0)) return null;
 
-		const sortedActiveTasks = getSortedTasks(unassignedBucket.tasks.filter((task) => !isDoneStatus(task.status)));
+		const sortedActiveTasks = getSortedTasks(unassignedBucket.tasks.filter((task) => !isTerminalStatus(task.status, statuses)));
 		const isExpanded = expandedBuckets["__unassigned"] ?? true;
 		const displayTasks = showAllUnassigned ? sortedActiveTasks : sortedActiveTasks.slice(0, 12);
 		const hasMore = sortedActiveTasks.length > 12;
@@ -707,7 +681,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 												<MilestoneTaskRow
 													key={task.id}
 													task={task}
-													isDone={isDoneStatus(task.status)}
+													isDone={isTerminalStatus(task.status, statuses)}
 													statusBadgeClass={getStatusBadgeClass(task.status)}
 													priorityBadgeClass={getPriorityBadgeClass(task.priority)}
 													onEditTask={onEditTask}

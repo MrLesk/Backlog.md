@@ -41,7 +41,7 @@
 - **IMPORTANT**: Do not start implementation until the current implementation plan is recorded in the task via `task_edit` and any review required by the proportional-review rule above is complete
 - The recorded plan must stay accurate. Update routine plan adjustments in the task and continue without mandatory human confirmation when they stay within confirmed scope and introduce no material decision
 - If feedback requires changes, revise the plan first via `task_edit` (planSet or planAppend fields)
-- Work in short loops: implement, run the relevant tests, and record progress. Do not check acceptance criteria, write the final summary, or move the task to Done from this guide alone; first follow the Task Finalization Guide and verify each acceptance criterion with objective evidence.
+- Work in short loops: implement, run the relevant tests, and record progress. Do not check acceptance criteria, write the final summary, or move the task to the configured final status from this guide alone; first follow the Task Finalization Guide and verify each acceptance criterion with objective evidence.
 - Log progress with `task_edit` (notesAppend field) to document decisions, blockers, or learnings
 - Use `task_edit` (`commentsAppend` with optional `commentAuthor`) for task discussion, review questions, or handoff notes that are not part of the execution log
 - Comment bodies may contain Markdown, but standalone `---` lines are reserved as comment delimiters

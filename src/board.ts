@@ -65,23 +65,25 @@ export function buildKanbanStatusGroups(
 	return { orderedStatuses, groupedTasks };
 }
 
+export function formatBoardExportTimestamp(): string {
+	return new Date().toISOString().replace("T", " ").slice(0, 19);
+}
+
 export function generateKanbanBoardWithMetadata(tasks: Task[], statuses: string[], projectName: string): string {
-	// Generate timestamp
-	const now = new Date();
-	const timestamp = now.toISOString().replace("T", " ").substring(0, 19);
-
-	const { orderedStatuses, groupedTasks } = buildKanbanStatusGroups(tasks, statuses);
-
-	// Create header
+	const timestamp = formatBoardExportTimestamp();
 	const header = `# Kanban Board Export (powered by Backlog.md)
 Generated on: ${timestamp}
 Project: ${projectName}
 
 `;
+	return header + generateKanbanBoardTable(tasks, statuses);
+}
 
+export function generateKanbanBoardTable(tasks: Task[], statuses: string[]): string {
+	const { orderedStatuses, groupedTasks } = buildKanbanStatusGroups(tasks, statuses);
 	// Return early if there are no configured statuses and no tasks
 	if (orderedStatuses.length === 0) {
-		return `${header}No tasks found.`;
+		return "No tasks found.";
 	}
 
 	// Create table header
@@ -175,12 +177,12 @@ Project: ${projectName}
 		rows.push(`| ${row.join(" | ")} |`);
 	}
 
-	const table = `${rows.join("\n")}`;
+	const table = rows.join("\n");
 	if (maxTasks === 0) {
-		return `${header}${table}\n\nNo tasks found.\n`;
+		return `${table}\n\nNo tasks found.\n`;
 	}
 
-	return `${header}${table}\n`;
+	return `${table}\n`;
 }
 
 export function generateMilestoneGroupedBoard(
@@ -189,8 +191,7 @@ export function generateMilestoneGroupedBoard(
 	milestoneEntities: Milestone[],
 	projectName: string,
 ): string {
-	const now = new Date();
-	const timestamp = now.toISOString().replace("T", " ").substring(0, 19);
+	const timestamp = formatBoardExportTimestamp();
 
 	// Collect canonical milestone identifiers from milestone files and tasks.
 	// Task values can be either IDs or titles, so normalize aliases to one key.

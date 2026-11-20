@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { generateKanbanBoardWithMetadata } from "./board.ts";
+import { formatBoardExportTimestamp, generateKanbanBoardTable } from "./board.ts";
 import type { Task } from "./types/index.ts";
 
 const BOARD_START = "<!-- BOARD_START -->";
@@ -14,20 +14,8 @@ export async function updateReadmeWithBoard(tasks: Task[], statuses: string[], p
 		// If README.md doesn't exist, create it.
 	}
 
-	const fullBoardContent = generateKanbanBoardWithMetadata(tasks, statuses, projectName);
-
-	// Extract timestamp from the board content
-	const timestampMatch = fullBoardContent.match(/Generated on: ([^\n]+)/);
-	const timestamp = timestampMatch ? timestampMatch[1] : new Date().toISOString().replace("T", " ").substring(0, 19);
-
-	// Extract just the board table (skip all metadata headers)
-	const lines = fullBoardContent.split("\n");
-	const tableStartIndex = lines.findIndex(
-		(line) =>
-			line.includes("|") &&
-			(line.includes("To Do") || line.includes("In Progress") || line.includes("Done") || line.includes("---")),
-	);
-	const boardTable = lines.slice(tableStartIndex).join("\n").trim();
+	const boardTable = generateKanbanBoardTable(tasks, statuses).trimEnd();
+	const timestamp = formatBoardExportTimestamp();
 
 	// Create the board section with a nice title
 	const versionText = version ? ` (${version})` : "";

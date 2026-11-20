@@ -2,6 +2,7 @@ import type { Task } from "../types/index.ts";
 import { canonicalTaskId } from "./task-id.ts";
 import { createTaskRecordIndex } from "./task-record-index.ts";
 import { compareTaskIds } from "./task-sorting.ts";
+import { isTerminalStatus } from "./terminal-status.ts";
 
 /** Which way a traversal walks the dependency edges away from the selected task. */
 export type DependencyDirection = "dependencies" | "dependents";
@@ -91,7 +92,6 @@ export function buildDependencyGraph(
 	const entries = new Map<string, GraphEntry>();
 	const edges = new Map<string, { fromKey: string; toKey: string }>();
 
-	const rootRecord = index.lookup(rootKey);
 	entries.set(rootKey, {
 		key: rootKey,
 		node: {
@@ -99,9 +99,7 @@ export function buildDependencyGraph(
 			title: root.title,
 			status: root.status,
 			state: "resolved",
-			completed: index.isFinished(
-				rootRecord !== undefined && rootRecord !== "ambiguous" ? rootRecord : { task: root, archived: false },
-			),
+			completed: isTerminalStatus(root.status, index.statuses),
 			dependencyDepth: 0,
 			dependentDepth: 0,
 		},

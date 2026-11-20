@@ -95,7 +95,9 @@ export function formatTaskPlainText(task: TaskDetail, options: TaskPlainTextOpti
 	lines.push("=".repeat(50));
 	lines.push("");
 	// An archived task is off the board whatever its status says, so the status line says so.
-	lines.push(`Status: ${formatStatusWithIcon(task.status)}${task.source === "archived" ? " (archived)" : ""}`);
+	lines.push(
+		`Status: ${formatStatusWithIcon(task.status, task.dependencyGraph.nodes[0]?.completed)}${task.source === "archived" ? " (archived)" : ""}`,
+	);
 
 	const priorityLabel = formatPriority(task.priority);
 	if (priorityLabel) {

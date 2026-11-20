@@ -1,7 +1,9 @@
 import blessed from "neo-neo-bblessed";
+import { DEFAULT_STATUSES } from "../constants/index.ts";
 import type { Task } from "../types/index.ts";
+import { isTerminalStatus } from "../utils/terminal-status.ts";
 import { formatAcceptanceCriteriaProgress } from "./acceptance-criteria-progress.ts";
-import { formatStatusWithIcon, getStatusColor, wrapStatusColor } from "./status-icon.ts";
+import { formatColoredStatus } from "./status-icon.ts";
 import { stripBlessedFgTags } from "./utils/strip-tags.ts";
 
 const { unicode } = blessed as unknown as { unicode: { strWidth(value: string): number } };
@@ -32,9 +34,14 @@ export type TaskRowPrefix = (task: Task) => string;
  * their own color tags, so callers must place the prefix outside any row-level tag: a
  * bare {/} closes the enclosing color, not just its own.
  */
-export function createTaskRowPrefix(tasks: Task[], options: { showStatus: boolean }): TaskRowPrefix {
+export function createTaskRowPrefix(
+	tasks: Task[],
+	options: { showStatus: boolean; statuses?: readonly string[] },
+): TaskRowPrefix {
 	const status = (task: Task) =>
-		options.showStatus ? wrapStatusColor(formatStatusWithIcon(task.status), getStatusColor(task.status)) : "";
+		options.showStatus
+			? formatColoredStatus(task.status, isTerminalStatus(task.status, options.statuses ?? DEFAULT_STATUSES))
+			: "";
 	const statusWidth = widestSegment(tasks, status);
 	const progressWidth = widestSegment(tasks, formatAcceptanceCriteriaProgress);
 

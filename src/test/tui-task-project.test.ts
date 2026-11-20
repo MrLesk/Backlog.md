@@ -54,17 +54,17 @@ describe("TUI task project display", () => {
 				patchedTTY = true;
 			}
 
-			const projectedPopup = await createTaskPopup(screen, createTask({ project: "Web" }), undefined, undefined, [
-				"Web",
-			]);
+			const projectedPopup = await createTaskPopup(screen, createTask({ project: "Web" }), {
+				configuredProjects: ["Web"],
+			});
 			const projectedContent = getPopupContent(projectedPopup?.contentArea);
 			expect(projectedContent).toContain("Project:");
 			expect(projectedContent).toContain("[Web]");
 			projectedPopup?.close();
 
-			const unprojectedPopup = await createTaskPopup(screen, createTask({ id: "TASK-2" }), undefined, undefined, [
-				"Web",
-			]);
+			const unprojectedPopup = await createTaskPopup(screen, createTask({ id: "TASK-2" }), {
+				configuredProjects: ["Web"],
+			});
 			const unprojectedContent = getPopupContent(unprojectedPopup?.contentArea);
 			expect(unprojectedContent).not.toContain("Project:");
 			unprojectedPopup?.close();

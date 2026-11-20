@@ -25,8 +25,11 @@ describe("buildLanes", () => {
 			makeTask({ id: "task-1", createdDate: "2026-10-19T10:00:00Z" }),
 			makeTask({ id: "task-2", createdDate: "2026-10-19 11:00" }),
 		];
-		expect(sortTasksForStatus(tasks, "To Do").map((task) => task.id)).toEqual(["task-1", "task-2"]);
-		expect(sortTasksForStatus(tasks, "Done").map((task) => task.id)).toEqual(["task-2", "task-1"]);
+		expect(sortTasksForStatus(tasks, "Done", ["Done", "Closed"]).map((task) => task.id)).toEqual(["task-1", "task-2"]);
+		expect(sortTasksForStatus(tasks, "Closed", ["Done", "Closed"]).map((task) => task.id)).toEqual([
+			"task-2",
+			"task-1",
+		]);
 	});
 	it("creates milestone lanes including No milestone and task-discovered milestones", () => {
 		const tasks = [
@@ -182,7 +185,7 @@ describe("sortTasksForStatus", () => {
 			makeTask({ id: "task-3", status: "Done", updatedDate: "2024-01-03", createdDate: "2024-01-01" }),
 		];
 
-		const sorted = sortTasksForStatus(tasks, "Done").map((t) => t.id);
+		const sorted = sortTasksForStatus(tasks, "Done", ["To Do", "Done"]).map((t) => t.id);
 		expect(sorted).toEqual(["task-2", "task-3", "task-1"]);
 	});
 });

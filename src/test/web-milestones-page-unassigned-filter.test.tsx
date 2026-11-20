@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import type { Milestone, Task } from "../types/index.ts";
 import MilestonesPage from "../web/components/MilestonesPage";
 
-const statuses = ["To Do", "In Progress", "Done"];
+const statuses = ["To Do", "In Progress", "Done", "Closed"];
 
 const milestones: Milestone[] = [{ id: "m-1", title: "Release 1", description: "", rawContent: "" }];
 
@@ -41,8 +41,8 @@ const getUnassignedCount = (html: string): string | undefined => {
 describe("MilestonesPage unassigned filtering", () => {
 	it("hides done unassigned tasks and counts only non-done unassigned tasks", () => {
 		const html = renderMilestonesPage([
-			makeTask({ id: "task-1", title: "Unassigned active", status: "To Do" }),
-			makeTask({ id: "task-2", title: "Unassigned done", status: "Done" }),
+			makeTask({ id: "task-1", title: "Unassigned active", status: "Done" }),
+			makeTask({ id: "task-2", title: "Unassigned done", status: "Closed" }),
 			makeTask({ id: "task-3", title: "Milestone active", milestone: "m-1", status: "To Do" }),
 		]);
 
@@ -54,8 +54,8 @@ describe("MilestonesPage unassigned filtering", () => {
 
 	it("shows an empty state when all unassigned tasks are done", () => {
 		const html = renderMilestonesPage([
-			makeTask({ id: "task-1", title: "Done unassigned", status: "Done" }),
-			makeTask({ id: "task-2", title: "Complete unassigned", status: "Complete" }),
+			makeTask({ id: "task-1", title: "Done unassigned", status: "Closed" }),
+			makeTask({ id: "task-2", title: "Complete unassigned", status: "CLOSED" }),
 		]);
 
 		expect(html).toContain("No active unassigned tasks. Completed tasks are hidden.");
@@ -66,7 +66,7 @@ describe("MilestonesPage unassigned filtering", () => {
 
 	it("keeps milestone-assigned groups rendering with existing behavior", () => {
 		const html = renderMilestonesPage([
-			makeTask({ id: "task-1", title: "Unassigned done", status: "Done" }),
+			makeTask({ id: "task-1", title: "Unassigned done", status: "Closed" }),
 			makeTask({ id: "task-2", title: "Milestone task", milestone: "m-1", status: "In Progress" }),
 		]);
 

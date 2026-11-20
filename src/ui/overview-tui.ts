@@ -1,6 +1,7 @@
 import { box } from "neo-neo-bblessed";
 import type { TaskStatistics } from "../core/statistics.ts";
 import { formatPriorityLabel } from "../utils/priority-config.ts";
+import { isTerminalStatus } from "../utils/terminal-status.ts";
 import { getStatusIcon } from "./status-icon.ts";
 import { createScreen, formatTuiTitle } from "./tui.ts";
 
@@ -28,7 +29,11 @@ function getPriorityBreakdownRows(statistics: TaskStatistics): Array<{ label: st
 /**
  * Render the project overview in an interactive TUI
  */
-export async function renderOverviewTui(statistics: TaskStatistics, projectName: string): Promise<void> {
+export async function renderOverviewTui(
+	statistics: TaskStatistics,
+	projectName: string,
+	statuses: readonly string[],
+): Promise<void> {
 	// If not in TTY, fall back to plain text output
 	if (!process.stdout.isTTY) {
 		renderPlainTextOverview(statistics, projectName);
@@ -79,7 +84,7 @@ export async function renderOverviewTui(statistics: TaskStatistics, projectName:
 
 		let statusContent = "";
 		for (const [status, count] of statistics.statusCounts) {
-			const icon = getStatusIcon(status);
+			const icon = getStatusIcon(status, isTerminalStatus(status, statuses));
 			const percentage = statistics.totalTasks > 0 ? Math.round((count / statistics.totalTasks) * 100) : 0;
 			statusContent += `  ${icon} {bold}${status}:{/bold} ${count} tasks (${percentage}%)\n`;
 		}

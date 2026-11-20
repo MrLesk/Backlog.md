@@ -25,7 +25,7 @@ describe("getTaskStatistics", () => {
 		const tasks = [
 			createTask({ id: "task-1", status: "To Do", dependencies: ["task-3"] }),
 			createTask({ id: "task-2", status: "Closed", dependencies: ["task-4"] }),
-			createTask({ id: "task-3", status: "Closed", source: "archived" }),
+			createTask({ id: "task-3", status: "CLOSED", source: "archived" }),
 			// An unfinished archived task can still block its dependent.
 			createTask({ id: "task-4", status: "Done", source: "archived" }),
 			createTask({ id: "task-5", status: "Done", dependencies: ["task-4"] }),
@@ -37,6 +37,7 @@ describe("getTaskStatistics", () => {
 		expect(stats.completionPercentage).toBe(50);
 		expect(stats.statusCounts.get("To Do")).toBe(1);
 		expect(stats.statusCounts.get("Done")).toBe(1);
+		expect(stats.statusCounts.get("Closed")).toBe(2);
 		expect(stats.projectHealth.blockedTasks.map((task) => task.id)).toEqual(["task-5"]);
 		expect(stats.projectHealth.staleTasks.map((task) => task.id)).toEqual(["task-1", "task-5"]);
 	});
