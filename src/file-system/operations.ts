@@ -64,6 +64,7 @@ import {
 	AmbiguousTaskIdError,
 	draftIdsMatchLoosely,
 	extractDraftIdFromFilename,
+	extractTaskIdFromFilename,
 	findDuplicateDraftFilenameGroups,
 	getTaskPath,
 	isAmbiguousTaskIdError,
@@ -897,9 +898,8 @@ export class FileSystem {
 
 	// Task operations
 	/**
-	 * Where a task or draft is written. `loadedFromPath` is the file the record was loaded from,
-	 * if any. A task stays at that path. A draft is always named after its ID and title, so a
-	 * title change gives it a new path.
+	 * The filename for the record's current title and the source file, if any. A task edit
+	 * compares the stored title before moving a file, so other edits preserve legacy paths.
 	 */
 	private async resolveTaskWriteTarget(
 		task: Task,
@@ -908,11 +908,18 @@ export class FileSystem {
 		let prefix = isDraft ? "draft" : extractAnyPrefix(task.id);
 		if (!prefix) prefix = (await this.loadConfig())?.prefixes?.task ?? "task";
 		const id = normalizeId(task.id, prefix);
-		const filename = `${idForFilename(id)} - ${this.sanitizeFilename(task.title)}.md`;
-		const directory = isDraft ? await this.getDraftsDir() : await this.getTasksDir();
-		const namedPath = join(directory, filename);
 		const loadedFromPath = task.filePath?.trim() ? task.filePath : undefined;
-		return { id, filePath: isDraft ? namedPath : (loadedFromPath ?? namedPath), loadedFromPath };
+		let directory = isDraft ? await this.getDraftsDir() : await this.getTasksDir();
+		let nameId = id;
+		if (!isDraft && loadedFromPath) {
+			const filenameId = extractTaskIdFromFilename(basename(loadedFromPath));
+			// A title edit can replace the title portion but cannot repair a mismatched file ID.
+			if (!filenameId || !taskIdsEqual(filenameId, id)) return { id, filePath: loadedFromPath, loadedFromPath };
+			directory = dirname(loadedFromPath);
+			nameId = filenameId;
+		}
+		const filename = `${idForFilename(nameId)} - ${this.sanitizeFilename(task.title)}.md`;
+		return { id, filePath: join(directory, filename), loadedFromPath };
 	}
 
 	async getTaskWritePath(task: Task, isDraft = false): Promise<string> {
@@ -921,7 +928,7 @@ export class FileSystem {
 
 	// Transitions supply source content separately because their destination must be created as new.
 	async saveTask(task: Task, sourceContent?: string): Promise<string> {
-		const { id: taskId, filePath: filepath, loadedFromPath } = await this.resolveTaskWriteTarget(task);
+		const { id: taskId, filePath: namedPath, loadedFromPath } = await this.resolveTaskWriteTarget(task);
 		const prefix = extractAnyPrefix(taskId) ?? "task";
 		let existingTask: Task | null = null;
 		let originalContent = sourceContent;
@@ -952,8 +959,10 @@ export class FileSystem {
 			parentTaskId: persistedParentTaskId,
 		};
 		const content = serializeTask(normalizedTask, originalContent);
-
+		const titleChanged = existingTask && existingTask.title !== task.title;
+		const filepath = loadedFromPath && !titleChanged ? loadedFromPath : namedPath;
 		await this.writeRecordFile(filepath, content, loadedFromPath);
+		if (loadedFromPath) task.filePath = filepath;
 		task.revision = getTaskRevision(content);
 		return filepath;
 	}
@@ -1001,7 +1010,20 @@ export class FileSystem {
 				if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 			}
 		}
-		await Bun.write(targetPath, content);
+		try {
+			await Bun.write(targetPath, content);
+		} catch (error) {
+			if (movedFrom) {
+				if (await isTakenByAnotherFile(movedFrom, targetPath)) {
+					throw new Error(
+						`Could not write ${targetPath} or restore its original name because ${movedFrom} is now in use.`,
+						{ cause: error },
+					);
+				}
+				await rename(targetPath, movedFrom);
+			}
+			throw error;
+		}
 		return movedFrom;
 	}
 

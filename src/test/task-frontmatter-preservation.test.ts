@@ -97,7 +97,7 @@ describe("task and draft unknown frontmatter", () => {
 			await $`bun ${CLI_PATH} task edit TASK-1 -s ${status}`.cwd(root).quiet();
 			const saved = await expectMetadata(path);
 			expect(parseTask(saved)).toMatchObject({ status, description: "test" });
-			expect(parseTask(saved).updatedDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/);
+			expect(parseTask(saved).updatedDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
 		}
 		const output = await $`bun ${CLI_PATH} task view TASK-1 --json`.cwd(root).text();
 		expect(output).not.toContain("example-capture");
@@ -170,7 +170,7 @@ describe("task and draft unknown frontmatter", () => {
 	});
 
 	it("keeps metadata through watched HTTP task/draft edits and status transitions", async () => {
-		const taskPath = await writeRecord("TASK-1", METADATA, "modified_files: [old]\n");
+		await writeRecord("TASK-1", METADATA, "modified_files: [old]\n");
 		await writeRecord("DRAFT-1");
 		server = new BacklogServer(root);
 		await server.start(0, false);
@@ -189,7 +189,7 @@ describe("task and draft unknown frontmatter", () => {
 			return body;
 		};
 		await put("TASK-1", { status: "In Progress", description: "HTTP body", modifiedFiles: [] });
-		await put("TASK-1", { title: "HTTP task", labels: ["http"] });
+		const { filePath: taskPath } = await put("TASK-1", { title: "HTTP task", labels: ["http"] });
 		expect(parseTask(await expectMetadata(taskPath)).description).toBe("HTTP body");
 		expect(parseMarkdown(await Bun.file(taskPath).text()).frontmatter).not.toHaveProperty("modified_files");
 		await put("DRAFT-1", { title: "HTTP draft", status: "Draft" });

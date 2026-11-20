@@ -4,6 +4,7 @@ import { Core } from "../core/backlog.ts";
 import { BranchTaskLoader } from "../core/task-loader.ts";
 import type { GitBranchTip, GitOperations } from "../git/operations.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
+import { AmbiguousTaskIdError } from "../utils/task-path.ts";
 import { pinTimeZone } from "./pin-timezone.ts";
 import { createUniqueTestDir, initializeFilesystemTestProject, safeCleanup, treeBlobs } from "./test-utils.ts";
 
@@ -94,7 +95,7 @@ describe("shared immutable branch task loading", () => {
 	it("reuses immutable blobs across commits and lifecycle paths after the snapshot changes", async () => {
 		const activePath = "backlog/tasks/task-1 - Shared.md";
 		const archivedPath = "backlog/archive/tasks/task-1 - Shared.md";
-		const sharedBlob = "f".repeat(40);
+		const sharedBlob = { id: "f".repeat(40), isSymlink: false };
 		let reads = 0;
 		const git = {
 			listTreeBlobs: async (commit: string) =>
@@ -133,6 +134,63 @@ describe("shared immutable branch task loading", () => {
 		const retained = await loader.load(next, config, [], true);
 		expect(reads).toBe(1);
 		expect(retained.entries[0]?.task).toMatchObject({ title: "Shared", source: "local-branch", branch: "feature" });
+	});
+
+	it("reads only the disputed ID's blobs when a filename changes in a warm working copy", async () => {
+		const projectRoot = createUniqueTestDir("retitled-branch-task");
+		const core = new Core(projectRoot);
+		const oldPath = "backlog/tasks/task-1 - Old.md";
+		const unrelatedPath = "backlog/tasks/task-2 - Unrelated.md";
+		const date = "2026-08-10T00:00:41Z";
+		const local: Task = {
+			id: "TASK-1",
+			title: "Old",
+			status: "To Do",
+			assignee: [],
+			labels: [],
+			dependencies: [],
+			createdDate: date,
+			updatedDate: "2026-08-11",
+			filePath: join(projectRoot, oldPath),
+		};
+		let active = [local, { ...local, id: "TASK-2", title: "Unrelated", filePath: join(projectRoot, unrelatedPath) }];
+		const reads: string[] = [];
+		try {
+			await initializeFilesystemTestProject(core, "Retitled branch task");
+			core.fs.loadConfig = async () => ({ ...config, remoteOperations: false, taskResolutionStrategy: "most_recent" });
+			core.fs.listTasks = async () => active;
+			core.fs.listArchivedTasks = async () => [];
+			core.listTasksWithMetadata = async () => active;
+			core.git.listRecentBranchTips = async () => [
+				{ name: "main", commit: "0", current: true },
+				{ name: "feature-a", commit: "a", current: false },
+				{ name: "feature-a-copy", commit: "a", current: false },
+				{ name: "feature-b", commit: "b", current: false },
+			];
+			core.git.listTreeBlobs = async (commit) => treeBlobs(commit, oldPath, unrelatedPath);
+			core.git.getBranchLastModifiedMap = async () => new Map();
+			core.git.getRepositoryRoot = async () => null;
+			core.git.showFile = async (commit, path) => {
+				reads.push(`${commit}:${path}`);
+				// Both refs used the old filename; only one of the two copies belongs to the renamed task.
+				return taskMarkdown("TASK-1", "Old").replace(
+					"created_date: 2026-08-10",
+					`created_date: '${commit === "a" ? date : "2026-08-10T00:00:42Z"}'`,
+				);
+			};
+			expect((await core.getTask("1"))?.title).toBe("Old");
+			expect(reads).toEqual([]);
+			active = [
+				{ ...local, title: "New", filePath: join(projectRoot, "backlog/tasks/task-1 - New.md") },
+				...active.slice(1),
+			];
+			await expect(core.getTask("1")).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+			await expect(core.getTask("1")).rejects.toBeInstanceOf(AmbiguousTaskIdError);
+			expect(reads.sort()).toEqual([`a:${oldPath}`, `b:${oldPath}`]);
+		} finally {
+			core.disposeContentStore();
+			await safeCleanup(projectRoot);
+		}
 	});
 
 	it("builds the Git-free working-copy corpus through lifecycle identity resolution", async () => {
@@ -1131,7 +1189,7 @@ describe("shared immutable branch task loading", () => {
 				await releases.get(commit)?.promise;
 				scanCompletionOrder.push(commit);
 				completed.get(commit)?.resolve();
-				return new Map([[path, "6".repeat(40)]]);
+				return new Map([[path, { id: "6".repeat(40), isSymlink: false }]]);
 			},
 			getBranchLastModifiedMap: async () => new Map([[path, new Date("2026-08-10T00:00:00Z")]]),
 			showFile: async (commit: string) => {

@@ -1,5 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir } from "node:fs/promises";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import { mkdir, readdir } from "node:fs/promises";
+import { basename } from "node:path";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { isTaskLockError, taskLockErrorMessage } from "../file-system/operations.ts";
@@ -61,6 +62,20 @@ describe("atomic task editing", () => {
 		if (!task) throw new Error(`${CONTENDED_ID} missing during test setup`);
 		return task;
 	}
+
+	it.each(["After", "BEFORE"])("keeps the original file when writing the title %s fails", async (title) => {
+		const { task, filePath } = await setup.createTaskFromInput({ title: "Before" }, false);
+		if (!filePath) throw new Error("Expected the created task to have a file path");
+		const original = await Bun.file(filePath).text();
+		const write = spyOn(Bun, "write").mockRejectedValueOnce(new Error("Task is read-only"));
+		try {
+			await expect(setup.updateTaskFromInput(task.id, { title }, false)).rejects.toThrow("Task is read-only");
+		} finally {
+			write.mockRestore();
+		}
+		expect(await readdir(setup.filesystem.tasksDir)).toEqual([basename(filePath)]);
+		expect(await Bun.file(filePath).text()).toBe(original);
+	});
 
 	async function finalLabels(): Promise<string[]> {
 		const task = await setup.fs.loadTask(CONTENDED_ID);

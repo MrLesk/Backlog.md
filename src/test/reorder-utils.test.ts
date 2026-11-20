@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, setSystemTime } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
@@ -36,6 +36,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+	setSystemTime();
 	await safeCleanup(TEST_DIR);
 });
 
@@ -143,13 +144,14 @@ describe("Core.reorderTask", () => {
 			false,
 		);
 
+		const editTime = "2026-10-19T12:34:56Z";
+		setSystemTime(new Date(editTime));
 		await core.updateTaskFromInput("task-1", { ordinal: 2000, title: "Updated Task" }, false);
 
 		const updatedTask = await core.filesystem.loadTask("task-1");
-		const now = `${new Date().toISOString().slice(0, 16)}:00Z`;
 		expect(updatedTask?.title).toBe("Updated Task");
 		expect(updatedTask?.ordinal).toBe(2000);
-		expect(updatedTask?.updatedDate).toBe(now);
+		expect(updatedTask?.updatedDate).toBe(editTime);
 	});
 
 	it("preserves updatedDate for ordinal-only bulk updates", async () => {

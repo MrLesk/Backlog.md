@@ -66,6 +66,7 @@ describe("ContentStore", () => {
 				...sampleTask,
 				id: "TASK-1",
 				title: `Branch-only task ${index + 1}`,
+				createdDate: `2025-09-19T10:00:${String(index).padStart(2, "0")}Z`,
 				branch: `feature/watched-collision-${index + 1}`,
 				filePath: branchPath,
 			}));
@@ -615,17 +616,13 @@ describe("ContentStore", () => {
 	it("removes a watched task by exact path after its frontmatter identity changes", async () => {
 		store.dispose();
 		const taskPath = await filesystem.saveTask(sampleTask);
-		store = new ContentStore(filesystem, branchSnapshotLoader([]), false);
+		store = new ContentStore(filesystem, branchSnapshotLoader([]), true);
 		await store.ensureInitialized();
 		const changedTask = { ...sampleTask, id: "TASK-2", title: "Changed identity", filePath: taskPath };
-		const internals = store as unknown as {
-			publishWatchedTask: (task: Task) => void;
-			removeWatchedTask: (filenameId: string, watchedPath: string) => void;
-		};
-
-		internals.publishWatchedTask(changedTask);
-		expect(store.resolveTaskForRead("TASK-2").status).toBe("found");
-		internals.removeWatchedTask("TASK-1", taskPath);
+		await Bun.write(taskPath, serializeTask(changedTask));
+		await waitUntil(() => store.resolveTaskForRead("TASK-2").status === "found", "new frontmatter ID");
+		await unlink(taskPath);
+		await waitUntil(() => store.resolveTaskForRead("TASK-2").status === "not-found", "removed task file");
 
 		expect(store.resolveTaskForRead("TASK-1").status).toBe("not-found");
 		expect(store.resolveTaskForRead("TASK-2").status).toBe("not-found");
@@ -644,7 +641,7 @@ describe("ContentStore", () => {
 		});
 		await Bun.write(
 			join(filesystem.tasksDir, "task-1 - Current-worktree.md"),
-			serializeTask({ ...sampleTask, id: "TASK-1", title: "Current worktree" }),
+			serializeTask({ ...sampleTask, id: "TASK-1", title: "Current worktree", createdDate: "2025-09-19T10:00:15Z" }),
 		);
 
 		await waitUntil(() => observedResolutions.length > 0, "watched distinct-path collision", getPlatformTimeout(3000));
@@ -828,6 +825,18 @@ describe("ContentStore", () => {
 
 		expect((await filesystem.loadTask(sampleTask.id))?.title).toBe("Persisted newer");
 		expect(store.getTasks()[0]?.title).toBe("Persisted newer");
+	});
+
+	it("drops the old filename from the working copy as soon as a title edit is saved", async () => {
+		store.dispose();
+		const filePath = await filesystem.saveTask(sampleTask);
+		store = new ContentStore(filesystem, branchSnapshotLoader([]), false);
+		await store.ensureInitialized();
+
+		const renamedPath = await filesystem.saveTask({ ...sampleTask, title: "Updated title", filePath });
+
+		expect(store.getTaskCorpusSnapshot().activeTasks.map((task) => task.filePath)).toEqual([renamedPath]);
+		expect(store.resolveTaskForRead(sampleTask.id).status).toBe("found");
 	});
 
 	it("emits task updates when underlying files change", async () => {

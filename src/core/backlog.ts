@@ -1,4 +1,4 @@
-import { mkdir, rename as moveFile, readFile, realpath, stat, unlink } from "node:fs/promises";
+import { lstat, mkdir, rename as moveFile, readFile, realpath, stat, unlink } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import {
 	ARCHIVED_TASK_DIRECTORIES,
@@ -12,6 +12,7 @@ import {
 	DraftParseError,
 	FileSystem,
 	isConfigValueError,
+	isTaskLockError,
 	newTaskLockError,
 } from "../file-system/operations.ts";
 import { type GitBranchTip, type GitIndexEntry, GitOperations } from "../git/operations.ts";
@@ -1259,8 +1260,8 @@ export class Core {
 	 * snapshot, losing that edit, and a task that started referencing the ID in that window would
 	 * not be locked and would keep the reference the operation exists to remove. So the scan is
 	 * repeated inside the locks, and a scan naming a record the held locks do not cover releases
-	 * them and runs again over the wider set. Widening only ever adds records, and the locks are
-	 * always taken through {@link FileSystem.withTaskLocks} and then
+	 * them and runs again with the updated set. A dependent task renamed before locking is also
+	 * picked up by a fresh scan. The locks are taken through {@link FileSystem.withTaskLocks} and then
 	 * {@link FileSystem.withDraftLocks}, which sort them. The allocator lock comes last and covers
 	 * the final scan and `run`, excluding creates and archive/restore membership moves throughout that span.
 	 * Widening exits all three lock wrappers before retrying; it never takes more task or draft locks
@@ -1286,21 +1287,32 @@ export class Core {
 			// A draft is locked as a file, so it is covered when its file is.
 			const coversDraft = (draft: Task) => lockedDrafts.some((candidate) => candidate.filePath === draft.filePath);
 			// Task locks first, then draft locks, then allocator, on every attempt.
-			const outcome = await this.fs.withTaskLocks([target, ...lockedTasks], () =>
-				this.fs.withDraftLocks(
-					lockedDrafts.map((draft) => ({ filePath: draft.filePath, canonicalId: draft.id })),
-					() =>
-						this.withCreateLock(async (): Promise<{ value: T } | { widened: VacatedIdCleanup }> => {
-							const cleanup = await this.collectVacatedIdCleanup(vacatedTaskId);
-							if (!vacatedIdCleanupTasks(cleanup).every(coversTask) || !cleanup.drafts.every(coversDraft)) {
-								return { widened: cleanup };
-							}
-							return { value: await run(cleanup) };
-						}),
-				),
-			);
+			let startedCleanup = false;
+			const outcome = await this.fs
+				.withTaskLocks([target, ...lockedTasks], () =>
+					this.fs.withDraftLocks(
+						lockedDrafts.map((draft) => ({ filePath: draft.filePath, canonicalId: draft.id })),
+						() =>
+							this.withCreateLock(async (): Promise<{ value: T } | { nextCandidates: VacatedIdCleanup }> => {
+								const cleanup = await this.collectVacatedIdCleanup(vacatedTaskId);
+								if (!vacatedIdCleanupTasks(cleanup).every(coversTask) || !cleanup.drafts.every(coversDraft)) {
+									return { nextCandidates: cleanup };
+								}
+								startedCleanup = true;
+								return { value: await run(cleanup) };
+							}),
+					),
+				)
+				.catch(async (error: unknown) => {
+					if (startedCleanup || !isTaskLockError(error)) throw error;
+					const cause = error.cause as NodeJS.ErrnoException | undefined;
+					if (cause?.code !== "ENOENT" || !lockedTasks.some((task) => task.filePath === cause.path)) throw error;
+					const nextCandidates = await this.collectVacatedIdCleanup(vacatedTaskId);
+					if (vacatedIdCleanupTasks(nextCandidates).some((task) => task.filePath === cause.path)) throw error;
+					return { nextCandidates };
+				});
 			if ("value" in outcome) return outcome.value;
-			candidates = outcome.widened;
+			candidates = outcome.nextCandidates;
 		}
 
 		throw new Error(
@@ -2429,11 +2441,19 @@ export class Core {
 			delete task.updatedDate;
 		}
 
+		const previousPath = task.filePath;
 		const filePath = await this.fs.saveTask(task);
-		// Keep any in-process ContentStore in sync for immediate UI/search freshness.
-
 		if (await this.shouldAutoCommit(autoCommit)) {
-			await this.git.addAndCommitTaskFile(task.id, filePath, "update");
+			if (previousPath && previousPath !== filePath) {
+				try {
+					const paths = await this.stageTaskEdit(filePath, previousPath);
+					await this.git.commitFiles(`Update task ${task.id}`, paths);
+				} catch (error) {
+					throw new ChangeNotCommittedError(`Task ${task.id} was renamed`, error);
+				}
+			} else {
+				await this.git.addAndCommitTaskFile(task.id, filePath, "update");
+			}
 		}
 
 		// Fire status change callback if status changed
@@ -3387,12 +3407,31 @@ export class Core {
 		return await this.updateTaskFromInput(taskId, input, autoCommit, options);
 	}
 
-	private async writeTasksBulk(tasks: Task[]): Promise<string[]> {
-		const filePaths: string[] = [];
+	/** Stage the paths a task edit changed, including the content written through a renamed link. */
+	private async stageTaskEdit(filePath: string, previousPath?: string): Promise<string[]> {
+		if (!previousPath || previousPath === filePath) {
+			await this.git.addFile(filePath);
+			return [filePath];
+		}
+		await this.git.stageFileMove(previousPath, filePath);
+		const paths = [previousPath, filePath];
+		if ((await lstat(filePath)).isSymbolicLink()) {
+			const target = await realpath(filePath);
+			if (await this.git.isRepository(dirname(target))) {
+				await this.git.addFile(target);
+				paths.push(target);
+			}
+		}
+		return paths;
+	}
+
+	private async writeTasksBulk(tasks: Task[]): Promise<Array<{ filePath: string; previousPath?: string }>> {
+		const writes: Array<{ filePath: string; previousPath?: string }> = [];
 		const updateAll = async () => {
 			for (const task of tasks) {
+				const previousPath = task.filePath;
 				const filePath = await this.updateTask(task, false);
-				filePaths.push(filePath);
+				writes.push({ filePath, previousPath });
 				// Keep an in-process ContentStore serving what was just written: without this the
 				// server, MCP and TUI keep reading the pre-write copy until a watcher refresh lands.
 				this.contentStore?.upsertTask({ ...task, filePath });
@@ -3400,18 +3439,17 @@ export class Core {
 		};
 		if (this.contentStore) await this.contentStore.batchTaskUpdates(updateAll);
 		else await updateAll();
-		return filePaths;
+		return writes;
 	}
 
 	async updateTasksBulk(tasks: Task[], commitMessage?: string, autoCommit?: boolean): Promise<void> {
-		const filePaths = await this.fs.withTaskLocks(tasks, async () => await this.writeTasksBulk(tasks));
-
-		// Commit all changes at once if auto-commit is enabled
-		if (await this.shouldAutoCommit(autoCommit)) {
-			if (filePaths.length > 0) {
-				await this.git.addFiles(filePaths);
-				await this.git.commitFiles(commitMessage || `Update ${tasks.length} tasks`, filePaths);
+		const writes = await this.fs.withTaskLocks(tasks, async () => await this.writeTasksBulk(tasks));
+		if (writes.length > 0 && (await this.shouldAutoCommit(autoCommit))) {
+			const paths: string[] = [];
+			for (const { filePath, previousPath } of writes) {
+				paths.push(...(await this.stageTaskEdit(filePath, previousPath)));
 			}
+			await this.git.commitFiles(commitMessage || `Update ${tasks.length} tasks`, paths);
 		}
 	}
 
@@ -5331,6 +5369,7 @@ export class Core {
 				backlogDir,
 				progressCallback,
 				snapshotBefore.currentBranch,
+				archivedTasks,
 			);
 			branchStateEntries.push(...branchLoad.entries);
 			branchLoadComplete = branchLoad.complete;

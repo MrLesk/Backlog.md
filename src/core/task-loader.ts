@@ -10,18 +10,17 @@ import { parseStoredUtcDate } from "../utils/utc-timestamp.ts";
  */
 
 import { ARCHIVED_TASK_DIRECTORIES, DEFAULT_DIRECTORIES } from "../constants/index.ts";
-import type { GitBranchTip, GitOperations } from "../git/operations.ts";
+import type { GitBranchTip, GitOperations, GitTreeBlob } from "../git/operations.ts";
 import { parseTask } from "../markdown/parser.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
 import { extractAnyPrefix } from "../utils/prefix-config.ts";
-import {
-	canonicalTaskId,
-	extractTaskIdFromFilename,
-	normalizeTaskId,
-	normalizeTaskIdentity,
-} from "../utils/task-path.ts";
+import { canonicalTaskId, extractTaskIdFromFilename, normalizeTaskIdentity } from "../utils/task-path.ts";
 import type { TaskDirectoryType } from "./cross-branch-tasks.ts";
-import { normalizeTaskLifecyclePath } from "./task-identity-index.ts";
+import {
+	idsWithDifferentFilenameTitles,
+	normalizeTaskIdentityPath,
+	type TaskIdentityRecord,
+} from "./task-identity-index.ts";
 
 /** Default prefix for tasks */
 const DEFAULT_TASK_PREFIX = "task";
@@ -34,13 +33,9 @@ export function getBranchHistoryCutoff(activeBranchDays: number, now = Date.now(
 	return cutoff;
 }
 
-export interface BranchTaskStateEntry {
-	id: string;
-	type: TaskDirectoryType;
-	lastModified: Date;
-	branch: string;
-	path: string;
-	task?: Task;
+export interface BranchTaskStateEntry extends Omit<TaskIdentityRecord, "workingCopy"> {
+	/** The immutable blob was read but could not be parsed as a task. */
+	unreadable?: boolean;
 }
 
 export interface BranchTaskLoadResult {
@@ -89,8 +84,7 @@ interface RemoteIndexEntry {
 	path: string; // "backlog/tasks/task-123 - title.md"
 	lastModified: Date;
 	commit: string;
-	/** The file's blob id in that commit: equal ids are identical copies. */
-	blobId: string;
+	blob: GitTreeBlob;
 	stateEntry?: BranchTaskStateEntry;
 }
 
@@ -99,7 +93,7 @@ interface HydrationCandidate {
 	ref: string;
 	path: string;
 	commit: string;
-	blobId: string;
+	blob: GitTreeBlob;
 	stateEntry?: BranchTaskStateEntry;
 }
 
@@ -108,7 +102,7 @@ interface CachedTaskTreeEntry {
 	path: string;
 	type: TaskDirectoryType | null;
 	lastModified: number;
-	blobId: string;
+	blob: GitTreeBlob;
 }
 
 interface PinnedBranchRef {
@@ -120,10 +114,15 @@ interface PinnedBranchRef {
 
 interface HydrationOptions {
 	source: "local-branch" | "remote";
-	loadTask: (commit: string, path: string, blobId: string) => Promise<Task | null>;
+	loadTask: (commit: string, path: string, blob: GitTreeBlob) => Promise<Task | null>;
 }
 
-function logicalTaskPath(path: string, backlogDir: string): string {
+function taskBlobKey(commit: string, path: string, blob: GitTreeBlob): string {
+	// The link's own blob contains only its target path. The target can change in another commit.
+	return blob.isSymlink ? `${commit}\0${path}` : blob.id;
+}
+
+function logicalTaskPath(path: string, backlogDir: string, id: string): string {
 	const normalizedPath = path.replaceAll("\\", "/");
 	const normalizedBacklogDir = backlogDir
 		.replaceAll("\\", "/")
@@ -132,7 +131,7 @@ function logicalTaskPath(path: string, backlogDir: string): string {
 	const backlogMarker = `/${normalizedBacklogDir}/`;
 	const markerIndex = normalizedPath.indexOf(backlogMarker);
 	const logicalPath = markerIndex >= 0 ? normalizedPath.slice(markerIndex + 1) : normalizedPath.replace(/^\.\//, "");
-	return normalizeTaskLifecyclePath(logicalPath, normalizedBacklogDir);
+	return normalizeTaskIdentityPath(logicalPath, normalizedBacklogDir, id);
 }
 
 function lifecycleRank(type: TaskDirectoryType | undefined): number {
@@ -166,12 +165,12 @@ function chooseIdentityHydrationCandidates(
 	const localIdentities = new Set(
 		(localTasks ?? [])
 			.filter((task) => task.filePath)
-			.map((task) => `${canonicalTaskId(task.id)}\0${logicalTaskPath(task.filePath ?? "", backlogDir)}`),
+			.map((task) => `${canonicalTaskId(task.id)}\0${logicalTaskPath(task.filePath ?? "", backlogDir, task.id)}`),
 	);
 	const winners = new Map<string, RemoteIndexEntry>();
 	for (const entries of index.values()) {
 		for (const entry of entries) {
-			const identity = `${canonicalTaskId(entry.id)}\0${logicalTaskPath(entry.path, backlogDir)}`;
+			const identity = `${canonicalTaskId(entry.id)}\0${logicalTaskPath(entry.path, backlogDir, entry.id)}`;
 			if (localIdentities.has(identity)) continue;
 			const current = winners.get(identity);
 			if (!current || isPreferredIdentityEntry(entry, current)) winners.set(identity, entry);
@@ -183,7 +182,7 @@ function chooseIdentityHydrationCandidates(
 		ref: toRef(entry),
 		path: entry.path,
 		commit: entry.commit,
-		blobId: entry.blobId,
+		blob: entry.blob,
 		stateEntry: entry.stateEntry,
 	}));
 }
@@ -226,7 +225,7 @@ function normalizeLocalBranch(branch: string, currentBranch: string): string | n
 }
 
 /**
- * Fetch the branch candidates needed by the identity index to choose a display version.
+ * Read the branch versions needed for display or for a disputed ID's creation time.
  */
 async function hydrateTasks(candidates: HydrationCandidate[], options: HydrationOptions): Promise<boolean> {
 	const CONCURRENCY = 8;
@@ -242,11 +241,13 @@ async function hydrateTasks(candidates: HydrationCandidate[], options: Hydration
 			if (!candidate) break;
 
 			try {
-				const task = await options.loadTask(candidate.commit, candidate.path, candidate.blobId);
+				const task = await options.loadTask(candidate.commit, candidate.path, candidate.blob);
 				if (task) {
 					task.source = options.source;
 					task.branch = options.source === "remote" ? candidate.ref.replace(/^origin\//, "") : candidate.ref;
 					if (candidate.stateEntry) candidate.stateEntry.task = task;
+				} else if (candidate.stateEntry) {
+					candidate.stateEntry.unreadable = true;
 				}
 			} catch (error) {
 				complete = false;
@@ -274,7 +275,7 @@ function chooseHydrationCandidates(
 			// a later local edit must still be compared with that immutable branch version.
 			const versions = new Map<string, RemoteIndexEntry>();
 			for (const entry of entries) {
-				const key = `${entry.path}\0${entry.blobId}`;
+				const key = `${entry.path}\0${taskBlobKey(entry.commit, entry.path, entry.blob)}`;
 				const current = versions.get(key);
 				if (!current || isPreferredIdentityEntry(entry, current)) versions.set(key, entry);
 			}
@@ -291,7 +292,7 @@ function chooseHydrationCandidates(
 				ref: toRef(entry),
 				path: entry.path,
 				commit: entry.commit,
-				blobId: entry.blobId,
+				blob: entry.blob,
 				stateEntry: entry.stateEntry,
 			});
 		}
@@ -343,6 +344,7 @@ export class BranchTaskLoader {
 		backlogDir: string = DEFAULT_DIRECTORIES.BACKLOG,
 		onProgress?: (message: string) => void,
 		currentBranch?: string,
+		archivedTasks: Task[] = [],
 	): Promise<BranchTaskLoadResult> {
 		const branchRefs = await this.getPinnedBranchRefs(tips, userConfig, currentBranch);
 		if (branchRefs.length === 0) return { entries: [], complete: true };
@@ -357,6 +359,7 @@ export class BranchTaskLoader {
 		const stateEntries: BranchTaskStateEntry[] = [];
 		const remoteIndex = new Map<string, RemoteIndexEntry[]>();
 		const localIndex = new Map<string, RemoteIndexEntry[]>();
+		const liveEntries: Record<PinnedBranchRef["source"], RemoteIndexEntry[]> = { remote: [], "local-branch": [] };
 		const queue = [...branchRefs];
 		const CONCURRENCY = 4;
 		let complete = true;
@@ -376,7 +379,7 @@ export class BranchTaskLoader {
 							path: cached.path,
 							lastModified,
 							commit: branchRef.commit,
-							blobId: cached.blobId,
+							blob: cached.blob,
 						};
 						if (cached.type) {
 							entry.stateEntry = {
@@ -388,10 +391,12 @@ export class BranchTaskLoader {
 							};
 							stateEntries.push(entry.stateEntry);
 						}
+						if (cached.type === "task" || cached.type === "archived") liveEntries[branchRef.source].push(entry);
 						if (cached.type === "task" || (includeArchived && cached.type === "archived")) {
-							const entries = index.get(cached.id);
+							const key = canonicalTaskId(cached.id);
+							const entries = index.get(key);
 							if (entries) entries.push(entry);
-							else index.set(cached.id, [entry]);
+							else index.set(key, [entry]);
 						}
 					}
 				} catch (error) {
@@ -404,8 +409,12 @@ export class BranchTaskLoader {
 		});
 		await Promise.all(workers);
 
-		const localById = new Map(localTasks.map((task) => [normalizeTaskId(task.id), task]));
+		const localById = new Map(localTasks.map((task) => [canonicalTaskId(task.id), task]));
 		const strategy = userConfig?.taskResolutionStrategy ?? "most_progressed";
+		const differentTitles = idsWithDifferentFilenameTitles(
+			[...liveEntries.remote, ...liveEntries["local-branch"]],
+			[...localTasks, ...archivedTasks],
+		);
 		const candidatesFor = (
 			index: Map<string, RemoteIndexEntry[]>,
 			source: "local-branch" | "remote",
@@ -415,12 +424,21 @@ export class BranchTaskLoader {
 					? (entry: RemoteIndexEntry) => `origin/${entry.branch}`
 					: (entry: RemoteIndexEntry) => entry.branch;
 			const candidates = chooseHydrationCandidates(localById, index, strategy, toRef);
-			return strategy === "most_progressed"
-				? candidates
-				: mergeHydrationCandidates(candidates, chooseIdentityHydrationCandidates(index, localTasks, backlogDir, toRef));
+			const display =
+				strategy === "most_progressed"
+					? candidates
+					: mergeHydrationCandidates(
+							candidates,
+							chooseIdentityHydrationCandidates(index, localTasks, backlogDir, toRef),
+						);
+			if (differentTitles.size === 0) return display;
+			const disputed = liveEntries[source]
+				.filter((entry) => differentTitles.has(canonicalTaskId(entry.id)))
+				.map((entry) => ({ ...entry, ref: toRef(entry) }));
+			return mergeHydrationCandidates(display, disputed);
 		};
 
-		const loadTask = (commit: string, path: string, blobId: string) => this.loadCachedTask(commit, path, blobId);
+		const loadTask = (commit: string, path: string, blob: GitTreeBlob) => this.loadCachedTask(commit, path, blob);
 		const hydrationResults = await Promise.all([
 			hydrateTasks(candidatesFor(remoteIndex, "remote"), { source: "remote", loadTask }),
 			hydrateTasks(candidatesFor(localIndex, "local-branch"), {
@@ -488,7 +506,7 @@ export class BranchTaskLoader {
 			const blobs = await this.git.listTreeBlobs(commit, backlogDir);
 			if (blobs.size === 0) return [];
 			const lastModified = await this.git.getBranchLastModifiedMap(commit, backlogDir, historyCutoff);
-			return [...blobs].flatMap(([path, blobId]) => {
+			return [...blobs].flatMap(([path, blob]) => {
 				const id = extractConfiguredTaskId(path, prefix);
 				if (!id) return [];
 				return [
@@ -497,7 +515,7 @@ export class BranchTaskLoader {
 						path,
 						type: getTaskTypeFromPath(path, backlogDir),
 						lastModified: (lastModified.get(path) ?? new Date(0)).getTime(),
-						blobId,
+						blob,
 					},
 				];
 			});
@@ -511,12 +529,12 @@ export class BranchTaskLoader {
 		}
 	}
 
-	private async loadCachedTask(commit: string, path: string, blobId: string): Promise<Task | null> {
-		// Identical blobs on different branches parse to the same task, so one read serves them all.
-		const key = blobId;
+	private async loadCachedTask(commit: string, path: string, blob: GitTreeBlob): Promise<Task | null> {
+		const key = taskBlobKey(commit, path, blob);
 		let cached = this.taskCache.get(key);
 		if (!cached) {
-			const promise = this.git.showFile(commit, path).then((content) => {
+			const promise = this.git.showFile(commit, path, blob.isSymlink).then((content) => {
+				if (!content) return null;
 				try {
 					return normalizeTaskIdentity(parseTask(content));
 				} catch (error) {

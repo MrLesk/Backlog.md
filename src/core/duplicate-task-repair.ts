@@ -4,10 +4,8 @@ import type { Task } from "../types/index.ts";
 import { type DuplicateGroup, detectDuplicateTaskIds } from "../utils/duplicate-detection.ts";
 import { escapeRegex, generateNextId, generateNextSubtaskId, idForFilename } from "../utils/prefix-config.ts";
 import { canonicalTaskId, isNumericTaskId } from "../utils/task-id.ts";
-import { parseStoredUtcDate } from "../utils/utc-timestamp.ts";
 import type { Core } from "./backlog.ts";
 import type { TaskCorpusSnapshot } from "./content-store.ts";
-import type { BranchTaskStateEntry } from "./task-loader.ts";
 
 export type DuplicateTaskLocation = "active" | "archived";
 
@@ -102,67 +100,22 @@ export async function findLocalDuplicateTaskIds(core: Core, snapshot?: TaskCorpu
 	]);
 }
 
-function logicalBranchTaskPath(path: string, id: string): string {
-	const filename = basename(path).toLowerCase();
-	const separatorIndex = filename.indexOf(" - ");
-	if (separatorIndex < 0) return filename;
-	return `${canonicalTaskId(id).toLowerCase()}${filename.slice(separatorIndex)}`;
-}
-
 export async function findCrossBranchDuplicateTaskIds(
 	core: Core,
 	snapshot?: TaskCorpusSnapshot,
 ): Promise<CrossBranchDuplicateFinding[]> {
 	const corpus = snapshot ?? (await core.getContentStore()).getTaskCorpusSnapshot();
-	const config = corpus.config ?? (await core.filesystem.loadConfig());
-	if (config?.checkActiveBranches === false) return [];
-	const { activeTasks, archivedTasks } = corpus;
-	const currentBranch = await core.gitOps.getCurrentBranch();
-	const stateEntries: BranchTaskStateEntry[] = corpus.branchStateEntries?.slice() ?? [];
-
-	const current = currentBranch ?? "current";
-	for (const task of activeTasks) {
-		if (!task.filePath) continue;
-		stateEntries.push({
-			id: task.id,
-			type: "task",
-			branch: current,
-			path: normalizeRelativePath(core.filesystem.rootDir, task.filePath),
-			lastModified: task.updatedDate ? (parseStoredUtcDate(task.updatedDate) ?? new Date(Number.NaN)) : new Date(0),
-		});
-	}
-	for (const task of archivedTasks) {
-		if (!task.filePath) continue;
-		stateEntries.push({
-			id: task.id,
-			type: "archived",
-			branch: current,
-			path: normalizeRelativePath(core.filesystem.rootDir, task.filePath),
-			lastModified: task.updatedDate ? (parseStoredUtcDate(task.updatedDate) ?? new Date(Number.NaN)) : new Date(0),
-		});
-	}
-
-	const byId = new Map<string, BranchTaskStateEntry[]>();
-	for (const entry of stateEntries) {
-		if (entry.type !== "task" && entry.type !== "archived") continue;
-		const id = canonicalTaskId(entry.id);
-		const entries = byId.get(id) ?? [];
-		entries.push(entry);
-		byId.set(id, entries);
-	}
-
+	if (!corpus.identityIndex || corpus.config?.checkActiveBranches === false) return [];
 	const findings: CrossBranchDuplicateFinding[] = [];
-	for (const [id, entries] of byId) {
-		const logicalPaths = new Set(entries.map((entry) => logicalBranchTaskPath(entry.path, entry.id)));
-		const branches = new Set(entries.map((entry) => entry.branch));
-		if (logicalPaths.size < 2 || branches.size < 2) continue;
-		const locations = entries
-			.map((entry) => ({
-				branch: entry.branch,
-				path: entry.path.split(sep).join("/"),
-				state: entry.type === "archived" ? ("archived" as const) : ("active" as const),
-			}))
-			.sort((left, right) => `${left.branch}:${left.path}`.localeCompare(`${right.branch}:${right.path}`));
+	const currentBranch = (await core.gitOps.getCurrentBranch()) || "current";
+	for (const [id, records] of corpus.identityIndex.getConflictingRecords()) {
+		if (records.every((record) => record.workingCopy)) continue;
+		const locations = records.map((record) => ({
+			branch: record.workingCopy ? currentBranch : record.branch,
+			path: record.workingCopy ? normalizeRelativePath(core.filesystem.rootDir, record.path) : record.path,
+			state: record.type === "archived" ? ("archived" as const) : ("active" as const),
+		}));
+		locations.sort((left, right) => `${left.branch}:${left.path}`.localeCompare(`${right.branch}:${right.path}`));
 		findings.push({ id, locations });
 	}
 	return findings.sort((left, right) => left.id.localeCompare(right.id, undefined, { numeric: true }));

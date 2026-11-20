@@ -99,7 +99,9 @@ Humans and agents can run `backlog instructions` for workflow guides and `backlo
 | Restore     | `backlog task restore 7` (move an archived task back to the board) |
 | Delete      | `backlog task delete 7` (permanently remove an archived task and release its ID once no other branch or worktree still holds the task) |
 
-A task's filename uses its title at creation. `backlog task edit 7 --title "New title"` updates the `title` field at the top of the Markdown file and keeps the filename. The stable filename lets Backlog.md recognize the task across Git branches. Use `backlog task view 7 --plain` to see the current title and file path. Scripts can read `.task.title` and `.task.path` from `backlog task view 7 --json`.
+`backlog task edit 7 --title "New title"` updates the Markdown title and renames the file to match. Its ID and creation time stay the same, so dependencies and links by ID keep working. Use `backlog task view 7 --plain` to see the path, or read `.task.path` from `backlog task view 7 --json`.
+
+When Git branches use different filename titles for the same ID, Backlog.md treats the copies as one task if their creation times match to the second. Different times or a missing time (including a date with no time) leave the ID ambiguous. Two files that claim the same ID in one working copy or branch also leave it ambiguous. Use `backlog doctor` to see their locations.
 
 Mark finished work Done (or the configured final status). During periodic cleanup, Archive moves it off the board; Archive also takes canceled, duplicate, or invalid work off the board at any time. An archived task keeps its ID, its record, and every dependency and reference to it. It stays readable with `backlog task view`, where its status line ends in `(archived)`, and it is read-only. A dependency on an archived task counts as satisfied only when that task is in the final status.
 

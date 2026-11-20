@@ -1,11 +1,11 @@
 ---
 id: BACK-813
-title: Document how task title edits affect filenames
+title: Rename task files when their title changes
 status: Done
 assignee:
   - '@codex'
 created_date: '2026-11-20T20:51:00Z'
-updated_date: '2026-11-20T21:12:00Z'
+updated_date: '2026-11-20T22:53:00Z'
 labels: []
 dependencies: []
 references:
@@ -14,26 +14,61 @@ references:
   - src/guidelines/agent-guidelines.md
   - src/cli.ts
   - src/mcp/utils/schema-generators.ts
+  - src/core/task-identity-index.ts
+  - src/core/task-loader.ts
+  - src/core/duplicate-task-repair.ts
+  - src/core/backlog.ts
+  - src/file-system/operations.ts
+  - src/utils/utc-timestamp.ts
 modified_files:
   - CLI-INSTRUCTIONS.md
   - src/guidelines/agent-guidelines.md
   - src/cli.ts
   - src/mcp/utils/schema-generators.ts
-type: docs
+  - src/test/cli-timestamps.test.ts
+  - src/test/core-autocommit-scope.test.ts
+  - src/test/task-identity-index.test.ts
+  - src/utils/utc-timestamp.ts
+  - src/test/task-frontmatter-preservation.test.ts
+  - src/test/decision-supersession.test.ts
+  - src/test/content-frontmatter-preservation.test.ts
+  - src/test/duplicate-task-repair.test.ts
+  - src/test/cli-task-view-edit.test.ts
+  - src/test/reorder-utils.test.ts
+  - src/core/task-identity-index.ts
+  - src/core/duplicate-task-repair.ts
+  - src/core/task-loader.ts
+  - src/core/backlog.ts
+  - src/file-system/operations.ts
+  - src/core/content-store.ts
+  - src/test/content-store.test.ts
+  - src/test/cli-create-preserves-existing-files.test.ts
+  - src/test/shared-branch-task-loader.test.ts
+  - src/test/server-tasks-spa-fallback.test.ts
+  - src/git/operations.ts
+  - src/test/linked-record-commit.test.ts
+  - src/guidelines/cli-instructions/task-execution.md
+  - src/test/test-utils.ts
+  - src/test/atomic-task-edit.test.ts
+  - src/core/archived-task-move.ts
+  - src/test/search-service.test.ts
+type: bug
 ordinal: 413000
 ---
 
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-The filename examples imply that changing a task title changes its path. People browsing Markdown and scripts that rebuild the path from the current title can look for the wrong file. A stable filename lets Backlog.md recognize a tracked task across Git branches.
+A task title edit should rename its Markdown file and preserve its ID and links. Across Git branches, copies under different filenames belong to one task when their ID and creation time agree to the second.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 The CLI reference and shipped task edit help explain that a title edit changes the title in Markdown and keeps the existing task filename.
-- [x] #2 People and scripts can find the current title and actual file path by task ID, and the filename examples show how a new file is named.
-- [x] #3 Agent-facing edit guidance describes the filename behavior accurately for tasks and drafts.
+- [x] #1 Editing a task title renames its file, preserves its ID and creation date, and keeps reads by ID and task links working.
+- [x] #2 Across branches, copies with the same ID and different filename titles resolve as one task when their creation times match to the second. Different, missing, invalid, or date-only values stay ambiguous. Two files claiming one ID in the same checkout or branch stay ambiguous.
+- [x] #3 Backlog reads creation times for identity only when a task ID appears under different filename titles. Other IDs and ordinary working-copy commands keep their current read behavior.
+- [x] #4 New timestamps include actual UTC seconds and Z. Existing timestamps remain readable and a title edit preserves the original creation date.
+- [x] #5 CLI help, the CLI reference and agent guidance explain the resulting filename and branch behavior. Automatic Git commits include both paths when a file moves.
 <!-- AC:END -->
 
 ## Definition of Done
@@ -46,19 +81,23 @@ The filename examples imply that changing a task title changes its path. People 
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Correct the filename examples and show how task view returns the current title and path.
-2. Describe the existing behavior in CLI help and the MCP task edit schema.
-3. Verify task and draft edits in a temporary Git project, check the shipped help and tool schema, and run the related tests, type checker and Biome.
+1. Reproduce the stale filename and the browser and doctor conflict on a tracked title edit. 2. Rename the file only when the title changes, preserve existing creation values, and stage both paths if auto-commit is enabled. Generate new UTC timestamps to the second. 3. Compare creation times only for same-ID claims under different filename titles across branches. Keep same-checkout conflicts and use cached Git content. 4. Update human and agent guidance, run regression and full checks, and review the result.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Reproduced on 3f9571d7 with a tracked TASK-1 on main and a feature branch. After a title edit on the feature branch, the browser task endpoint returned 200 and the new title. After moving the file to match that title on the feature branch, the browser returned 409 (ambiguous task ID) from either branch, and doctor listed the different paths. CLI task view continued to work because its scope is the current working copy. The issue also allows documenting the existing filename rule. Scripts can read the actual path and current title from task view JSON.
+Before the fix, moving a tracked task to its new title on one branch made the browser return HTTP 409 and doctor report a duplicate. A regression test also showed the board displayed both titles. The revised identity and doctor tests failed first, then passed.
+
+The browser now reopens the renamed task by ID while another branch keeps the old filename. A warm-cache regression measured zero extra Git content reads when the names matched. After a working filename changed, only distinct blobs for that ID were read, once each. Different or incomplete creation times, and multiple files claiming one ID in one branch, stay ambiguous.
+
+A temporary Git project verified the CLI rename, preserved creation second and dependency ID, and clean doctor results on both branches. The CLI help and live MCP task_edit schema describe the move. The identity, loader, content-store, doctor, dependency and browser suites passed 224 tests.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Documented that a title edit updates the title in Markdown and keeps the task filename. The CLI reference and agent guide show how to find the current title and path by ID. Task edit help and the MCP tool schema describe the behavior, including the different rule for drafts. Verified task and draft edits in a temporary Git project with a custom prefix and padded IDs, read the CLI help and the live MCP schema, and checked the browser on two Git branches. Type checking, Biome, 99 focused tests and two browser collision tests passed.
+A title edit renames the task’s Markdown file and keeps its ID, original creation time and dependencies. Automatic commits include both filenames. The browser and doctor compare UTC creation seconds only when an ID appears under different filename titles across branches. They still flag separate files in one branch or checkout. New timestamps keep the actual UTC second.
+
+Verified with the compiled CLI on two branches, an open board watching an external edit, and a read-only task. The full local CI test profile passed 3,817 tests with 13 skipped. Type checking, Biome and the compiled CLI smoke checks passed.
 <!-- SECTION:FINAL_SUMMARY:END -->

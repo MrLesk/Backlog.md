@@ -1,6 +1,6 @@
-/** Explicit UTC for generated timestamps, keeping the existing minute precision. */
+/** Store UTC timestamps to the second. */
 export function formatUtcTimestamp(date = new Date()): string {
-	return `${date.toISOString().slice(0, 16)}:00Z`;
+	return `${date.toISOString().slice(0, 19)}Z`;
 }
 
 /** Read stored instants consistently: legacy timezone-less values mean UTC on every host. */

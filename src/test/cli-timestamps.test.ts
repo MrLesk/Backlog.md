@@ -9,7 +9,7 @@ import { getTestCliPath } from "./test-cli.ts";
 import { createTestDirOutsideRepository, safeCleanup } from "./test-utils.ts";
 
 const CLI_PATH = getTestCliPath();
-const UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/;
+const UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
 describe("stored UTC timestamps", () => {
 	let testDir: string;
@@ -136,13 +136,13 @@ describe("stored UTC timestamps", () => {
 		}
 	});
 
-	it("keeps newly generated UTC midnight as a timestamp with minute precision", async () => {
+	it("stores the actual UTC second without milliseconds", async () => {
 		setSystemTime(new Date("2026-10-19T00:00:49.123Z"));
 		const { task } = await core.createTaskFromInput({ title: "Midnight" });
-		expect(task.createdDate).toBe("2026-10-19T00:00:00Z");
-		expect((await core.filesystem.loadTask(task.id))?.createdDate).toBe("2026-10-19T00:00:00Z");
+		expect(task.createdDate).toBe("2026-10-19T00:00:49Z");
+		expect((await core.filesystem.loadTask(task.id))?.createdDate).toBe("2026-10-19T00:00:49Z");
 		const doc = await core.createDocumentFromInput({ title: "Midnight guide" });
-		expect(doc.createdDate).toBe("2026-10-19T00:00:00Z");
-		expect((await core.createDecisionFromInput({ title: "Midnight choice" })).date).toBe("2026-10-19T00:00:00Z");
+		expect(doc.createdDate).toBe("2026-10-19T00:00:49Z");
+		expect((await core.createDecisionFromInput({ title: "Midnight choice" })).date).toBe("2026-10-19T00:00:49Z");
 	});
 });

@@ -4,6 +4,7 @@ import { join, relative } from "node:path";
 import { $ } from "bun";
 import type { ContentStore } from "../core/content-store.ts";
 import { FileSystem } from "../file-system/operations.ts";
+import type { GitOperations } from "../git/operations.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import { BacklogServer } from "../server/index.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
@@ -82,7 +83,12 @@ async function restartWithActiveBranchCollision(
 	await filesystem.saveConfig({ ...config, checkActiveBranches: true });
 	const mainTask = { ...routedTask, id: "BACK-1", title: "Main collision task" };
 	const mainTaskPath = await filesystem.saveTask(mainTask);
-	await filesystem.saveTask({ ...mainTask, id: "BACK-002", title: "Inherited unchanged task" });
+	await filesystem.saveTask({
+		...mainTask,
+		id: "BACK-002",
+		title: "Inherited unchanged task",
+		createdDate: "2026-07-10T08:21:37Z",
+	});
 
 	await $`git init -b main`.cwd(TEST_DIR).quiet();
 	await $`git add backlog`.cwd(TEST_DIR).quiet();
@@ -795,6 +801,8 @@ describe("BacklogServer task SPA fallback", () => {
 
 	it("reopens the local task after a browser save with an inherited active branch", async () => {
 		await restartWithActiveBranchCollision("BACK-1");
+		const oldPath = (await filesystem.loadTask("BACK-2"))?.filePath;
+		if (!oldPath) throw new Error("The inherited task is missing");
 
 		const saved = await request("/api/tasks/BACK-2", {
 			method: "PUT",
@@ -805,7 +813,13 @@ describe("BacklogServer task SPA fallback", () => {
 
 		const reopened = await request("/api/task/BACK-2", {}, 5000);
 		expect(reopened.status).toBe(200);
-		expect(((await reopened.json()) as Task).title).toBe("Saved through browser API");
+		expect((await reopened.json()) as Task).toMatchObject({
+			id: "BACK-002",
+			title: "Saved through browser API",
+			createdDate: "2026-07-10T08:21:37Z",
+		});
+		expect(await Bun.file(oldPath).exists()).toBe(false);
+		expect(await Bun.file(join(filesystem.tasksDir, "back-002 - Saved-through-browser-API.md")).exists()).toBe(true);
 	});
 
 	it("uses the current config when active-branch collision checks are toggled", async () => {
@@ -1062,7 +1076,7 @@ describe("BacklogServer task SPA fallback", () => {
 			server as unknown as {
 				core: {
 					git: {
-						listTreeBlobs: (ref: string, path: string) => Promise<Map<string, string>>;
+						listTreeBlobs: GitOperations["listTreeBlobs"];
 					};
 				};
 			}

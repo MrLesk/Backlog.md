@@ -57,7 +57,7 @@ remains fully synchronized and up-to-date.
 ### 📖 **UNDERSTANDING** (What you'll see when reading)
 
 - Markdown task files live under **`backlog/tasks/`** (drafts under **`backlog/drafts/`**)
-- A new task uses its initial title in its filename, for example `task-42 - Add-GraphQL-resolver.md`. A title edit updates the `title` field in Markdown and keeps the filename. Use `backlog task view 42 --plain` to see both.
+- A task filename includes its ID and title, for example `task-42 - Add-GraphQL-resolver.md`. A title edit renames the file. Links by task ID keep working. Use `backlog task view 42 --plain` to find the current path.
 - Project documentation is in **`backlog/docs/`**
 - Project decisions are in **`backlog/decisions/`**
 

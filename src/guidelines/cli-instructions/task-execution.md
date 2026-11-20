@@ -46,6 +46,8 @@ Work in short loops:
 
 Use `backlog task edit {{TASK_ID:123}} --help` before changing unfamiliar fields.
 
+A title edit renames the Markdown file. Keep using the task ID in dependencies and links. Across branches, files with different titles in their names belong to one task when their IDs and creation times match to the second. Use `backlog doctor` to inspect an ambiguous ID.
+
 Replacing or clearing a legacy description, plan, notes, or final summary without section markers is refused if another
 level-two heading makes its boundary ambiguous. The file stays unchanged. Stop and ask the user to add the BEGIN and
 END markers named in the error around the intended section body without removing any content. Do not edit task or

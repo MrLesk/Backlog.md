@@ -25,6 +25,46 @@ function index(records: TaskIdentityRecord[]): TaskIdentityIndex {
 }
 
 describe("TaskIdentityIndex", () => {
+	it("recognizes renamed copies across branches by their creation time to the second", () => {
+		const working: TaskIdentityRecord = {
+			id: "BACK-001",
+			type: "task",
+			branch: "local",
+			path: "/repo/backlog/tasks/back-001 - New.md",
+			lastModified: new Date(0),
+			workingCopy: true,
+			task: { ...task("New", "BACK-001"), createdDate: "2026-08-01T01:30:00.820Z" },
+		};
+		const old: TaskIdentityRecord = {
+			...working,
+			id: "BACK-1",
+			branch: "feature",
+			path: "backlog/tasks/back-1 - Old.md",
+			workingCopy: false,
+			task: { ...task("Old"), createdDate: "2026-08-01 01:30" },
+		};
+		const corpus = index([working, old]);
+		expect(corpus.getTasks().map((item) => item.title)).toEqual(["New"]);
+		expect(corpus.resolveForRead("1")).toMatchObject({ status: "found", task: { title: "New" } });
+		expect(corpus.resolveForMutation("1")).toMatchObject({ status: "found", task: { title: "New" } });
+		expect(corpus.getContestedIds().size).toBe(0);
+		expect(index([old, working]).getFingerprint()).toBe(corpus.getFingerprint());
+
+		for (const createdDate of ["2026-08-01T01:30:01Z", "2026-08-01", "", "invalid"]) {
+			const conflict = index([working, { ...old, task: { ...task("Other"), createdDate } }]);
+			expect(conflict.resolveForRead("1").status).toBe("ambiguous");
+			expect(conflict.getFingerprint()).not.toBe(corpus.getFingerprint());
+		}
+		for (const workingCopy of [false, true]) {
+			const duplicate = index([
+				{ ...working, workingCopy, branch: "same" },
+				{ ...old, workingCopy, branch: "same" },
+			]);
+			expect(duplicate.resolveForRead("1").status).toBe("ambiguous");
+			expect(duplicate.getContestedIds()).toEqual(new Set(["BACK-1"]));
+		}
+	});
+
 	it("keeps the identity fingerprint stable when hydration moves between same-path branch records", () => {
 		const branchA: TaskIdentityRecord = {
 			id: "BACK-1",
@@ -46,6 +86,34 @@ describe("TaskIdentityIndex", () => {
 				{ ...branchB, task: task("Hydrated title") },
 			]).getFingerprint(),
 		);
+	});
+
+	it("keeps an independent task visible when another branch used its filename for a renamed task", () => {
+		const record = (
+			branch: string,
+			filename: string,
+			title: string,
+			createdDate: string,
+			status: string,
+		): TaskIdentityRecord => ({
+			id: "BACK-1",
+			type: "task",
+			branch,
+			path: `backlog/tasks/back-1 - ${filename}.md`,
+			lastModified: new Date(0),
+			task: { ...task(title), createdDate, status },
+		});
+		const original = record("main", "Old", "Original", "2026-08-01T11:00:01Z", "To Do");
+		const rename = record("feature", "New", "Renamed", "2026-08-01T11:00:01Z", "Done");
+		const independent = record("other", "Old", "Independent", "2026-08-01T11:00:02Z", "To Do");
+		const corpus = index([original, rename, independent]);
+		expect(corpus.resolveForRead("1").status).toBe("ambiguous");
+		expect(
+			corpus
+				.getTasks()
+				.map((item) => item.title)
+				.sort(),
+		).toEqual(["Independent", "Renamed"]);
 	});
 
 	it("prefers a live record over an equal-time archive independent of scan order", () => {

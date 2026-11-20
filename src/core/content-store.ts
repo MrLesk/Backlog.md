@@ -15,7 +15,8 @@ import { sortByTaskId } from "../utils/task-sorting.ts";
 import { matchesTaskTypeFilter } from "../utils/task-type-config.ts";
 import { parseStoredUtcDate } from "../utils/utc-timestamp.ts";
 import {
-	normalizeTaskLifecyclePath,
+	idsWithDifferentFilenameTitles,
+	normalizeTaskIdentityPath,
 	type TaskIdentityIndex,
 	type TaskIdentityResolution,
 	type TaskMutationResolution,
@@ -78,7 +79,7 @@ interface RenameReconciliation<T> {
 	findIdentity: () => Promise<IdentityLookup<T>>;
 	current: () => T | undefined;
 	hasChanged: (previous: T, next: T) => boolean;
-	publish: (item: T) => void;
+	publish: (item: T) => void | Promise<void>;
 	remove: () => void;
 }
 
@@ -361,7 +362,7 @@ export class ContentStore {
 		return task ? { status: "found", task } : { status: "not-found" };
 	}
 
-	upsertTask(task: Task, owner?: PublicationOwner): void {
+	upsertTask(task: Task, owner?: PublicationOwner, replacedPath?: string): void {
 		if (!this.canPublishContent()) {
 			return;
 		}
@@ -408,6 +409,7 @@ export class ContentStore {
 		this.activeTasks = this.activeTasks.filter(
 			(candidate) =>
 				candidate.filePath !== task.filePath &&
+				(!replacedPath || candidate.filePath !== replacedPath) &&
 				(candidate.filePath !== undefined || task.filePath !== undefined || !taskIdsEqual(candidate.id, task.id)),
 		);
 		this.activeTasks.push(task);
@@ -956,7 +958,28 @@ export class ContentStore {
 		return true;
 	}
 
-	private publishWatchedTask(task: Task, replacedPath?: string): void {
+	/** A new filename can expose an unread branch version or replace the path a watcher still holds. */
+	private async refreshBeforePublishingTask(
+		task: Task,
+		replacedPath: string | undefined,
+		epoch: number,
+	): Promise<boolean> {
+		if (
+			!task.filePath ||
+			this.activeTasks.some((item) => item.filePath === task.filePath && taskIdsEqual(item.id, task.id))
+		) {
+			return false;
+		}
+		const remaining = this.activeTasks.filter((item) => item.filePath !== replacedPath);
+		const otherLocalFile = remaining.some((item) => taskIdsEqual(item.id, task.id));
+		if (!otherLocalFile && !this.needsBranchFallbackHydration([...remaining, task], this.archivedTasks)) return false;
+		await this.refreshTasksFromDisk(undefined, epoch);
+		return true;
+	}
+
+	private async publishWatchedTask(task: Task, epoch: number, replacedPath?: string): Promise<void> {
+		if ((await this.refreshBeforePublishingTask(task, replacedPath, epoch)) || !this.isRootWatcherCurrent(epoch))
+			return;
 		const id = normalizeTaskId(task.id);
 		this.nextContentItemGeneration("tasks", id);
 		this.nextContentItemVersion("tasks", id, this.currentRoot());
@@ -1141,7 +1164,7 @@ export class ContentStore {
 						},
 						current: () => this.activeTasks.find((task) => task.filePath === fullPath),
 						hasChanged: (previous, next) => this.hasTaskChanged(previous, next),
-						publish: (task) => this.publishWatchedTask(task, fullPath),
+						publish: (task) => this.publishWatchedTask(task, epoch, fullPath),
 						remove: () => this.removeWatchedTask(normalizedTaskId, fullPath),
 					});
 					return;
@@ -1155,12 +1178,12 @@ export class ContentStore {
 					try {
 						const task = { ...normalizeTaskIdentity(parseTask(await Bun.file(fullPath).text())), filePath: fullPath };
 						if (!taskIdsEqual(task.id, normalizedTaskId)) {
-							this.publishWatchedTask(task);
+							await this.publishWatchedTask(task, epoch);
 							return false;
 						}
 						const previous = this.tasks.get(normalizedTaskId);
 						if (previous && !this.hasTaskChanged(previous, task)) return true;
-						this.publishWatchedTask(task);
+						await this.publishWatchedTask(task, epoch);
 						return false;
 					} catch {
 						return true;
@@ -1430,9 +1453,10 @@ export class ContentStore {
 
 		this.filesystem.saveTask = (async (task: Task, originalContent?: string): Promise<string> => {
 			const owner: PublicationOwner = { root: this.currentRoot() };
+			const previousPath = task.filePath;
 			const result = await originalSaveTask.call(this.filesystem, task, originalContent);
 			const savedTask = { ...normalizeTaskIdentity(parseTask(await Bun.file(result).text())), filePath: result };
-			await this.updateTaskFromDisk(task.id, owner, savedTask);
+			await this.updateTaskFromDisk(task.id, owner, savedTask, previousPath);
 			return result;
 		}) as FileSystem["saveTask"];
 
@@ -1519,7 +1543,7 @@ export class ContentStore {
 			if (lookup.state === "incomplete") return true;
 			if (lookup.state === "found") {
 				const previous = options.current();
-				if (!previous || options.hasChanged(previous, lookup.item)) options.publish(lookup.item);
+				if (!previous || options.hasChanged(previous, lookup.item)) await options.publish(lookup.item);
 				return false;
 			}
 			options.remove();
@@ -1870,12 +1894,21 @@ export class ContentStore {
 
 	private needsBranchFallbackHydration(activeTasks: Task[], archivedTasks: Task[]): boolean {
 		if (!this.taskLoader || this.branchTaskStateEntries.length === 0) return false;
+		const liveBranches = this.branchTaskStateEntries.filter(
+			(entry) => entry.type === "task" || entry.type === "archived",
+		);
+		const unread = liveBranches.filter((entry) => !entry.task && !entry.unreadable);
+		if (unread.length > 0) {
+			const differentTitles = idsWithDifferentFilenameTitles(liveBranches, [...activeTasks, ...archivedTasks]);
+			if (unread.some((entry) => differentTitles.has(canonicalTaskId(entry.id)))) return true;
+		}
 		const identity = (id: string, path: string | undefined): string | null => {
 			if (!path) return null;
 			const projectPath = isAbsolute(path) ? relative(this.filesystem.rootDir, path) : path;
-			return `${canonicalTaskId(id)}\0${normalizeTaskLifecyclePath(
+			return `${canonicalTaskId(id)}\0${normalizeTaskIdentityPath(
 				projectPath.replaceAll("\\", "/"),
 				this.filesystem.backlogDirName,
+				id,
 			)}`;
 		};
 		const nextIdentities = new Set(
@@ -1924,10 +1957,12 @@ export class ContentStore {
 		taskId: string,
 		owner: PublicationOwner = { root: this.currentRoot() },
 		exactTask?: Task,
+		replacedPath?: string,
 	): Promise<void> {
 		if (!this.canPublishContent() || !this.isPublicationOwnerCurrent(owner)) return;
 		const normalizedTaskId = normalizeTaskId(taskId);
 		const epoch = this.rootWatcherEpoch;
+		if (exactTask && (await this.refreshBeforePublishingTask(exactTask, replacedPath, epoch))) return;
 		await this.reconcileOrSchedule(`task:${normalizedTaskId}`, epoch, async () => {
 			let task: Task | null | undefined = exactTask;
 			if (!task) {
@@ -1938,7 +1973,7 @@ export class ContentStore {
 				}
 			}
 			if (!task || !taskIdsEqual(task.id, normalizedTaskId)) return true;
-			this.upsertTask(task, owner);
+			this.upsertTask(task, owner, replacedPath);
 			return false;
 		});
 	}

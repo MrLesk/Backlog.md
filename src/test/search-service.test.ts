@@ -258,7 +258,7 @@ describe("SearchService", () => {
 	});
 
 	it("refreshes the index when content changes", async () => {
-		await filesystem.saveTask(baseTask);
+		const filePath = await filesystem.saveTask(baseTask);
 		await search.ensureInitialized();
 
 		const initialResults = search.search({ query: "Fuse", types: ["task"] }).filter(isTaskResult);
@@ -266,6 +266,7 @@ describe("SearchService", () => {
 
 		await filesystem.saveTask({
 			...baseTask,
+			filePath,
 			rawContent: "## Description\nReindexed to new term",
 			title: "Centralized service updated",
 		});
