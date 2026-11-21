@@ -7,10 +7,10 @@ name: Groma architecture
 on:
   push:
     branches: [main]
-  # The trusted default-branch workflow treats PR commits as Git data.
-  pull_request_target:
-    branches: [main]
-    types: [opened, synchronize, reopened, edited]
+  # GitHub starts the publisher from the default branch after the read-only PR signal.
+  workflow_run:
+    workflows: [Groma PR request]
+    types: [completed]
   workflow_dispatch:
     inputs:
       pull-request:
@@ -27,7 +27,9 @@ env:
 
 jobs:
   map:
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.pull-request == 0)
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.pull-request == 0)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -112,8 +114,13 @@ jobs:
 
   compare:
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.pull-request > 0) ||
-      (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository)
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.pull-request > 0) ||
+      (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.event == 'pull_request' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        github.event.workflow_run.head_branch != '' &&
+        github.event.workflow_run.head_sha != '')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -127,27 +134,45 @@ jobs:
         id: pull
         env:
           GH_TOKEN: ${{ github.token }}
-          NUMBER: ${{ inputs.pull-request || github.event.pull_request.number }}
+          NUMBER: ${{ inputs.pull-request }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER" \
-            --jq '"number=\(.number)\nbase=\(.base.sha)\nhead=\(.head.sha)"' >> "$GITHUB_OUTPUT"
+          if [ -n "$NUMBER" ]; then
+            pull=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER")
+          else
+            open_pulls=$(gh api --method GET "repos/$GITHUB_REPOSITORY/pulls" \
+              -f state=open -f base=main -f "head=$GITHUB_REPOSITORY_OWNER:$HEAD_BRANCH")
+            pull=$(jq -c --arg repo "$GITHUB_REPOSITORY" --arg sha "$HEAD_SHA" \
+              'map(select(.head.repo.full_name == $repo and .head.sha == $sha)) | if length == 1 then .[0] else empty end' \
+              <<< "$open_pulls")
+            if [ -z "$pull" ]; then
+              echo "No open pull request matches this comparison request."
+              exit 0
+            fi
+          fi
+
+          jq -r '"number=\(.number)\nbase=\(.base.sha)\nhead=\(.head.sha)"' <<< "$pull" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v7.0.1
+        if: steps.pull.outputs.number != ''
         with:
-          ref: ${{ steps.pull.outputs.base }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Find the merge base
+        if: steps.pull.outputs.number != ''
         id: commits
         env:
           BASE: ${{ steps.pull.outputs.base }}
           HEAD: ${{ steps.pull.outputs.head }}
         run: |
-          git fetch --no-tags origin "$HEAD"
+          git fetch --no-tags origin "$BASE" "$HEAD"
           echo "from=$(git merge-base "$BASE" "$HEAD")" >> "$GITHUB_OUTPUT"
 
       - uses: MrLesk/groma.md-action@v1.3.0
+        if: steps.pull.outputs.number != ''
         id: comparison
         with:
           theme: ${{ env.GROMA_THEME }}
@@ -155,6 +180,7 @@ jobs:
           revision: ${{ steps.pull.outputs.head }}
 
       - uses: actions/upload-artifact@v7.0.2
+        if: steps.pull.outputs.number != ''
         with:
           name: groma-comparison
           path: ${{ steps.comparison.outputs.output }}
@@ -190,6 +216,7 @@ jobs:
 
   publish-comparison:
     needs: compare
+    if: needs.compare.outputs.number != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
