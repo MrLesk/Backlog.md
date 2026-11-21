@@ -608,7 +608,7 @@ const TaskList: React.FC<TaskListProps> = ({
 	);
 
 	const renderColumnGroup = () => (
-		<colgroup>
+		<colgroup className="max-md:hidden">
 			{TASK_COLUMN_WIDTHS_REM.map((width, index) => (
 				// biome-ignore lint/suspicious/noArrayIndexKey: the column order is static
 				<col key={index} style={width === null ? undefined : { width: `${width}rem` }} />
@@ -737,7 +737,7 @@ const TaskList: React.FC<TaskListProps> = ({
 				</div>
 
 				<div className="flex flex-wrap items-center gap-3 justify-between">
-						<div className="flex flex-wrap items-center gap-3 flex-1 min-w-0">
+						<div className="flex flex-wrap items-center gap-3 flex-1 min-w-0 max-md:basis-full max-md:[&>div]:w-full">
 							<LabelFilterDropdown
 								availableLabels={statusOptions}
 								selectedLabels={statusFilter}
@@ -747,7 +747,7 @@ const TaskList: React.FC<TaskListProps> = ({
 								emptyLabel="All"
 								noOptionsLabel="No statuses"
 								clearLabel="Clear status filter"
-								className="min-w-[180px]"
+								className="min-w-[180px] max-md:w-full max-md:[overflow-wrap:anywhere]"
 							/>
 
 							<LabelFilterDropdown
@@ -759,13 +759,13 @@ const TaskList: React.FC<TaskListProps> = ({
 								emptyLabel="None"
 							noOptionsLabel="No statuses"
 							clearLabel="Clear excluded statuses"
-							className="min-w-[210px]"
+							className="min-w-[210px] max-md:w-full max-md:[overflow-wrap:anywhere]"
 						/>
 
 						<select
 							value={priorityFilter}
 							onChange={(event) => handlePriorityChange(event.target.value)}
-							className="min-w-[120px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+							className="min-w-[120px] max-w-full max-md:flex-1 h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
 						>
 							{priorityOptions.map((option) => (
 								<option key={option.value || "all"} value={option.value}>
@@ -777,7 +777,7 @@ const TaskList: React.FC<TaskListProps> = ({
 						<select
 							value={milestoneFilter}
 							onChange={(event) => handleMilestoneChange(event.target.value)}
-							className="min-w-[160px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+							className="min-w-[160px] max-w-full max-md:flex-1 h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
 						>
 							<option value="">All milestones</option>
 							<option value="__none">No milestone</option>
@@ -793,11 +793,12 @@ const TaskList: React.FC<TaskListProps> = ({
 							selectedLabels={labelFilter}
 							onChange={handleLabelChange}
 							menuId="task-list-labels-menu"
+							className="min-w-[200px] max-md:w-full max-md:[overflow-wrap:anywhere]"
 						/>
 
 					</div>
 
-					<div className="flex items-center gap-3 flex-shrink-0">
+					<div className="flex items-center gap-3 flex-shrink-0 max-md:flex-wrap max-md:shrink">
 						{canWrite && isFilteringTerminalStatus && currentCount > 0 && (
 								<button
 									type="button"
@@ -822,7 +823,7 @@ const TaskList: React.FC<TaskListProps> = ({
 								</button>
 							)}
 
-						<div className="text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap text-right min-w-[170px]">
+						<div className="text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap md:text-right md:min-w-[170px]">
 							Showing {currentCount} of {totalTasks} tasks
 						</div>
 					</div>
@@ -855,17 +856,17 @@ const TaskList: React.FC<TaskListProps> = ({
 				<div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
 					<div className="sticky top-0 z-10 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/90 supports-[backdrop-filter]:dark:bg-gray-700/85">
 						<div ref={tableHeaderScrollRef} className="overflow-x-auto" style={{ overflowY: "hidden" }}>
-							<table className="w-full table-fixed border-collapse" style={{ minWidth: `${TASK_TABLE_MIN_WIDTH_REM}rem` }}>
+							<table className="w-full table-fixed border-collapse max-md:block max-md:min-w-0!" style={{ minWidth: `${TASK_TABLE_MIN_WIDTH_REM}rem` }}>
 								{renderColumnGroup()}
-								<thead>
-									<tr className="text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-300">
+								<thead className="max-md:block">
+									<tr className="text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-300 max-md:flex max-md:flex-wrap">
 										{renderSortableHeader("ID", "id")}
 										{renderSortableHeader("Title", "title")}
 										{renderSortableHeader("Status", "status")}
 										{renderSortableHeader("Priority", "priority")}
 										{renderSortableHeader("Ordinal", "ordinal")}
-										<th className="px-3 py-2">Labels</th>
-										<th className="px-3 py-2">Assignee</th>
+										<th className="px-3 py-2 max-md:hidden">Labels</th>
+										<th className="px-3 py-2 max-md:hidden">Assignee</th>
 										{renderSortableHeader("Milestone", "milestone")}
 										{renderSortableHeader("Created", "created")}
 									</tr>
@@ -874,9 +875,9 @@ const TaskList: React.FC<TaskListProps> = ({
 						</div>
 					</div>
 					<div ref={tableBodyScrollRef} className="overflow-x-auto" style={{ overflowY: "hidden" }}>
-						<table className="w-full table-fixed border-collapse" style={{ minWidth: `${TASK_TABLE_MIN_WIDTH_REM}rem` }}>
+						<table className="w-full table-fixed border-collapse max-md:block max-md:min-w-0!" style={{ minWidth: `${TASK_TABLE_MIN_WIDTH_REM}rem` }}>
 							{renderColumnGroup()}
-							<tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+							<tbody className="divide-y divide-gray-200 dark:divide-gray-700 max-md:block">
 								{sortedDisplayTasks.map((task) => {
 									const isFromOtherBranch = Boolean(task.branch);
 									const visibleLabels = task.labels.slice(0, 2);
@@ -889,19 +890,19 @@ const TaskList: React.FC<TaskListProps> = ({
 										<tr
 											key={task.id}
 											onClick={() => onEditTask(task)}
-											className={`cursor-pointer transition-colors ${
+											className={`cursor-pointer transition-colors max-md:flex max-md:flex-wrap max-md:items-center max-md:gap-x-3 max-md:gap-y-1 max-md:px-3 max-md:py-2.5 ${
 												isFromOtherBranch
 													? "bg-amber-50/50 hover:bg-amber-100/70 dark:bg-amber-900/10 dark:hover:bg-amber-900/20"
 													: "bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700/50"
 											}`}
 										>
-											<td className="px-3 py-2.5 text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">
+											<td className="px-3 py-2.5 max-md:order-2 max-md:max-w-full max-md:p-0 max-md:whitespace-normal max-md:[overflow-wrap:anywhere] text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">
 												{task.id}
 											</td>
-											<td className="px-3 py-2.5">
-												<div className="flex items-center gap-2 min-w-0">
+											<td className="px-3 py-2.5 max-md:order-1 max-md:w-full max-md:p-0">
+												<div className="flex items-center gap-2 min-w-0 max-md:flex-wrap max-md:items-start">
 													{progressSlotDigits > 0 && (
-														<span className="flex min-w-12 shrink-0 text-[10px] font-medium tabular-nums" style={{ width: progressSlotWidth }}>
+														<span className="flex min-w-12 shrink-0 text-[10px] font-medium tabular-nums max-md:min-w-0 max-md:w-auto! max-md:empty:hidden" style={{ width: progressSlotWidth }}>
 															<AcceptanceCriteriaProgress task={task} density="list" />
 														</span>
 													)}
@@ -911,7 +912,7 @@ const TaskList: React.FC<TaskListProps> = ({
 															event.stopPropagation();
 															onEditTask(task);
 														}}
-														className={`block truncate text-sm ${
+														className={`block truncate text-sm max-md:min-w-0 max-md:flex-1 max-md:whitespace-normal max-md:[overflow-wrap:anywhere] ${
 															isFromOtherBranch
 																? "text-gray-600 dark:text-gray-300"
 																: "text-gray-900 dark:text-gray-100"
@@ -923,7 +924,7 @@ const TaskList: React.FC<TaskListProps> = ({
 													</button>
 													{isFromOtherBranch && task.branch && (
 														<span
-															className="inline-flex shrink-0 items-center rounded-circle bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+															className="inline-flex shrink-0 items-center rounded-circle bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 max-md:max-w-full max-md:[overflow-wrap:anywhere]"
 															title={`Read-only task from ${task.branch} branch`}
 														>
 															{task.branch}
@@ -936,12 +937,12 @@ const TaskList: React.FC<TaskListProps> = ({
 													</div>
 												)}
 											</td>
-											<td className="px-3 py-2.5">
+											<td className="px-3 py-2.5 max-md:order-3 max-md:max-w-full max-md:p-0 max-md:[overflow-wrap:anywhere]">
 												<span className={`inline-flex rounded-circle px-2 py-0.5 text-[11px] font-medium ${getStatusColor(task.status)}`}>
 													{task.status}
 												</span>
 											</td>
-											<td className="px-3 py-2.5">
+											<td className="px-3 py-2.5 max-md:hidden">
 												{task.priority ? (
 													<span
 														className={`inline-flex rounded-circle px-2 py-0.5 text-[11px] font-medium ${getPriorityColor(task.priority)}`}
@@ -952,10 +953,10 @@ const TaskList: React.FC<TaskListProps> = ({
 													<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
 												)}
 											</td>
-											<td className="px-3 py-2.5 text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">
+											<td className="px-3 py-2.5 max-md:hidden text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">
 												{task.ordinal !== undefined ? task.ordinal : <span className="text-gray-300 dark:text-gray-600">—</span>}
 											</td>
-											<td className="px-3 py-2.5">
+											<td className="px-3 py-2.5 max-md:hidden">
 												{visibleLabels.length > 0 ? (
 													<div className="flex items-center gap-1 min-w-0">
 														{visibleLabels.map((label) => (
@@ -975,16 +976,17 @@ const TaskList: React.FC<TaskListProps> = ({
 													<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
 												)}
 											</td>
-											<td className="px-3 py-2.5">
+											<td className="px-3 py-2.5 max-md:order-4 max-md:max-w-full max-md:p-0">
 												{visibleAssignees.length > 0 ? (
-													<div className="flex items-center gap-1.5">
+													<div className="flex items-center gap-1.5 max-md:flex-wrap">
 														{visibleAssignees.map((assignee) => (
-															<span
-																key={assignee}
-																title={assignee}
-																className="inline-flex h-6 w-6 items-center justify-center rounded-circle bg-blue-100 text-[10px] font-semibold text-blue-700 dark:bg-blue-900/50 dark:text-blue-200"
-															>
-																{getAssigneeInitials(assignee)}
+															<span key={assignee} title={assignee} className="inline-flex max-w-full">
+																<span className="hidden h-6 w-6 items-center justify-center rounded-circle bg-blue-100 text-[10px] font-semibold text-blue-700 dark:bg-blue-900/50 dark:text-blue-200 md:inline-flex">
+																	{getAssigneeInitials(assignee)}
+																</span>
+																<span className="min-w-0 text-xs text-gray-600 dark:text-gray-300 [overflow-wrap:anywhere] md:hidden">
+																	{assignee}
+																</span>
 															</span>
 														))}
 														{assigneeOverflow > 0 && (
@@ -992,13 +994,16 @@ const TaskList: React.FC<TaskListProps> = ({
 														)}
 													</div>
 												) : (
-													<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
+													<span className="text-xs">
+														<span className="text-gray-300 dark:text-gray-600 max-md:hidden">—</span>
+														<span className="text-gray-500 dark:text-gray-400 md:hidden">Unassigned</span>
+													</span>
 												)}
 											</td>
-											<td className="px-3 py-2.5 text-xs text-gray-600 dark:text-gray-300 truncate" title={milestoneLabel}>
+											<td className="px-3 py-2.5 max-md:hidden text-xs text-gray-600 dark:text-gray-300 truncate" title={milestoneLabel}>
 												{milestoneLabel}
 											</td>
-											<td className="px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+											<td className="px-3 py-2.5 max-md:hidden text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
 												<StoredDate value={task.createdDate} dateFormat={dateFormat} compact />
 											</td>
 										</tr>

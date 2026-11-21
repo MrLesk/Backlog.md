@@ -3,6 +3,7 @@ import {Navigate, useParams, useNavigate, useSearchParams} from 'react-router-do
 import {apiClient, isAmbiguousIdConflict} from '../lib/api';
 import MDEditor from '@uiw/react-md-editor';
 import MermaidMarkdown from './MermaidMarkdown';
+import RecordIndex from './RecordIndex';
 import {type Document} from '../../types';
 import AmbiguousIdNotice from './AmbiguousIdNotice';
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -30,7 +31,7 @@ const MarkdownEditor = memo(function MarkdownEditor({
         // Preview mode - just show the rendered markdown without editor UI
         return (
             <div
-                className="prose prose-sm !max-w-none w-full p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden"
+                className="prose prose-sm !max-w-none w-full p-3 sm:p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-x-auto wrap-anywhere"
                 data-color-mode={theme}>
                 <MermaidMarkdown source={value} />
             </div>
@@ -306,18 +307,12 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
 
     if (!routeIdentity && !isNewDocument) {
         return (
-            <div className="flex-1 flex items-center justify-center p-8">
-                <div className="text-center">
-                    <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor"
-                         viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                    </svg>
-                    <h3 className="mt-2 text-sm font-medium text-gray-900">No document selected</h3>
-                    <p className="mt-1 text-sm text-gray-500">Select a document from the sidebar to view its
-                        content.</p>
-                </div>
-            </div>
+            <RecordIndex
+                title="Documentation"
+                path="/documentation"
+                records={id ? [] : docs}
+                emptyMessage={id ? "No document selected" : "No documents"}
+            />
         );
     }
 
@@ -338,10 +333,10 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
             <div className="h-full bg-white dark:bg-gray-900 flex flex-col transition-colors duration-200">
                 {/* Header Section - Confluence/Linear Style */}
                 <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 transition-colors duration-200">
-                    <div className="max-w-4xl mx-auto px-8 py-6">
+                    <div className="max-w-4xl mx-auto px-4 py-4 sm:px-8 sm:py-6">
                         {/* The header and its metadata row wrap, so on a narrow window the buttons stay on the page. */}
                         <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 mb-6">
-                            <div className="flex-1">
+                            <div className="min-w-0 flex-1">
                                 {isEditing ? (
                                     <div className="space-y-3 mb-2">
                                         <input
@@ -360,7 +355,7 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
                                         />
                                     </div>
                                 ) : (
-                                    <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2 transition-colors duration-200">
+                                    <h1 className="wrap-anywhere text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2 transition-colors duration-200">
                                         {docTitle || document?.title || (title ? decodeURIComponent(title) : `Document ${id}`)}
                                     </h1>
                                 )}
@@ -386,7 +381,7 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                                                       d="M3 7h5l2 2h11v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
                                             </svg>
-                                            <span>{document.path}</span>
+                                            <span className="min-w-0 wrap-anywhere">{document.path}</span>
                                         </div>
                                     )}
                                     {document?.createdDate && (
@@ -450,7 +445,7 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
 
                 {/* Content Section */}
                 <div className="flex-1 bg-gray-50 dark:bg-gray-800 transition-colors duration-200 flex flex-col">
-                    <div className="flex-1 p-8 flex flex-col min-h-0">
+                    <div className="flex-1 p-4 sm:p-8 flex flex-col min-h-0">
                         <MarkdownEditor
                             value={content}
                             onChange={(val) => setContent(val || '')}

@@ -262,6 +262,8 @@ interface SideNavigationProps {
 	error?: Error | null;
 	onRetry?: () => void;
 	onRefreshData: () => Promise<void>;
+	onOpenDrawer?: () => void;
+	onCloseDrawer?: () => void;
 }
 
 const SideNavigation = memo(function SideNavigation({ 
@@ -270,14 +272,17 @@ const SideNavigation = memo(function SideNavigation({
 	decisions, 
 	isLoading,
 	error,
-	onRetry
+	onRetry,
+	onOpenDrawer,
+	onCloseDrawer,
 }: SideNavigationProps) {
 	const { canWrite, sections } = useBrowserAccess();
 	const canSearch = sections.tasks || sections.docs || sections.decisions;
-	const [isCollapsed, setIsCollapsed] = useState(() => {
+	const [desktopCollapsed, setDesktopCollapsed] = useState(() => {
 		const saved = localStorage.getItem('sideNavCollapsed');
 		return saved ? JSON.parse(saved) : false;
 	});
+	const isCollapsed = !onCloseDrawer && desktopCollapsed;
 	const [searchQuery, setSearchQuery] = useState('');
 	const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 	const [isSearching, setIsSearching] = useState(false);
@@ -286,7 +291,7 @@ const SideNavigation = memo(function SideNavigation({
 	const focusSearchOnExpandRef = useRef(false);
 	const expandAndFocusSearch = useCallback(() => {
 		focusSearchOnExpandRef.current = true;
-		setIsCollapsed(false);
+		setDesktopCollapsed(false);
 	}, []);
 	const [isDocsCollapsed, setIsDocsCollapsed] = useState(() => {
 		const saved = localStorage.getItem('docsCollapsed');
@@ -318,8 +323,8 @@ const SideNavigation = memo(function SideNavigation({
 	}, [navigate]);
 
 	useEffect(() => {
-		localStorage.setItem('sideNavCollapsed', JSON.stringify(isCollapsed));
-	}, [isCollapsed]);
+		localStorage.setItem('sideNavCollapsed', JSON.stringify(desktopCollapsed));
+	}, [desktopCollapsed]);
 
 	// Fetch version on mount
 	useEffect(() => {
@@ -361,6 +366,7 @@ const SideNavigation = memo(function SideNavigation({
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
 				e.preventDefault();
+				onOpenDrawer?.();
 				if (isCollapsed) {
 					expandAndFocusSearch();
 				} else if (searchInputRef) {
@@ -371,7 +377,7 @@ const SideNavigation = memo(function SideNavigation({
 
 		document.addEventListener('keydown', handleKeyDown);
 		return () => document.removeEventListener('keydown', handleKeyDown);
-	}, [canSearch, expandAndFocusSearch, searchInputRef, isCollapsed]);
+	}, [canSearch, expandAndFocusSearch, searchInputRef, isCollapsed, onOpenDrawer]);
 
 	// Auto-focus search only after an explicit collapsed-to-expanded transition.
 	useEffect(() => {
@@ -457,7 +463,7 @@ const SideNavigation = memo(function SideNavigation({
 			expandAndFocusSearch();
 			return;
 		}
-		setIsCollapsed(true);
+		setDesktopCollapsed(true);
 	}, [expandAndFocusSearch, isCollapsed]);
 
 	const milestoneLink = { path: '/milestones', label: 'Milestones', Icon: Icons.Milestone, visible: sections.milestones };
@@ -469,24 +475,37 @@ const SideNavigation = memo(function SideNavigation({
 		{ path: '/statistics', label: 'Statistics', Icon: Icons.Statistics, visible: sections.tasks },
 	].filter(({ visible }) => visible);
 
+	const desktopSidebarSize = isCollapsed ? 'w-16' : 'w-80 min-w-80';
+	const sidebarSize = onCloseDrawer ? 'h-full w-full' : `min-h-full transition-all duration-300 ${desktopSidebarSize}`;
+
 	return (
 		<ErrorBoundary>
-			<div className={`relative bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 flex flex-col min-h-full z-10 ${isCollapsed ? 'w-16' : 'w-80 min-w-80'}`}>
+			<div className={`relative bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col z-10 ${sidebarSize}`}>
 			{/* Search Bar */}
-			<div className={`${isCollapsed ? 'px-2' : 'px-4'} border-b border-gray-200 dark:border-gray-700 h-18 flex items-center relative`}>
-				{/* Collapse Toggle Button - Always positioned on the border */}
-				<button
-					onClick={toggleCollapse}
-					className="absolute -right-3 top-1/2 transform -translate-y-1/2 z-10 flex items-center justify-center w-6 h-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-circle shadow-sm hover:shadow-md text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-200"
-					aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-					title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-				>
-					{isCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronLeft />}
-				</button>
-				
+			<div className={`${isCollapsed ? 'px-2' : 'px-4'} border-b border-gray-200 dark:border-gray-700 h-18 shrink-0 flex items-center gap-2 relative`}>
+				{onCloseDrawer ? (
+					<button
+						type="button"
+						onClick={onCloseDrawer}
+						className="flex size-11 shrink-0 items-center justify-center rounded-lg text-xl text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+						aria-label="Close navigation menu"
+					>
+						×
+					</button>
+				) : (
+					<button
+						onClick={toggleCollapse}
+						className="absolute -right-3 top-1/2 transform -translate-y-1/2 z-10 flex items-center justify-center w-6 h-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-circle shadow-sm hover:shadow-md text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-200"
+						aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+						title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+					>
+						{isCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronLeft />}
+					</button>
+				)}
+
 				{canSearch && (!isCollapsed ? (
-					<div className="flex items-center w-full">
-						<div className="relative flex-1">
+					<div className="flex min-w-0 flex-1 items-center">
+						<div className="relative min-w-0 flex-1">
 							<div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 dark:text-gray-500">
 								<Icons.Search />
 							</div>
@@ -688,10 +707,14 @@ const SideNavigation = memo(function SideNavigation({
 										>
 											{isDocsCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
 									</button>
-									<span className="text-gray-500 dark:text-gray-400"><Icons.Document /></span>
-									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">
-										Documents (<NavigationCount count={docs.length} isLoading={isLoading} error={error} label="document" />)
-									</span>
+									<NavLink
+										to="/documentation"
+										end
+										className="flex items-center gap-3 text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap hover:underline"
+									>
+										<span className="text-gray-500 dark:text-gray-400"><Icons.Document /></span>
+										<span>Documents (<NavigationCount count={docs.length} isLoading={isLoading} error={error} label="document" />)</span>
+									</NavLink>
 								</div>
 									{canWrite && (
 										<button
@@ -760,10 +783,14 @@ const SideNavigation = memo(function SideNavigation({
 										>
 											{isDecisionsCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
 									</button>
-									<span className="text-gray-500 dark:text-gray-400"><Icons.Decision /></span>
-									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">
-										Decisions (<NavigationCount count={decisions.length} isLoading={isLoading} error={error} label="decision" />)
-									</span>
+									<NavLink
+										to="/decisions"
+										end
+										className="flex items-center gap-3 text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap hover:underline"
+									>
+										<span className="text-gray-500 dark:text-gray-400"><Icons.Decision /></span>
+										<span>Decisions (<NavigationCount count={decisions.length} isLoading={isLoading} error={error} label="decision" />)</span>
+									</NavLink>
 								</div>
 							</div>
 							
@@ -805,11 +832,12 @@ const SideNavigation = memo(function SideNavigation({
 						{sections.docs && (
 							<button
 								onClick={() => {
-									setIsCollapsed(false);
+									setDesktopCollapsed(false);
 									setIsDocsCollapsed(false);
 								}}
 									data-tooltip-id="sidebar-tooltip"
-									data-tooltip-content="Documentation"
+									aria-label="Documentation"
+								data-tooltip-content="Documentation"
 									className={`flex items-center justify-center p-3 rounded-md transition-colors duration-200 w-full ${
 										location.pathname.startsWith('/documentation')
 											? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
@@ -824,11 +852,12 @@ const SideNavigation = memo(function SideNavigation({
 						{sections.decisions && (
 							<button
 								onClick={() => {
-									setIsCollapsed(false);
+									setDesktopCollapsed(false);
 									setIsDecisionsCollapsed(false);
 								}}
 									data-tooltip-id="sidebar-tooltip"
-									data-tooltip-content="Decisions"
+									aria-label="Decisions"
+								data-tooltip-content="Decisions"
 									className={`flex items-center justify-center p-3 rounded-md transition-colors duration-200 w-full ${
 										location.pathname.startsWith('/decisions')
 											? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
@@ -867,6 +896,7 @@ const SideNavigation = memo(function SideNavigation({
 					<NavLink
 						to="/settings"
 						data-tooltip-id="sidebar-tooltip"
+						aria-label="Settings"
 						data-tooltip-content="Settings"
 						className={({ isActive }) =>
 							`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
