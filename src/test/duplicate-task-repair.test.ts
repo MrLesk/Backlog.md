@@ -93,25 +93,24 @@ describe("duplicate task diagnosis", () => {
 			expect(
 				store.getTaskCorpusSnapshot().branchStateEntries?.map((entry) => [entry.id, entry.branch, Boolean(entry.task)]),
 			).toEqual([["TASK-1", "original", false]]);
-			const observations: string[] = [];
+			// A filesystem rename can notify the board before the CLI writes the new title.
+			// Record what changes on screen, including any return to the old title.
+			const titleChanges = ["Original"];
 			const unsubscribe = store.subscribe((event) => {
 				if (event.type !== "tasks") return;
 				const resolved = store.resolveTaskForRead("1");
-				observations.push(resolved.status === "found" ? resolved.task.title : resolved.status);
+				const title = resolved.status === "found" ? resolved.task.title : resolved.status;
+				if (title !== titleChanges.at(-1)) titleChanges.push(title);
 			});
 			if (kind === "separate CLI") {
 				await $`bun ${getTestCliPath()} task edit 1 --title Renamed`.cwd(testDir).quiet();
 			} else {
 				await core.editTask("1", { title: "Renamed" }, false, { includeCrossBranch: false });
 			}
-			await waitUntil(
-				() => observations.some((value) => value !== "Original"),
-				"retitled task publication",
-				getPlatformTimeout(3000),
-			);
+			await waitUntil(() => titleChanges.length > 1, "retitled task publication", getPlatformTimeout(3000));
 			unsubscribe();
 			const expected = kind === "dangling link" ? "ambiguous" : "found";
-			expect(new Set(observations)).toEqual(new Set([expected === "found" ? "Renamed" : "ambiguous"]));
+			expect(titleChanges).toEqual(["Original", expected === "found" ? "Renamed" : "ambiguous"]);
 			expect(store.resolveTaskForMutation("1").status).toBe(expected);
 			const plan = await core.previewDuplicateTaskIdRepair({ includeBranches: true });
 			expect(plan.crossBranchFindings.map((finding) => finding.id)).toEqual(expected === "ambiguous" ? ["TASK-1"] : []);
