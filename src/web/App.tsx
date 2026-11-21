@@ -1054,6 +1054,7 @@ function AppContent() {
             element={
               <Layout
                 projectName={projectName}
+                pagePath={routeBasePath ?? location.pathname}
                 showSuccessToast={showSuccessToast}
                 onDismissToast={() => setShowSuccessToast(false)}
                 tasks={tasks}

@@ -1,9 +1,9 @@
 import { Link, useOutletContext } from "react-router-dom";
-import { createUrlPath } from "../utils/urlHelpers";
+import { createRecordUrlPath, type RecordListPath } from "../utils/urlHelpers";
 
 interface RecordIndexProps {
 	title: string;
-	path: string;
+	path: RecordListPath;
 	records: readonly { id: string; title: string }[];
 	emptyMessage: string;
 }
@@ -23,7 +23,7 @@ export default function RecordIndex({ title, path, records, emptyMessage }: Reco
 						<li key={record.id}>
 							<Link
 								className="flex min-h-11 items-center px-4 py-2 text-sm text-blue-700 hover:underline dark:text-blue-400"
-								to={createUrlPath(path, record.id, record.title)}
+								to={createRecordUrlPath(path, record)}
 							>
 								<span className="wrap-anywhere">{record.title}</span>
 							</Link>

@@ -12,17 +12,11 @@ import {
 } from '../../types';
 import { useBrowserAccess } from '../contexts/BrowserAccessContext';
 import ErrorBoundary from './ErrorBoundary';
-import { createUrlPath, sanitizeUrlTitle } from '../utils/urlHelpers';
+import { createRecordUrlPath, createUrlPath } from '../utils/urlHelpers';
 import { getWebVersion } from '../utils/version';
 import { apiClient } from '../lib/api';
 import { parseSearchCommandQuery } from '../utils/search-command-query';
 import { buildDocsTree, type DocsTreeNode } from '../lib/docs-tree';
-
-// Utility functions for ID transformations
-const stripIdPrefix = (id: string): string => {
-	// Remove any prefix pattern: letters followed by dash (task-, doc-, decision-, JIRA-, etc.)
-	return id.replace(/^[a-zA-Z]+-/, '');
-};
 
 const hasTaskSearchFilters = (parsedQuery: ReturnType<typeof parseSearchCommandQuery>): boolean => {
 	return Boolean(
@@ -195,7 +189,7 @@ const Icons = {
 // Shared render path for sidebar document links (search results, folder tree, and flat list).
 const DocLink = ({ doc, depth = 0 }: { doc: Document; depth?: number }) => (
 	<NavLink
-		to={`/documentation/${stripIdPrefix(doc.id)}/${sanitizeUrlTitle(doc.title)}`}
+		to={createRecordUrlPath('/documentation', doc)}
 		className={({ isActive }) =>
 			`flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${
 				isActive
@@ -537,10 +531,10 @@ const SideNavigation = memo(function SideNavigation({
 									: (result as DecisionSearchResult).decision;
 							const getResultLink = () => {
 								if (result.type === 'document') {
-									return `/documentation/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
+									return createRecordUrlPath('/documentation', item);
 								}
 								if (result.type === 'decision') {
-									return `/decisions/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
+									return createRecordUrlPath('/decisions', item);
 								}
 								const taskPath = createUrlPath('/board', item.id, item.title);
 								const isBoardLocation = location.pathname === '/board' || location.pathname.startsWith('/board/');
@@ -786,7 +780,7 @@ const SideNavigation = memo(function SideNavigation({
 										filteredDecisions.map((decision) => (
 											<NavLink
 												key={decision.id}
-												to={`/decisions/${stripIdPrefix(decision.id)}/${sanitizeUrlTitle(decision.title)}`}
+												to={createRecordUrlPath('/decisions', decision)}
 												className={({ isActive }) =>
 													`flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${
 														isActive

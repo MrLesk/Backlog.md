@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import SideNavigation from './SideNavigation';
 import Navigation from './Navigation';
@@ -11,6 +11,7 @@ const DRAWER_MEDIA_QUERY = '(width < 64rem)';
 
 interface LayoutProps {
 	projectName: string;
+	pagePath: string;
 	showSuccessToast: boolean;
 	onDismissToast: () => void;
 	tasks: Task[];
@@ -25,6 +26,7 @@ interface LayoutProps {
 
 export default function Layout({
 	projectName,
+	pagePath,
 	showSuccessToast,
 	onDismissToast,
 	tasks,
@@ -38,6 +40,7 @@ export default function Layout({
 }: LayoutProps) {
 	const location = useLocation();
 	const drawer = useRef<HTMLDialogElement>(null);
+	const main = useRef<HTMLElement>(null);
 	const [useDrawer, setUseDrawer] = useState(() => window.matchMedia?.(DRAWER_MEDIA_QUERY).matches ?? false);
 
 	const openDrawer = useCallback(() => {
@@ -63,6 +66,11 @@ export default function Layout({
 	useEffect(() => {
 		closeDrawer();
 	}, [location.key, closeDrawer]);
+
+	// A task dialog shares its board or list's page path and reading position.
+	useLayoutEffect(() => {
+		if (main.current) main.current.scrollTop = 0;
+	}, [pagePath]);
 
 	const sideNavigation = (
 		<SideNavigation
@@ -97,7 +105,7 @@ export default function Layout({
 			<div className="flex-1 flex flex-col min-h-0 min-w-0">
 				<Navigation projectName={projectName} loadingMessage={loadingMessage} onOpenMenu={useDrawer ? openDrawer : undefined} />
 				<DuplicateIdWarning plan={duplicateRepairPlan} onRepaired={onRefreshData} />
-				<main className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
+				<main ref={main} className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
 					<Outlet context={{ tasks, docs, decisions, isLoading, error, onRefreshData }} />
 				</main>
 			</div>

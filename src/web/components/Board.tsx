@@ -609,11 +609,6 @@ const Board: React.FC<BoardProps> = ({
     // biome-ignore lint/correctness/useExhaustiveDependencies: isLaneCollapsed is a plain render-scope helper; its inputs are listed.
   }, [canWrite, filteredTasks, laneMode, lanes, displayTasksByLane, collapsedLanes, milestoneFilter, canonicalMilestoneFilter]);
 
-  // Dynamic layout using flexbox:
-  // - Columns are flex items with equal growth (flex-1) to divide space evenly
-  // - A minimum width keeps columns readable; beyond available space, container scrolls horizontally
-  // - Works uniformly for any number of columns without per-count conditionals
-
   const columnActions = canWrite ? {
     onTaskReorder: handleTaskReorder,
     dragSourceStatus,

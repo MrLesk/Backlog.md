@@ -1,3 +1,5 @@
+import { extractIdBody } from "../../utils/prefix-config";
+
 /**
  * Sanitizes a string to be URL-friendly
  * - Converts to lowercase
@@ -22,9 +24,16 @@ export function sanitizeUrlTitle(title: string): string {
 	);
 }
 
-/** Creates a URL-friendly path for a task using its canonical ID. */
+/** Adds an encoded ID and an optional human-readable title to a browser route. */
 export function createUrlPath(basePath: string, id: string, title: string): string {
 	const sanitizedTitle = sanitizeUrlTitle(title);
 	const path = `${basePath.replace(/\/$/, "")}/${encodeURIComponent(id)}`;
 	return sanitizedTitle ? `${path}/${encodeURIComponent(sanitizedTitle)}` : path;
+}
+
+export type RecordListPath = "/documentation" | "/decisions";
+
+export function createRecordUrlPath(path: RecordListPath, record: { id: string; title: string }): string {
+	const prefix = path === "/documentation" ? "doc" : "decision";
+	return createUrlPath(path, extractIdBody(record.id, prefix), record.title);
 }

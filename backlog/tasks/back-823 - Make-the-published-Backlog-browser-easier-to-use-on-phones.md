@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-11-21T21:50:00Z'
-updated_date: '2026-11-21T22:21:00Z'
+updated_date: '2026-11-21T22:26:00Z'
 labels: []
 dependencies: []
 references:
@@ -17,6 +17,8 @@ references:
   - src/web/components/DecisionDetail.tsx
   - src/web/components/TaskDetailsModal.tsx
   - src/web/components/MilestoneTaskRow.tsx
+  - src/web/App.tsx
+  - src/web/utils/urlHelpers.ts
 modified_files:
   - src/web/components/RecordIndex.tsx
   - src/web/components/Board.tsx
@@ -33,6 +35,8 @@ modified_files:
   - src/web/components/MilestoneTaskRow.tsx
   - src/web/components/MilestonesPage.tsx
   - src/test/web-task-detail-deeplink.test.tsx
+  - src/web/App.tsx
+  - src/web/utils/urlHelpers.ts
 type: enhancement
 ordinal: 420000
 ---
@@ -68,6 +72,8 @@ A reader checking project progress from a phone needs to reach tasks and related
 4. Verify the phone, tablet, and desktop flows, and serve independent before and after exports for comparison.
 
 5. Revise the phone reading flow from hands-on feedback. Use the navigation icon and one horizontal board across statuses. Keep task-list filters and sorting available on demand, show task status and owner near its title, and give milestone rows room for task titles. Verify position when returning from a task and update the same comparison link.
+
+6. Address the review findings for opening a full page from a scrolled page and for showing the current document or decision in navigation. Preserve the board and list positions while a task dialog is open.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -78,6 +84,8 @@ Built the v1.57.1 baseline and responsive branch as separate read-only previews 
 Verified the updated reading flow in the published sample at 365 px. Both status groupings scroll sideways, and closing a card or using Back restores the same column and reading position. On the task list, the first row moved from 456 px down to 169 px. On the sample task, the assignee moved from 1,897 px down to 126 px. Milestone task titles wrap. Verified filters, sorting, navigation, documents, decisions, statistics, and settings, and checked the nine published page types at 768 and 1440 px. The editable browser still exposes its edit and drag controls. Both LAN previews serve identical project data. Types, Biome, 395 browser and grouping tests and 22 CLI tests passed. Awaiting Alex’s phone review.
 
 Alex approved the revised phone preview and requested pull request review.
+
+PR review found that the task list could inherit the board’s scroll position and that index links did not mark the selected document or decision in the drawer. Switching full pages now starts at the top. Verified at 365 × 640 that closing a task preserves both board offsets and using Back preserves the list position. Verified active links and scrolling between long documents and decisions. Types, Biome and all 417 focused tests pass with the fixes.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
