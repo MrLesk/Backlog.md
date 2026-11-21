@@ -1,11 +1,11 @@
 ---
 id: BACK-823
 title: Make the published Backlog browser easier to use on phones
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-11-21T21:50:00Z'
-updated_date: '2026-11-21T22:19:00Z'
+updated_date: '2026-11-21T22:21:00Z'
 labels: []
 dependencies: []
 references:
@@ -76,4 +76,12 @@ A reader checking project progress from a phone needs to reach tasks and related
 Built the v1.57.1 baseline and responsive branch as separate read-only previews with identical sample data. Verified board status, filters, task list, and document and decision navigation at 365px, the drawer and board at 768px, and the sidebar and columns at 1440px. Confirmed the live narrow board retains edit controls and all status columns. Types, Biome, and 166 focused tests passed. Ready for phone review.
 
 Verified the updated reading flow in the published sample at 365 px. Both status groupings scroll sideways, and closing a card or using Back restores the same column and reading position. On the task list, the first row moved from 456 px down to 169 px. On the sample task, the assignee moved from 1,897 px down to 126 px. Milestone task titles wrap. Verified filters, sorting, navigation, documents, decisions, statistics, and settings, and checked the nine published page types at 768 and 1440 px. The editable browser still exposes its edit and drag controls. Both LAN previews serve identical project data. Types, Biome, 395 browser and grouping tests and 22 CLI tests passed. Awaiting Alex’s phone review.
+
+Alex approved the revised phone preview and requested pull request review.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+At phone widths the published browser keeps Kanban statuses side by side and puts the first task, its status and its assignee within reach. The shared navigation also exposes documents and decisions directly. Verified the reading flow at 365, 768 and 1440 px. Type checks, Biome and 417 focused tests passed. Alex approved the phone preview.
+<!-- SECTION:FINAL_SUMMARY:END -->
