@@ -136,4 +136,22 @@ describe("cleanup selection", () => {
 		expect(button("Archive 1 Task")?.disabled).toBe(false);
 		expect(onSuccess).not.toHaveBeenCalled();
 	});
+
+	it("offers Any age and still asks for confirmation", async () => {
+		const previewRequest = spyOn(apiClient, "getCleanupPreview").mockResolvedValue(preview("TASK-1"));
+		const execute = spyOn(apiClient, "executeCleanup").mockResolvedValue({
+			success: true,
+			movedCount: 1,
+			totalCount: 1,
+			message: "Archived",
+		});
+		await mount();
+		await click("Any age");
+		expect(previewRequest).toHaveBeenCalledWith(0);
+		expect(document.body.textContent).toContain("TASK-1");
+		expect(execute).not.toHaveBeenCalled();
+		await click("Continue");
+		await click("Archive 1 Task");
+		expect(execute).toHaveBeenCalledWith(["TASK-1"]);
+	});
 });

@@ -18,6 +18,7 @@ interface TaskPreview {
 }
 
 const AGE_OPTIONS = [
+	{ label: "Any age", value: 0 },
 	{ label: "1 day", value: 1 },
 	{ label: "1 week", value: 7 },
 	{ label: "2 weeks", value: 14 },
