@@ -42,17 +42,16 @@ const TaskChipLink: React.FC<{ taskId: string; display: string }> = ({ taskId, d
 
 interface DependencyInputProps {
   value: string[];
-  onChange: (values: string[]) => void;
+  onChange?: (values: string[]) => void;
   availableTasks: Task[];
   // Tasks the server will actually accept as a dependency (the local working copy). Defaults to
   // availableTasks so callers with no cross-branch corpus keep suggesting everything they show.
   suggestableTasks?: Task[];
   currentTaskId?: string;
   label?: string; // optional label; render only if provided
-  disabled?: boolean;
 }
 
-const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, availableTasks, suggestableTasks, currentTaskId, label = 'Dependencies', disabled }) => {
+const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, availableTasks, suggestableTasks, currentTaskId, label = 'Dependencies' }) => {
   const [inputValue, setInputValue] = useState('');
   const [suggestions, setSuggestions] = useState<Task[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -90,24 +89,15 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
   }, [value]);
 
   const addDependency = (taskId: string) => {
-    if (disabled) return;
-    if (!value.includes(taskId)) {
-      onChange([...value, taskId]);
-      setInputValue('');
-      setSuggestions([]);
-      if (textareaRef.current) {
-        textareaRef.current.focus();
-      }
-    }
-  };
-
-  const removeDependency = (index: number) => {
-    if (disabled) return;
-    onChange(value.filter((_, i) => i !== index));
+    if (!onChange || value.includes(taskId)) return;
+    onChange([...value, taskId]);
+    setInputValue('');
+    setSuggestions([]);
+    textareaRef.current?.focus();
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (disabled) return;
+    if (!onChange) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setSelectedIndex(prev => (prev + 1) % suggestions.length);
@@ -129,7 +119,6 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    if (disabled) return;
     const newValue = e.target.value;
     // Check if user typed a comma
     if (newValue.endsWith(',')) {
@@ -142,15 +131,19 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
     }
   };
 
+  if (!onChange && value.length === 0) {
+    return <p className="text-sm text-gray-500 dark:text-gray-400">No dependencies</p>;
+  }
+
   return (
     <div>
       {label ? (
-        <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 transition-colors duration-200">
+        <label htmlFor={onChange ? inputId : undefined} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 transition-colors duration-200">
           {label}
         </label>
       ) : null}
       <div className="relative w-full">
-        <div className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-md focus-within:ring-2 focus-within:ring-blue-500 dark:focus-within:ring-blue-400 focus-within:border-transparent transition-colors duration-200 max-h-60 overflow-auto pr-2 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
+        <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-md focus-within:ring-2 focus-within:ring-blue-500 dark:focus-within:ring-blue-400 focus-within:border-transparent transition-colors duration-200 max-h-60 overflow-auto pr-2">
           {/* Display selected dependencies */}
           {value.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-2">
@@ -167,14 +160,14 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
                   ) : (
                     <span className={CHIP_LABEL_CLASS} title={display}>{display}</span>
                   )}
-	                  {!disabled && (
-	                    <button
-	                      type="button"
-	                      onClick={() => removeDependency(index)}
+                  {onChange && (
+                    <button
+                      type="button"
+                      onClick={() => onChange(value.filter((_, i) => i !== index))}
 	                      className="hover:bg-blue-200 dark:hover:bg-blue-800 rounded-sm p-0.5 transition-colors duration-200"
-	                      aria-label={`Remove ${taskId}`}
-	                    >
-	                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      aria-label={`Remove ${taskId}`}
+                    >
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                         <path
                           fillRule="evenodd"
                           d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
@@ -190,21 +183,22 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
           )}
           
           {/* Input field */}
-          <textarea
-            ref={textareaRef}
-            id={inputId}
-            value={inputValue}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            placeholder={value.length === 0 ? "Type task ID or title, then press Enter or comma" : "Add more dependencies..."}
-            className="w-full outline-none text-sm bg-transparent resize-none text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
-            rows={1}
-            disabled={disabled}
-          />
+          {onChange && (
+            <textarea
+              ref={textareaRef}
+              id={inputId}
+              value={inputValue}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              placeholder={value.length === 0 ? "Type task ID or title, then press Enter or comma" : "Add more dependencies..."}
+              className="w-full outline-none text-sm bg-transparent resize-none text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+              rows={1}
+            />
+          )}
         </div>
 
         {/* Suggestions dropdown */}
-        {suggestions.length > 0 && (
+        {onChange && suggestions.length > 0 && (
           <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg max-h-64 overflow-auto overscroll-contain transition-colors duration-200">
 	            {suggestions.map((task, index) => (
 	              <button

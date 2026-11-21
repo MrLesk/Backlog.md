@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const RECONNECT_DELAY = 5000; // 5 seconds
 
-export function useHealthCheck() {
+export function useHealthCheck(enabled = true) {
 	const [isOnline, setIsOnline] = useState(true);
 	const [wasDisconnected, setWasDisconnected] = useState(false);
 	
@@ -69,6 +69,7 @@ export function useHealthCheck() {
 
 	// Set up WebSocket connection
 	useEffect(() => {
+		if (!enabled) return;
 		isMountedRef.current = true;
 		
 		// Add a small delay to avoid rapid connect/disconnect in StrictMode
@@ -93,7 +94,7 @@ export function useHealthCheck() {
 				reconnectTimeoutRef.current = null;
 			}
 		};
-	}, [connectWebSocket]);
+	}, [connectWebSocket, enabled]);
 
 	return {
 		isOnline,

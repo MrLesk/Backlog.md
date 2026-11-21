@@ -30,6 +30,7 @@ export function getTaskStatistics(
 	drafts: Task[],
 	statuses: string[],
 	priorityOrder?: readonly string[],
+	dependencyTasks: readonly Pick<Task, "id" | "status">[] = tasks,
 ): TaskStatistics {
 	const resolveStatus = createStatusResolver(statuses);
 	const statusCounts = new Map<string, number>();
@@ -124,7 +125,7 @@ export function getTaskStatistics(
 
 		if (!completed && task.dependencies?.length) {
 			const hasBlockingDependency = task.dependencies.some((depId) => {
-				const dep = tasks.find((t) => t.id === depId);
+				const dep = dependencyTasks.find((t) => t.id === depId);
 				return dep && !isTerminalStatus(dep.status, statuses);
 			});
 

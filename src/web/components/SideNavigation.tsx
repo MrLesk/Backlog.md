@@ -10,6 +10,7 @@ import {
 	type SearchResultType,
 	type TaskSearchResult,
 } from '../../types';
+import { useBrowserAccess } from '../contexts/BrowserAccessContext';
 import ErrorBoundary from './ErrorBoundary';
 import { createUrlPath, sanitizeUrlTitle } from '../utils/urlHelpers';
 import { getWebVersion } from '../utils/version';
@@ -271,6 +272,7 @@ const SideNavigation = memo(function SideNavigation({
 	error,
 	onRetry
 }: SideNavigationProps) {
+	const { canWrite, tasksOnly } = useBrowserAccess();
 	const [isCollapsed, setIsCollapsed] = useState(() => {
 		const saved = localStorage.getItem('sideNavCollapsed');
 		return saved ? JSON.parse(saved) : false;
@@ -312,10 +314,6 @@ const SideNavigation = memo(function SideNavigation({
 	// Create handlers - just navigate to new pages
 	const handleCreateDocument = useCallback(() => {
 		navigate('/documentation/new');
-	}, [navigate]);
-
-	useCallback(() => {
-		navigate('/decisions/new');
 	}, [navigate]);
 
 	useEffect(() => {
@@ -463,6 +461,15 @@ const SideNavigation = memo(function SideNavigation({
 		}
 		setIsCollapsed(true);
 	}, [expandAndFocusSearch, isCollapsed]);
+
+	const milestoneLink = { path: '/milestones', label: 'Milestones', Icon: Icons.Milestone, visible: !tasksOnly };
+	const draftLink = { path: '/drafts', label: 'Drafts', Icon: Icons.Draft, visible: canWrite };
+	const pageLinks = [
+		{ path: '/board', label: 'Kanban Board', Icon: Icons.Board, visible: true },
+		{ path: '/tasks', label: 'All Tasks', Icon: Icons.List, visible: true },
+		...(isCollapsed ? [draftLink, milestoneLink] : [milestoneLink, draftLink]),
+		{ path: '/statistics', label: 'Statistics', Icon: Icons.Statistics, visible: true },
+	].filter(({ visible }) => visible);
 
 	return (
 		<ErrorBoundary>
@@ -644,86 +651,31 @@ const SideNavigation = memo(function SideNavigation({
 					</div>
 				)}
 
-				{!isCollapsed && (
-					<div className="px-4 space-y-1">
-						{/* Board Navigation */}
+				<div className={isCollapsed ? 'px-2 py-2 space-y-2' : 'px-4 space-y-1'}>
+					{pageLinks.map(({ path, label, Icon }) => (
 						<NavLink
-							to="/board"
-							className={({ isActive }) =>
-								`flex items-center px-3 py-2 rounded-lg transition-colors duration-200 ${
-									isActive
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
-										: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`
-							}
+							key={path}
+							to={path}
+							aria-label={isCollapsed ? label : undefined}
+							data-tooltip-id={isCollapsed ? 'sidebar-tooltip' : undefined}
+							data-tooltip-content={isCollapsed ? label : undefined}
+							className={({ isActive }) => [
+								'flex items-center transition-colors duration-200',
+								isCollapsed ? 'justify-center p-3 rounded-md' : 'px-3 py-2 rounded-lg',
+								isActive ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
+									: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100',
+							].join(' ')}
 						>
-							<Icons.Board />
-							<span className="ml-3 text-sm font-medium">Kanban Board</span>
+							{isCollapsed ? (
+								<div className="w-6 h-6 flex items-center justify-center"><Icon /></div>
+							) : (
+								<><Icon /><span className="ml-3 text-sm font-medium">{label}</span></>
+							)}
 						</NavLink>
+					))}
+				</div>
 
-						{/* Tasks Navigation */}
-						<NavLink
-							to="/tasks"
-							className={({ isActive }) =>
-								`flex items-center px-3 py-2 rounded-lg transition-colors duration-200 ${
-									isActive
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
-										: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`
-							}
-						>
-							<Icons.List />
-							<span className="ml-3 text-sm font-medium">All Tasks</span>
-						</NavLink>
-
-						{/* Milestones Navigation */}
-						<NavLink
-							to="/milestones"
-							className={({ isActive }) =>
-								`flex items-center px-3 py-2 rounded-lg transition-colors duration-200 ${
-									isActive
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
-										: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`
-							}
-						>
-							<Icons.Milestone />
-							<span className="ml-3 text-sm font-medium">Milestones</span>
-						</NavLink>
-
-						{/* Drafts Navigation */}
-						<NavLink
-							to="/drafts"
-							className={({ isActive }) =>
-								`flex items-center px-3 py-2 rounded-lg transition-colors duration-200 ${
-									isActive
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
-										: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`
-							}
-						>
-							<Icons.Draft />
-							<span className="ml-3 text-sm font-medium">Drafts</span>
-						</NavLink>
-
-						{/* Statistics Navigation */}
-						<NavLink
-							to="/statistics"
-							className={({ isActive }) =>
-								`flex items-center px-3 py-2 rounded-lg transition-colors duration-200 ${
-									isActive
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
-										: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`
-							}
-						>
-							<Icons.Statistics />
-							<span className="ml-3 text-sm font-medium">Statistics</span>
-						</NavLink>
-					</div>
-				)}
-
-				{!isCollapsed && (
+				{!isCollapsed && !tasksOnly && (
 					<>
 						{/* Divider between Tasks and Documents */}
 						<div className="mx-4 my-2 border-t border-gray-200 dark:border-gray-700"></div>
@@ -744,16 +696,18 @@ const SideNavigation = memo(function SideNavigation({
 										Documents (<NavigationCount count={docs.length} isLoading={isLoading} error={error} label="document" />)
 									</span>
 								</div>
-									<button
-										onClick={handleCreateDocument}
-										className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200"
-										title="Create new document"
-									>
-										<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-										<circle cx="12" cy="12" r="10" />
-									</svg>
-								</button>
+									{canWrite && (
+										<button
+											onClick={handleCreateDocument}
+											className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200"
+											title="Create new document"
+										>
+											<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+											<circle cx="12" cy="12" r="10" />
+										</svg>
+									</button>
+									)}
 							</div>
 							
 							{/* Document List */}
@@ -809,19 +763,6 @@ const SideNavigation = memo(function SideNavigation({
 										Decisions (<NavigationCount count={decisions.length} isLoading={isLoading} error={error} label="decision" />)
 									</span>
 								</div>
-								{/* Temporarily hidden - decisions editing not ready */}
-								{/*{false && (*/}
-								{/*	<button*/}
-								{/*		onClick={handleCreateDecision}*/}
-								{/*		className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors cursor-pointer"*/}
-								{/*		title="Create new decision"*/}
-								{/*	>*/}
-								{/*		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">*/}
-								{/*			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />*/}
-								{/*			<circle cx="12" cy="12" r="10" />*/}
-								{/*		</svg>*/}
-								{/*	</button>*/}
-								{/*)}*/}
 							</div>
 							
 							{/* Decision List */}
@@ -857,91 +798,8 @@ const SideNavigation = memo(function SideNavigation({
 					</>
 				)}
 
-				{isCollapsed && (
-					<div className="px-2 py-2 space-y-2">
-						<NavLink
-							to="/board"
-							data-tooltip-id="sidebar-tooltip"
-							data-tooltip-content="Kanban Board"
-							className={({ isActive }) =>
-								`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
-									isActive
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
-										: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`
-							}
-						>
-							<div className="w-6 h-6 flex items-center justify-center">
-								<Icons.Board />
-							</div>
-						</NavLink>
-						<NavLink
-							to="/tasks"
-							data-tooltip-id="sidebar-tooltip"
-							data-tooltip-content="All Tasks"
-							className={({ isActive }) =>
-								`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
-									isActive
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
-										: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`
-							}
-						>
-							<div className="w-6 h-6 flex items-center justify-center">
-								<Icons.List />
-							</div>
-						</NavLink>
-						{/* Drafts Navigation */}
-						<NavLink
-							to="/drafts"
-							data-tooltip-id="sidebar-tooltip"
-							data-tooltip-content="Drafts"
-							className={({ isActive }) =>
-								`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
-									isActive
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
-										: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`
-							}
-						>
-							<div className="w-6 h-6 flex items-center justify-center">
-								<Icons.Draft />
-							</div>
-						</NavLink>
-						{/* Milestones Navigation */}
-						<NavLink
-							to="/milestones"
-							data-tooltip-id="sidebar-tooltip"
-							data-tooltip-content="Milestones"
-							className={({ isActive }) =>
-								`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
-									isActive
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
-										: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`
-							}
-						>
-							<div className="w-6 h-6 flex items-center justify-center">
-								<Icons.Milestone />
-							</div>
-						</NavLink>
-						{/* Statistics Navigation */}
-						<NavLink
-							to="/statistics"
-							data-tooltip-id="sidebar-tooltip"
-							data-tooltip-content="Statistics"
-							className={({ isActive }) =>
-								`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${
-									isActive
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
-										: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`
-							}
-						>
-							<div className="w-6 h-6 flex items-center justify-center">
-								<Icons.Statistics />
-							</div>
-						</NavLink>
+				{isCollapsed && !tasksOnly && (
+					<div className="px-2 space-y-2">
 						<button
 							onClick={() => {
 								setIsCollapsed(false);

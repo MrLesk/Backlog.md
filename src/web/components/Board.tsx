@@ -9,6 +9,7 @@ import { getPriorityOptions, normalizePriorityValue } from '../../utils/priority
 import { getProjectValues, matchesProjectFilter } from '../../utils/project-config';
 import { getTaskTypeValues, matchesTaskTypeFilter } from '../../utils/task-type-config';
 import { resolveTaskById } from '../../utils/task-id';
+import { useBrowserAccess } from '../contexts/BrowserAccessContext';
 import TaskColumn from './TaskColumn';
 import { BoardLoadingSkeleton } from './BoardLoadingSkeleton';
 import CleanupModal from './CleanupModal';
@@ -81,6 +82,7 @@ const Board: React.FC<BoardProps> = ({
   hideEmptyColumns = false,
   dateFormat,
 }) => {
+  const { canWrite } = useBrowserAccess();
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
@@ -409,19 +411,6 @@ const Board: React.FC<BoardProps> = ({
     }
   };
 
-  const handleTaskUpdate = async (taskId: string, updates: Partial<Task>) => {
-    try {
-      await apiClient.updateTask(taskId, updates);
-      // Refresh data to reflect the changes
-      if (onRefreshData) {
-        await onRefreshData();
-      }
-      setUpdateError(null);
-    } catch (err) {
-      setUpdateError(err instanceof Error ? err.message : 'Failed to update task');
-    }
-  };
-
   const handleTaskReorder = async (payload: ReorderTaskPayload) => {
     try {
       const requestResolution = resolveTaskById(tasks, payload.taskId);
@@ -604,6 +593,7 @@ const Board: React.FC<BoardProps> = ({
   // A card hidden by a filter or a collapsed lane is no longer part of what the user sees, so it
   // must not ride along in a batch move. Pruning here keeps the selection equal to the visible cards.
   useEffect(() => {
+    if (!canWrite) return;
     const visibleIds = new Set(filteredTasks.map((task) => task.id));
     if (laneMode === 'milestone') {
       for (const lane of lanes) {
@@ -621,14 +611,19 @@ const Board: React.FC<BoardProps> = ({
     });
     setSelectionAnchorId((previous) => (previous && visibleIds.has(previous) ? previous : null));
     // biome-ignore lint/correctness/useExhaustiveDependencies: isLaneCollapsed is a plain render-scope helper; its inputs are listed.
-  }, [filteredTasks, laneMode, lanes, displayTasksByLane, collapsedLanes, milestoneFilter, canonicalMilestoneFilter]);
+  }, [canWrite, filteredTasks, laneMode, lanes, displayTasksByLane, collapsedLanes, milestoneFilter, canonicalMilestoneFilter]);
 
   // Dynamic layout using flexbox:
   // - Columns are flex items with equal growth (flex-1) to divide space evenly
   // - A minimum width keeps columns readable; beyond available space, container scrolls horizontally
   // - Works uniformly for any number of columns without per-count conditionals
 
-  const selectionProps = {
+  const columnActions = canWrite ? {
+    onTaskReorder: handleTaskReorder,
+    dragSourceStatus,
+    dragSourceLane,
+    onDragStart: handleColumnDragStart,
+    onDragEnd: handleColumnDragEnd,
     selectedTaskIds,
     selectionAnchorId,
     onToggleTaskSelection: toggleTaskSelection,
@@ -636,7 +631,25 @@ const Board: React.FC<BoardProps> = ({
     onBatchMove: handleBatchMove,
     isSelectionDragging,
     onSelectionDragChange: setIsSelectionDragging,
-  };
+  } : undefined;
+  const openCleanup = canWrite ? () => setShowCleanupModal(true) : undefined;
+
+  const renderColumn = (status: string, laneKey: string, targetMilestone?: string | null) => (
+    <TaskColumn
+      title={status}
+      isTerminal={status === terminalStatus}
+      tasks={getTasksForLane(laneKey, status)}
+      onEditTask={onEditTask}
+      laneId={laneKey}
+      targetMilestone={targetMilestone}
+      priorityOrder={availablePriorities}
+      availableTypes={typeOptions}
+      availableProjects={projectOptions}
+      dateFormat={dateFormat}
+      onCleanup={status === terminalStatus ? openCleanup : undefined}
+      {...columnActions}
+    />
+  );
 
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: Escape already clears the selection for keyboard users.
@@ -654,12 +667,14 @@ const Board: React.FC<BoardProps> = ({
       <div className="mb-6 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 transition-colors duration-200">Kanban Board</h2>
-          <button
-            className="inline-flex items-center px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-blue-500 dark:focus:ring-offset-gray-800 transition-colors duration-200"
-            onClick={onNewTask}
-          >
-            + New Task
-          </button>
+          {canWrite && (
+            <button
+              className="inline-flex items-center px-4 py-2 bg-blue-500 dark:bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-blue-500 dark:focus:ring-offset-gray-800 transition-colors duration-200"
+              onClick={onNewTask}
+            >
+              + New Task
+            </button>
+          )}
         </div>
         {selectedTaskIds.length > 0 && (
           <div
@@ -872,26 +887,7 @@ const Board: React.FC<BoardProps> = ({
                     <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${visibleStatuses.length}, minmax(0, 1fr))` }}>
                       {visibleStatuses.map((status) => (
                         <div key={`${lane.key}-${status}`} className="min-w-0">
-                          <TaskColumn
-                            title={status}
-                            isTerminal={status === terminalStatus}
-                            tasks={getTasksForLane(lane.key, status)}
-                            onTaskUpdate={handleTaskUpdate}
-                            onEditTask={onEditTask}
-                            onTaskReorder={handleTaskReorder}
-                            dragSourceStatus={dragSourceStatus}
-                            dragSourceLane={dragSourceLane}
-                            laneId={lane.key}
-                            targetMilestone={lane.milestone ?? null}
-                            priorityOrder={availablePriorities}
-                            availableTypes={typeOptions}
-                            availableProjects={projectOptions}
-                            dateFormat={dateFormat}
-                            onDragStart={handleColumnDragStart}
-                            onDragEnd={handleColumnDragEnd}
-                            onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
-                            {...selectionProps}
-                          />
+                          {renderColumn(status, lane.key, lane.milestone ?? null)}
                         </div>
                       ))}
                     </div>
@@ -906,38 +902,21 @@ const Board: React.FC<BoardProps> = ({
           <div className="flex flex-row flex-nowrap gap-4 w-full">
             {visibleStatuses.map((status) => (
               <div key={status} className="flex-1 min-w-[16rem]">
-                <TaskColumn
-                  title={status}
-                  isTerminal={status === terminalStatus}
-                  tasks={getTasksForLane(DEFAULT_LANE_KEY, status)}
-                  onTaskUpdate={handleTaskUpdate}
-                  onEditTask={onEditTask}
-                  onTaskReorder={handleTaskReorder}
-                  dragSourceStatus={dragSourceStatus}
-                  dragSourceLane={dragSourceLane}
-                  laneId={DEFAULT_LANE_KEY}
-                  priorityOrder={availablePriorities}
-                  availableTypes={typeOptions}
-                  availableProjects={projectOptions}
-                  dateFormat={dateFormat}
-                  onDragStart={handleColumnDragStart}
-                  onDragEnd={handleColumnDragEnd}
-                  onCleanup={status === terminalStatus ? () => setShowCleanupModal(true) : undefined}
-                  {...selectionProps}
-                />
+                {renderColumn(status, DEFAULT_LANE_KEY)}
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Cleanup Modal */}
-      <CleanupModal
-        isOpen={showCleanupModal}
-        onClose={() => setShowCleanupModal(false)}
-        onSuccess={handleCleanupSuccess}
-        dateFormat={dateFormat}
-      />
+      {canWrite && (
+        <CleanupModal
+          isOpen={showCleanupModal}
+          onClose={() => setShowCleanupModal(false)}
+          onSuccess={handleCleanupSuccess}
+          dateFormat={dateFormat}
+        />
+      )}
 
       {/* Cleanup Success Toast */}
       {cleanupSuccessMessage && (

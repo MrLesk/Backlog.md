@@ -36,7 +36,7 @@ const createTask = (dates: Pick<Task, "createdDate" | "updatedDate">): Task => (
 });
 
 const renderCard = (task: Task, dateFormat?: string): Element => {
-	const html = renderToString(<TaskCard task={task} onUpdate={() => {}} onEdit={() => {}} dateFormat={dateFormat} />);
+	const html = renderToString(<TaskCard task={task} onEdit={() => {}} dateFormat={dateFormat} />);
 	const card = JSDOM.fragment(html).querySelector("[role='button']");
 	if (!card) throw new Error("The card did not render");
 	return card;

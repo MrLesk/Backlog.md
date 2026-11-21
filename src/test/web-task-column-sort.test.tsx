@@ -41,7 +41,6 @@ const renderTaskColumn = (
 			<TaskColumn
 				title={options.title ?? "To Do"}
 				tasks={tasks}
-				onTaskUpdate={() => {}}
 				onEditTask={() => {}}
 				onTaskReorder={onTaskReorder}
 				onCleanup={options.onCleanup}

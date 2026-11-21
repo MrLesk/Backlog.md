@@ -1,6 +1,6 @@
 import { assertDecisionEditorStructure, DECISION_SECTION_KEYS, getDecisionSections, stripDecisionSectionMarkers } from '../../markdown/structured-sections';
 import { useState, useEffect, memo } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiClient, isAmbiguousIdConflict } from '../lib/api';
 import MDEditor from '@uiw/react-md-editor';
 import MermaidMarkdown from './MermaidMarkdown';
@@ -9,6 +9,7 @@ import AmbiguousIdNotice from './AmbiguousIdNotice';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { SuccessToast } from './SuccessToast';
 import { useTheme } from '../contexts/ThemeContext';
+import { useBrowserAccess } from "../contexts/BrowserAccessContext";
 import { sanitizeUrlTitle } from '../utils/urlHelpers';
 import StoredDate from './StoredDate';
 import { decisionIdKey } from '../../utils/decision-id';
@@ -80,6 +81,8 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 	const { id, title } = useParams<{ id: string; title: string }>();
 	const navigate = useNavigate();
 	const [searchParams, setSearchParams] = useSearchParams();
+	const { canWrite } = useBrowserAccess();
+	const isNewDecision = id === "new";
 	const [decision, setDecision] = useState<Decision | null>(null);
 	const [content, setContent] = useState<string>('');
 	const [originalContent, setOriginalContent] = useState<string>('');
@@ -90,18 +93,17 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [editRequested, setEditRequested] = useState(false);
 	const [error, setError] = useState<Error | null>(null);
-	const [isNewDecision, setIsNewDecision] = useState(false);
 	const [showSaveSuccess, setShowSaveSuccess] = useState(false);
 	// An archived decision is read-only: it shows the Archived label and no Archive button.
-	const routeIdentity = id && id !== 'new' ? decisionIdKey(id) : null;
+	const routeIdentity = id && !isNewDecision ? decisionIdKey(id) : null;
 	const currentDecision = decision && routeIdentity && decisionIdKey(decision.id) === routeIdentity ? decision : null;
 	const isArchived = currentDecision?.archived === true;
-	// The editor opens on request (the Edit button, `?edit=true` in the URL, the new page), but never
-	// for an archived decision: the request can come before or after the record has loaded.
-	const isEditing = editRequested && !isArchived;
+	const canEdit = canWrite && !isArchived;
+	const isEditing = canEdit && editRequested;
+	const archiveRecord = canEdit && !isEditing && !isLoading ? currentDecision : null;
 	const { archive, isArchiving, archiveError, dismissArchiveError } = useRecordArchive(
 		'decision',
-		currentDecision && !isLoading && !isNewDecision ? { id: currentDecision.id, title: currentDecision.title } : null,
+		archiveRecord,
 		routeIdentity,
 		onRefreshData,
 	);
@@ -109,9 +111,9 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 	useEffect(() => {
 		let active = true;
 		setSaveError(null);
-		if (id === 'new') {
+		if (isNewDecision) {
+			if (!canWrite) return;
 			// Handle new decision creation
-			setIsNewDecision(true);
 			setEditRequested(true);
 			setIsLoading(false);
 			// Creating is unrelated to whatever failed to load before, so clear any load error.
@@ -123,24 +125,23 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 			setContent('');
 			setOriginalContent('');
 		} else if (id) {
-			setIsNewDecision(false);
 			setEditRequested(false); // Ensure we start in preview mode for existing decisions
 			void loadDecisionContent(() => active);
 		}
 		return () => { active = false; };
-	}, [id, decisions]);
+	}, [id, decisions, isNewDecision, canWrite]);
 
 	// Check for edit query parameter to start in edit mode
 	useEffect(() => {
 		if (searchParams.get('edit') === 'true') {
-			setEditRequested(true);
+			setEditRequested(canWrite);
 			// Remove the edit parameter from URL
 			setSearchParams(params => {
 				params.delete('edit');
 				return params;
 			});
 		}
-	}, [searchParams, setSearchParams]);
+	}, [searchParams, setSearchParams, canWrite]);
 
 	const loadDecisionContent = async (isCurrent: () => boolean) => {
 		try {
@@ -216,7 +217,6 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 				setTimeout(() => setShowSaveSuccess(false), 4000);
 				// Exit edit mode and navigate to the new decision
 				setEditRequested(false);
-				setIsNewDecision(false);
 				const newId = stripIdPrefix(decision.id);
 				navigate(`/decisions/${newId}/${sanitizeUrlTitle(decisionTitle)}`);
 			} else {
@@ -248,10 +248,6 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 		}
 	};
 
-	const handleEdit = () => {
-		setEditRequested(true);
-	};
-
 	const handleCancelEdit = () => {
 		if (isNewDecision) {
 			// Navigate back for new decisions
@@ -276,7 +272,9 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 		return colors[status.toLowerCase() as keyof typeof colors] || 'bg-gray-50 text-gray-700 border-gray-200';
 	};
 
-	if (!id || (id !== 'new' && !routeIdentity)) {
+	if (isNewDecision && !canWrite) return <Navigate to="/decisions" replace />;
+
+	if (!routeIdentity && !isNewDecision) {
 		return (
 			<div className="flex-1 flex items-center justify-center p-8">
 				<div className="text-center">
@@ -361,21 +359,7 @@ export default function DecisionDetail({ decisions, onRefreshData, dateFormat }:
 							</div>
 						</div>
 						<div className="flex items-center space-x-3">
-							{/* Temporarily hidden - decisions editing not ready */}
-								{false ? (
-									<button
-										onClick={handleEdit}
-										className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
-									>
-										<svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-										</svg>
-										Edit
-								</button>
-							) : null}
-							{currentDecision && !isNewDecision && !isEditing && !isArchived && (
-								<ArchiveButton onClick={archive} disabled={isArchiving} />
-							)}
+							{archiveRecord && <ArchiveButton onClick={archive} disabled={isArchiving} />}
 							{isEditing && (
 								<div className="flex items-center space-x-2">
 										<button

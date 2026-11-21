@@ -8,7 +8,6 @@ import TaskTypeBadge from './TaskTypeBadge';
 
 interface TaskCardProps {
   task: Task;
-  onUpdate: (taskId: string, updates: Partial<Task>) => void;
   onEdit: (task: Task) => void;
   onDragStart?: () => void;
   onDragEnd?: () => void;
@@ -61,7 +60,7 @@ const buildSelectionDragImage = (source: HTMLElement, count: number): HTMLElemen
 
 const TaskCard: React.FC<TaskCardProps> = ({
   task,
-  onEdit,
+  onEdit: onOpenTask,
   onDragStart,
   onDragEnd,
   status,
@@ -159,6 +158,11 @@ const TaskCard: React.FC<TaskCardProps> = ({
   };
 
   const priorityBadge = getPriorityBadge(task.priority);
+  const dragEvents = onDragStart ? {
+    draggable: !isFromOtherBranch,
+    onDragStart: handleDragStart,
+    onDragEnd: handleDragEnd,
+  } : { draggable: false };
 
   return (
     <div className="relative">
@@ -188,21 +192,19 @@ const TaskCard: React.FC<TaskCardProps> = ({
             : ''
         }`}
         aria-selected={isSelected}
-        draggable={!isFromOtherBranch}
 		role="button"
 		tabIndex={0}
 		aria-label={accessibleLabel}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
+        {...dragEvents}
         onClick={(event) => {
-          // Ctrl/Cmd and Shift belong to the board selection, so they must not open the editor.
+          // Ctrl/Cmd and Shift select cards on the editable board.
           if (onSelect && !isFromOtherBranch && (event.ctrlKey || event.metaKey || event.shiftKey)) {
             event.preventDefault();
             event.stopPropagation();
             onSelect({ shiftKey: event.shiftKey });
             return;
           }
-          onEdit(task);
+          onOpenTask(task);
         }}
 		onKeyDown={(event) => {
 			if (event.key === 'Enter' || event.key === ' ') {
@@ -211,7 +213,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
 					onSelect({ shiftKey: event.shiftKey });
 					return;
 				}
-				onEdit(task);
+				onOpenTask(task);
 			}
 		}}
       >

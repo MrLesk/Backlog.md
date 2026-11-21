@@ -9,6 +9,9 @@ import {
   depthInDirection,
   nodesInDirection,
 } from '../../utils/dependency-graph.ts';
+import { useBrowserAccess } from '../contexts/BrowserAccessContext';
+import { useTaskIdIndex } from '../contexts/TaskIdIndexContext';
+import { resolveTaskReference } from '../utils/task-id-links';
 import { createUrlPath } from '../utils/urlHelpers';
 
 /**
@@ -67,6 +70,9 @@ const REPEAT_LABELS: Record<NonNullable<DependencyTreeNode['repeat']>, string> =
 const NodeRow: React.FC<{ entry: DependencyTreeNode; direction: DependencyDirection }> = ({ entry, direction }) => {
   const { node } = entry;
   const taskHref = useTaskHref();
+  const { canWrite } = useBrowserAccess();
+  const tasks = useTaskIdIndex();
+  const canOpen = node.state === 'resolved' && (canWrite || Boolean(resolveTaskReference(tasks, node.id)));
   const label = `${node.id}${node.title ? ` - ${node.title}` : ''}`;
 
   return (
@@ -76,7 +82,7 @@ const NodeRow: React.FC<{ entry: DependencyTreeNode; direction: DependencyDirect
       data-dependency-direction={direction}
       data-dependency-state={node.state}
     >
-      {node.state === 'resolved' ? (
+      {canOpen ? (
         <Link
           to={taskHref(node.id, node.title)}
           className="min-w-0 break-words text-sm text-gray-900 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-100"

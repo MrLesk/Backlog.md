@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
+import { useBrowserAccess } from "../contexts/BrowserAccessContext";
 import { apiClient } from "../lib/api";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey, summarizeMilestoneTasks } from "../utils/milestones";
 import { type Milestone, type MilestoneBucket, type Task } from "../../types";
@@ -30,6 +31,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	onRefreshData,
 	dateFormat,
 }) => {
+	const { canWrite } = useBrowserAccess();
 	const [newMilestone, setNewMilestone] = useState("");
 	const [newMilestoneDueDate, setNewMilestoneDueDate] = useState("");
 	const [error, setError] = useState<string | null>(null);
@@ -181,6 +183,8 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 
 		setDraggedTask(null);
 	}, [draggedTask, onRefreshData]);
+
+	const taskDrag = canWrite ? { start: handleDragStart, end: handleDragEnd } : undefined;
 
 	const handleNewMilestoneChange = (value: string) => {
 		setNewMilestone(value);
@@ -440,6 +444,53 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 
 	const safeIdSegment = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "-");
 
+	const renderMilestoneWriteActions = (bucket: MilestoneBucket) => {
+		if (!canWrite) return null;
+
+		const isArchiving = archivingMilestoneKey === bucket.key;
+		const isSavingMilestone = savingMilestoneKey === bucket.key;
+		const isRemoving = removingMilestoneKey === bucket.key;
+		const isBusy = isArchiving || isSavingMilestone || isRemoving;
+
+		return (
+			<>
+				<button
+					type="button"
+					onClick={() => openEditModal(bucket)}
+					disabled={isBusy}
+					className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-60"
+				>
+					<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+					</svg>
+					{isSavingMilestone ? "Saving..." : "Edit"}
+				</button>
+				<button
+					type="button"
+					onClick={() => openRemoveModal(bucket)}
+					disabled={isBusy}
+					className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-red-200 dark:border-red-800 text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors disabled:opacity-60"
+				>
+					<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m2 0H7m3 0V5a2 2 0 012-2h0a2 2 0 012 2v2" />
+					</svg>
+					{isRemoving ? "Removing..." : "Remove"}
+				</button>
+				<button
+					type="button"
+					onClick={() => handleArchiveMilestone(bucket)}
+					disabled={isBusy}
+					className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors disabled:opacity-60"
+				>
+					<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+					</svg>
+					{isArchiving ? "Archiving..." : "Archive"}
+				</button>
+			</>
+		);
+	};
+
 	// Render a milestone card (drop target)
 	const renderMilestoneCard = (bucket: MilestoneBucket, isEmpty: boolean) => {
 		const progress = bucket.progress;
@@ -449,9 +500,6 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		const sortedTasks = getSortedTasks(bucket.tasks);
 		const isDropTarget = dropTargetKey === bucket.key;
 		const isDragging = draggedTask !== null;
-		const isArchiving = archivingMilestoneKey === bucket.key;
-		const isSavingMilestone = savingMilestoneKey === bucket.key;
-		const isRemoving = removingMilestoneKey === bucket.key;
 		const milestoneEntity = allMilestoneEntities.find(
 			(milestone) => milestoneKey(milestone.id) === milestoneKey(bucket.milestone ?? ""),
 		);
@@ -466,9 +514,9 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 						? "border-dashed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
 						: "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
 				}`}
-				onDragOver={(e) => handleDragOver(e, bucket.key)}
-				onDragLeave={handleDragLeave}
-				onDrop={(e) => handleDrop(e, bucket.milestone)}
+				onDragOver={canWrite ? (e) => handleDragOver(e, bucket.key) : undefined}
+				onDragLeave={canWrite ? handleDragLeave : undefined}
+				onDrop={canWrite ? (e) => handleDrop(e, bucket.milestone) : undefined}
 			>
 				<div className="px-5 py-4">
 					{/* Header row */}
@@ -541,39 +589,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 								</svg>
 								List
 							</Link>
-							<button
-								type="button"
-								onClick={() => openEditModal(bucket)}
-								disabled={isArchiving || isSavingMilestone || isRemoving}
-								className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-60"
-							>
-								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-								</svg>
-								{isSavingMilestone ? "Saving..." : "Edit"}
-							</button>
-							<button
-								type="button"
-								onClick={() => openRemoveModal(bucket)}
-								disabled={isArchiving || isSavingMilestone || isRemoving}
-								className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-red-200 dark:border-red-800 text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors disabled:opacity-60"
-							>
-								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m2 0H7m3 0V5a2 2 0 012-2h0a2 2 0 012 2v2" />
-								</svg>
-								{isRemoving ? "Removing..." : "Remove"}
-							</button>
-							<button
-								type="button"
-								onClick={() => handleArchiveMilestone(bucket)}
-								disabled={isArchiving || isSavingMilestone || isRemoving}
-								className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors disabled:opacity-60"
-							>
-								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-								</svg>
-								{isArchiving ? "Archiving..." : "Archive"}
-							</button>
+							{renderMilestoneWriteActions(bucket)}
 						</div>
 						<button
 							type="button"
@@ -602,8 +618,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 											statusBadgeClass={getStatusBadgeClass(task.status)}
 											priorityBadgeClass={getPriorityBadgeClass(task.priority)}
 											onEditTask={onEditTask}
-											onDragStart={handleDragStart}
-											onDragEnd={handleDragEnd}
+											drag={taskDrag}
 										/>
 									);
 								})}
@@ -685,8 +700,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 													statusBadgeClass={getStatusBadgeClass(task.status)}
 													priorityBadgeClass={getPriorityBadgeClass(task.priority)}
 													onEditTask={onEditTask}
-													onDragStart={handleDragStart}
-													onDragEnd={handleDragEnd}
+													drag={taskDrag}
 												/>
 											))}
 										</div>
@@ -707,10 +721,11 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 										)}
 									</div>
 
-									{/* Hint */}
-									<p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
-										Drag tasks to a milestone below to assign them
-									</p>
+									{taskDrag && (
+										<p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
+											Drag tasks to a milestone below to assign them
+										</p>
+									)}
 								</>
 							) : (
 								<p className="rounded-md border border-dashed border-gray-300 dark:border-gray-600 bg-white/70 dark:bg-gray-800/50 px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
@@ -786,13 +801,15 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							{error}
 						</span>
 					)}
-					<button
-						type="button"
-						onClick={() => setShowAddModal(true)}
-						className="inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-offset-gray-900 transition-colors"
-					>
-						+ Add milestone
-					</button>
+					{canWrite && (
+						<button
+							type="button"
+							onClick={() => setShowAddModal(true)}
+							className="inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-offset-gray-900 transition-colors"
+						>
+							+ Add milestone
+						</button>
+					)}
 				</div>
 			</div>
 
@@ -862,12 +879,14 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 					<svg className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
 					</svg>
-					<p className="text-gray-500 dark:text-gray-400">No milestones yet. Create one to start organizing your tasks.</p>
+					<p className="text-gray-500 dark:text-gray-400">
+						No milestones yet.{canWrite && " Create one to start organizing your tasks."}
+					</p>
 				</div>
 			)}
 
 			{/* Add modal */}
-			<Modal isOpen={showAddModal} onClose={closeAddModal} title="Add milestone" maxWidthClass="max-w-md">
+			<Modal isOpen={canWrite && showAddModal} onClose={closeAddModal} title="Add milestone" maxWidthClass="max-w-md">
 				<form onSubmit={handleAddMilestone} className="space-y-4">
 					<div className="space-y-2">
 						<label className="text-sm font-medium text-gray-900 dark:text-gray-100">Milestone name</label>
@@ -913,7 +932,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 			</Modal>
 
 			{/* Edit modal */}
-			<Modal isOpen={editingBucket !== null} onClose={closeEditModal} title="Edit milestone" maxWidthClass="max-w-md">
+			<Modal isOpen={canWrite && editingBucket !== null} onClose={closeEditModal} title="Edit milestone" maxWidthClass="max-w-md">
 				<form onSubmit={handleUpdateMilestone} className="space-y-4">
 					<div className="space-y-2">
 						<label htmlFor="edit-milestone-name" className="text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -964,7 +983,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 			</Modal>
 
 			{/* Remove modal */}
-			<Modal isOpen={removingBucket !== null} onClose={closeRemoveModal} title="Remove milestone" maxWidthClass="max-w-md">
+			<Modal isOpen={canWrite && removingBucket !== null} onClose={closeRemoveModal} title="Remove milestone" maxWidthClass="max-w-md">
 				<div className="space-y-4">
 					<p className="text-sm text-gray-600 dark:text-gray-300">
 						Remove milestone &quot;{removingBucket?.label ?? ""}&quot; and choose what happens to its tasks.

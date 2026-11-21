@@ -1,6 +1,8 @@
+import { DEFAULT_STATUSES } from "../../constants/index.ts";
 import type { DuplicateRepairPlan, DuplicateRepairResult } from "../../core/duplicate-task-repair.ts";
-import type { TaskStatistics } from "../../core/statistics.ts";
-import type { TaskDetail } from "../../core/task-detail.ts";
+import { SearchIndex } from "../../core/search-service.ts";
+import { getTaskStatistics, type TaskStatistics } from "../../core/statistics.ts";
+import { type TaskDetail, toTaskDetail } from "../../core/task-detail.ts";
 import type {
 	BacklogConfig,
 	Decision,
@@ -13,6 +15,13 @@ import type {
 	Task,
 	TaskStatus,
 } from "../../types/index.ts";
+import { findDecisionById } from "../../utils/decision-id.ts";
+import { findDocumentById } from "../../utils/document-id.ts";
+import { isAmbiguousIdError } from "../../utils/entity-id.ts";
+import { formatValidPriorityValues, resolvePriorityValue } from "../../utils/priority-config.ts";
+import { resolveConfiguredStatuses } from "../../utils/status-filter.ts";
+import { resolveTaskById } from "../../utils/task-id.ts";
+import { type BrowserSnapshot, browserSnapshot } from "./browser-snapshot.ts";
 
 const API_BASE = "/api";
 
@@ -134,6 +143,75 @@ export function isAmbiguousIdConflict(error: unknown): error is ApiError {
 	return error instanceof ApiError && error.status === 409;
 }
 
+function requirePublishedRecord<T>(find: () => T | null, label: string): T {
+	let record: T | null;
+	try {
+		record = find();
+	} catch (error) {
+		if (isAmbiguousIdError(error)) throw new ApiError(error.message, 409);
+		throw error;
+	}
+	if (record === null) throw new ApiError(`${label} not found`, 404);
+	return record;
+}
+
+interface BrowserSearchOptions {
+	query?: string;
+	types?: SearchResultType[];
+	status?: string | string[];
+	excludeStatus?: string | string[];
+	priority?: SearchPriorityFilter | SearchPriorityFilter[];
+	assignee?: string | string[];
+	labels?: string[];
+	modifiedFiles?: string[];
+	limit?: number;
+}
+
+type BrowserStatistics = Omit<TaskStatistics, "statusCounts" | "priorityCounts"> & {
+	statusCounts: Record<string, number>;
+	priorityCounts: Record<string, number>;
+};
+
+function searchValues(values: string | string[] = []): string[] {
+	return Array.isArray(values) ? values : [values];
+}
+
+function trimmedSearchValues(values?: string | string[]): string[] {
+	return searchValues(values)
+		.map((value) => value.trim())
+		.filter(Boolean);
+}
+
+function appendSearchValues(params: URLSearchParams, name: string, values: string[]): void {
+	for (const value of values) {
+		params.append(name, value);
+	}
+}
+
+function publishedStatuses(config: BacklogConfig): string[] {
+	return config.statuses.length ? config.statuses : [...DEFAULT_STATUSES];
+}
+
+function publishedSearchFilters(
+	filters: Omit<BrowserSearchOptions, "query" | "types" | "limit">,
+	config: BacklogConfig,
+) {
+	const invalidPriority = searchValues(filters.priority).find((value) => !resolvePriorityValue(value, config));
+	if (invalidPriority) {
+		throw new ApiError(`Unsupported priority '${invalidPriority}'. Use ${formatValidPriorityValues(config)}.`, 400);
+	}
+
+	const excluded = trimmedSearchValues(filters.excludeStatus).flatMap((status) => status.split(","));
+	const { values, invalid, validStatuses } = resolveConfiguredStatuses(excluded, publishedStatuses(config));
+	if (invalid.length > 0) {
+		throw new ApiError(
+			`Invalid excludeStatus filter: ${invalid.join(", ")}. Valid statuses are: ${validStatuses.join(", ")}.`,
+			400,
+		);
+	}
+	return { ...filters, excludeStatus: values };
+}
+
 // Request configuration interface
 interface RequestConfig {
 	retries?: number;
@@ -148,10 +226,26 @@ const DEFAULT_CONFIG: RequestConfig = {
 };
 
 export class ApiClient {
-	private config: RequestConfig;
+	private readonly config: RequestConfig;
+	private readonly snapshotSearch?: SearchIndex;
 
-	constructor(config: RequestConfig = {}) {
+	constructor(
+		config: RequestConfig = {},
+		private readonly snapshot?: BrowserSnapshot,
+	) {
 		this.config = { ...DEFAULT_CONFIG, ...config };
+		if (snapshot) {
+			this.snapshotSearch = new SearchIndex({
+				tasks: snapshot.tasks,
+				documents: snapshot.docs,
+				decisions: snapshot.decisions,
+			});
+		}
+	}
+
+	private async fetchLive(url: string, options?: RequestInit): Promise<Response> {
+		if (this.snapshot) throw new ApiError("This operation is unavailable in a static export.", 405);
+		return fetch(url, options);
 	}
 
 	// Enhanced fetch with retry logic and better error handling
@@ -166,16 +260,14 @@ export class ApiClient {
 				const controller = new AbortController();
 				const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-				const response = await fetch(url, {
+				const response = await this.fetchLive(url, {
 					...options,
 					signal: controller.signal,
 					headers: {
 						"Content-Type": "application/json",
 						...options.headers,
 					},
-				});
-
-				clearTimeout(timeoutId);
+				}).finally(() => clearTimeout(timeoutId));
 
 				if (!response.ok) {
 					let errorData: unknown = null;
@@ -256,80 +348,50 @@ export class ApiClient {
 		return this.fetchJson<Task[]>(url);
 	}
 
-	async search(
-		options: {
-			query?: string;
-			types?: SearchResultType[];
-			status?: string | string[];
-			excludeStatus?: string | string[];
-			priority?: SearchPriorityFilter | SearchPriorityFilter[];
-			assignee?: string | string[];
-			labels?: string[];
-			modifiedFiles?: string[];
-			limit?: number;
-		} = {},
-	): Promise<SearchResult[]> {
-		const params = new URLSearchParams();
-		if (options.query) {
-			params.set("query", options.query);
-		}
-		if (options.types && options.types.length > 0) {
-			for (const type of options.types) {
-				params.append("type", type);
-			}
-		}
-		if (options.status) {
-			const statuses = Array.isArray(options.status) ? options.status : [options.status];
-			for (const status of statuses) {
-				params.append("status", status);
-			}
-		}
-		if (options.excludeStatus) {
-			const statuses = Array.isArray(options.excludeStatus) ? options.excludeStatus : [options.excludeStatus];
-			for (const status of statuses) {
-				if (status && status.trim().length > 0) {
-					params.append("excludeStatus", status.trim());
-				}
-			}
-		}
-		if (options.priority) {
-			const priorities = Array.isArray(options.priority) ? options.priority : [options.priority];
-			for (const priority of priorities) {
-				params.append("priority", priority);
-			}
-		}
-		if (options.assignee) {
-			const assignees = Array.isArray(options.assignee) ? options.assignee : [options.assignee];
-			for (const assignee of assignees) {
-				if (assignee && assignee.trim().length > 0) {
-					params.append("assignee", assignee.trim());
-				}
-			}
-		}
-		if (options.labels) {
-			for (const label of options.labels) {
-				if (label && label.trim().length > 0) {
-					params.append("label", label.trim());
-				}
-			}
-		}
-		if (options.modifiedFiles) {
-			for (const file of options.modifiedFiles) {
-				if (file && file.trim().length > 0) {
-					params.append("modifiedFile", file.trim());
-				}
-			}
-		}
-		if (options.limit !== undefined) {
-			params.set("limit", String(options.limit));
+	async search({ query, types, limit, ...filters }: BrowserSearchOptions = {}): Promise<SearchResult[]> {
+		if (this.snapshot && this.snapshotSearch) {
+			return this.snapshotSearch.search({
+				query,
+				types,
+				limit,
+				filters: publishedSearchFilters(filters, this.snapshot.config),
+			});
 		}
 
-		const url = `${API_BASE}/search${params.toString() ? `?${params.toString()}` : ""}`;
-		return this.fetchJson<SearchResult[]>(url);
+		const params = new URLSearchParams();
+		if (query) params.set("query", query);
+		appendSearchValues(params, "type", types ?? []);
+		appendSearchValues(params, "status", searchValues(filters.status));
+		appendSearchValues(params, "excludeStatus", trimmedSearchValues(filters.excludeStatus));
+		appendSearchValues(params, "priority", searchValues(filters.priority));
+		appendSearchValues(params, "assignee", trimmedSearchValues(filters.assignee));
+		appendSearchValues(params, "label", trimmedSearchValues(filters.labels));
+		appendSearchValues(params, "modifiedFile", trimmedSearchValues(filters.modifiedFiles));
+		if (limit !== undefined) params.set("limit", String(limit));
+
+		return this.fetchJson<SearchResult[]>(`${API_BASE}/search${params.size ? `?${params}` : ""}`);
 	}
 
 	/** Reads one task through the detail path, so the response already carries its dependency graph. */
 	async fetchTask(id: string): Promise<TaskDetail> {
+		if (this.snapshot) {
+			const { tasks, config, archivedDependencyStatuses } = this.snapshot;
+			const result = resolveTaskById(tasks, id);
+			switch (result.status) {
+				case "found":
+					return toTaskDetail(result.task, {
+						tasks,
+						archivedTasks: archivedDependencyStatuses,
+						statuses: config.statuses,
+					});
+				case "invalid":
+					throw new ApiError(`Invalid task ID: ${id}`, 400);
+				case "ambiguous":
+					throw new ApiError(`Task ID ${id} is ambiguous.`, 409);
+				case "not-found":
+					throw new ApiError(`Task ${id} not found`, 404);
+			}
+		}
 		return this.fetchJson<TaskDetail>(`${API_BASE}/task/${encodeURIComponent(id)}`);
 	}
 
@@ -421,7 +483,8 @@ export class ApiClient {
 	}
 
 	async fetchStatuses(): Promise<string[]> {
-		const response = await fetch(`${API_BASE}/statuses`);
+		if (this.snapshot) return publishedStatuses(this.snapshot.config);
+		const response = await this.fetchLive(`${API_BASE}/statuses`);
 		if (!response.ok) {
 			throw new Error("Failed to fetch statuses");
 		}
@@ -429,7 +492,8 @@ export class ApiClient {
 	}
 
 	async fetchConfig(): Promise<BacklogConfig> {
-		const response = await fetch(`${API_BASE}/config`);
+		if (this.snapshot) return this.snapshot.config;
+		const response = await this.fetchLive(`${API_BASE}/config`);
 		if (!response.ok) {
 			throw new Error("Failed to fetch config");
 		}
@@ -437,7 +501,7 @@ export class ApiClient {
 	}
 
 	async updateConfig(config: BacklogConfig): Promise<BacklogConfig> {
-		const response = await fetch(`${API_BASE}/config`, {
+		const response = await this.fetchLive(`${API_BASE}/config`, {
 			method: "PUT",
 			headers: {
 				"Content-Type": "application/json",
@@ -450,24 +514,12 @@ export class ApiClient {
 		return response.json();
 	}
 
-	async fetchDocs(): Promise<Document[]> {
-		const response = await fetch(`${API_BASE}/docs`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch documentation");
+	async fetchDoc(id: string): Promise<Document> {
+		const docs = this.snapshot?.docs;
+		if (docs) {
+			return requirePublishedRecord(() => findDocumentById(docs, id, (doc) => doc.path ?? doc.title), "Document");
 		}
-		return response.json();
-	}
-
-	async fetchDoc(filename: string): Promise<Document> {
-		const response = await fetch(`${API_BASE}/docs/${encodeURIComponent(filename)}`);
-		if (!response.ok) {
-			throw await toApiError(response, "Failed to fetch document");
-		}
-		return response.json();
-	}
-
-	async fetchDocument(id: string): Promise<Document> {
-		const response = await fetch(`${API_BASE}/doc/${encodeURIComponent(id)}`);
+		const response = await this.fetchLive(`${API_BASE}/docs/${encodeURIComponent(id)}`);
 		if (!response.ok) {
 			throw await toApiError(response, "Failed to fetch document");
 		}
@@ -483,7 +535,7 @@ export class ApiClient {
 			payload.path = path;
 		}
 
-		const response = await fetch(`${API_BASE}/docs/${encodeURIComponent(filename)}`, {
+		const response = await this.fetchLive(`${API_BASE}/docs/${encodeURIComponent(filename)}`, {
 			method: "PUT",
 			headers: {
 				"Content-Type": "application/json",
@@ -497,7 +549,7 @@ export class ApiClient {
 	}
 
 	async createDoc(filename: string, content: string, path?: string): Promise<Document & { success?: boolean }> {
-		const response = await fetch(`${API_BASE}/docs`, {
+		const response = await this.fetchLive(`${API_BASE}/docs`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
@@ -520,24 +572,15 @@ export class ApiClient {
 		await this.fetchWithoutRetry(`${API_BASE}/decisions/${encodeURIComponent(id)}/archive`, { method: "POST" });
 	}
 
-	async fetchDecisions(): Promise<Decision[]> {
-		const response = await fetch(`${API_BASE}/decisions`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch decisions");
-		}
-		return response.json();
-	}
-
 	async fetchDecision(id: string): Promise<Decision> {
-		const response = await fetch(`${API_BASE}/decisions/${encodeURIComponent(id)}`);
-		if (!response.ok) {
-			throw await toApiError(response, "Failed to fetch decision");
+		const decisions = this.snapshot?.decisions;
+		if (decisions) {
+			return requirePublishedRecord(
+				() => findDecisionById(decisions, id, (decision) => decision.path ?? decision.title),
+				"Decision",
+			);
 		}
-		return response.json();
-	}
-
-	async fetchDecisionData(id: string): Promise<Decision> {
-		const response = await fetch(`${API_BASE}/decision/${encodeURIComponent(id)}`);
+		const response = await this.fetchLive(`${API_BASE}/decisions/${encodeURIComponent(id)}`);
 		if (!response.ok) {
 			throw await toApiError(response, "Failed to fetch decision");
 		}
@@ -545,7 +588,7 @@ export class ApiClient {
 	}
 
 	async updateDecision(id: string, input: DecisionUpdateInput): Promise<void> {
-		const response = await fetch(`${API_BASE}/decisions/${encodeURIComponent(id)}`, {
+		const response = await this.fetchLive(`${API_BASE}/decisions/${encodeURIComponent(id)}`, {
 			method: "PUT",
 			headers: {
 				"Content-Type": "application/json",
@@ -558,7 +601,7 @@ export class ApiClient {
 	}
 
 	async createDecision(title: string): Promise<Decision> {
-		const response = await fetch(`${API_BASE}/decisions`, {
+		const response = await this.fetchLive(`${API_BASE}/decisions`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
@@ -572,7 +615,8 @@ export class ApiClient {
 	}
 
 	async fetchMilestones(): Promise<Milestone[]> {
-		const response = await fetch(`${API_BASE}/milestones`);
+		if (this.snapshot) return this.snapshot.milestones;
+		const response = await this.fetchLive(`${API_BASE}/milestones`);
 		if (!response.ok) {
 			throw new Error("Failed to fetch milestones");
 		}
@@ -580,23 +624,16 @@ export class ApiClient {
 	}
 
 	async fetchArchivedMilestones(): Promise<Milestone[]> {
-		const response = await fetch(`${API_BASE}/milestones/archived`);
+		if (this.snapshot) return [];
+		const response = await this.fetchLive(`${API_BASE}/milestones/archived`);
 		if (!response.ok) {
 			throw new Error("Failed to fetch archived milestones");
 		}
 		return response.json();
 	}
 
-	async fetchMilestone(id: string): Promise<Milestone> {
-		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}`);
-		if (!response.ok) {
-			throw new Error("Failed to fetch milestone");
-		}
-		return response.json();
-	}
-
 	async createMilestone(title: string, description?: string, dueDate?: string): Promise<Milestone> {
-		const response = await fetch(`${API_BASE}/milestones`, {
+		const response = await this.fetchLive(`${API_BASE}/milestones`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
@@ -615,7 +652,7 @@ export class ApiClient {
 		title: string,
 		dueDate?: string | null,
 	): Promise<{ success: boolean; milestone?: Milestone | null; message?: string }> {
-		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}`, {
+		const response = await this.fetchLive(`${API_BASE}/milestones/${encodeURIComponent(id)}`, {
 			method: "PUT",
 			headers: {
 				"Content-Type": "application/json",
@@ -633,7 +670,7 @@ export class ApiClient {
 		id: string,
 		options: { taskHandling?: "clear" | "keep" | "reassign"; reassignTo?: string } = {},
 	): Promise<{ success: boolean; message?: string }> {
-		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}`, {
+		const response = await this.fetchLive(`${API_BASE}/milestones/${encodeURIComponent(id)}`, {
 			method: "DELETE",
 			headers: {
 				"Content-Type": "application/json",
@@ -648,7 +685,7 @@ export class ApiClient {
 	}
 
 	async archiveMilestone(id: string): Promise<{ success: boolean; milestone?: Milestone | null }> {
-		const response = await fetch(`${API_BASE}/milestones/${encodeURIComponent(id)}/archive`, {
+		const response = await this.fetchLive(`${API_BASE}/milestones/${encodeURIComponent(id)}/archive`, {
 			method: "POST",
 		});
 		if (!response.ok) {
@@ -658,12 +695,20 @@ export class ApiClient {
 		return response.json();
 	}
 
-	async fetchStatistics(): Promise<
-		TaskStatistics & { statusCounts: Record<string, number>; priorityCounts: Record<string, number> }
-	> {
-		return this.fetchJson<
-			TaskStatistics & { statusCounts: Record<string, number>; priorityCounts: Record<string, number> }
-		>(`${API_BASE}/statistics`);
+	async fetchStatistics(): Promise<BrowserStatistics> {
+		if (this.snapshot) {
+			const { config, tasks, archivedDependencyStatuses } = this.snapshot;
+			const statistics = getTaskStatistics(tasks, [], publishedStatuses(config), config.priorities, [
+				...tasks,
+				...archivedDependencyStatuses,
+			]);
+			return {
+				...statistics,
+				statusCounts: Object.fromEntries(statistics.statusCounts),
+				priorityCounts: Object.fromEntries(statistics.priorityCounts),
+			};
+		}
+		return this.fetchJson<BrowserStatistics>(`${API_BASE}/statistics`);
 	}
 
 	async checkStatus(): Promise<InitializationStatus> {
@@ -703,4 +748,4 @@ export class ApiClient {
 	}
 }
 
-export const apiClient = new ApiClient();
+export const apiClient = new ApiClient({}, browserSnapshot);

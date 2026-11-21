@@ -164,15 +164,14 @@ describe("Web task type UI", () => {
 
 	it("shows distinct type badges on cards and no badge for untyped tasks", () => {
 		const bugHtml = renderToString(
-			<TaskCard task={createTask({ type: "bug" })} onUpdate={() => {}} onEdit={() => {}} />,
+			<TaskCard task={createTask({ type: "bug" })} onEdit={() => {}} />,
 		);
 		const featureHtml = renderToString(
-			<TaskCard task={createTask({ type: "feature" })} onUpdate={() => {}} onEdit={() => {}} />,
+			<TaskCard task={createTask({ type: "feature" })} onEdit={() => {}} />,
 		);
 		const customHtml = renderToString(
 			<TaskCard
 				task={createTask({ type: "Customer Request" })}
-				onUpdate={() => {}}
 				onEdit={() => {}}
 				availableTypes={["Bug", "Customer Request", "Docs"]}
 			/>,
@@ -180,16 +179,14 @@ describe("Web task type UI", () => {
 		const docsHtml = renderToString(
 			<TaskCard
 				task={createTask({ type: "Docs" })}
-				onUpdate={() => {}}
 				onEdit={() => {}}
 				availableTypes={["Bug", "Customer Request", "Docs"]}
 			/>,
 		);
-		const untypedHtml = renderToString(<TaskCard task={createTask()} onUpdate={() => {}} onEdit={() => {}} />);
+		const untypedHtml = renderToString(<TaskCard task={createTask()} onEdit={() => {}} />);
 		const datedHtml = renderToString(
 			<TaskCard
 				task={createTask({ dueDate: "2026-08-10" })}
-				onUpdate={() => {}}
 				onEdit={() => {}}
 				dateFormat="dd/mm/yyyy hh:mm"
 			/>,

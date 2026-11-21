@@ -7,8 +7,10 @@ interface MilestoneTaskRowProps {
 	statusBadgeClass: string;
 	priorityBadgeClass: string;
 	onEditTask: (task: Task) => void;
-	onDragStart: (event: React.DragEvent, task: Task) => void;
-	onDragEnd: (event: React.DragEvent) => void;
+	drag?: {
+		start: (event: React.DragEvent, task: Task) => void;
+		end: (event: React.DragEvent) => void;
+	};
 }
 
 const DragHandle = () => (
@@ -28,18 +30,17 @@ const MilestoneTaskRow: React.FC<MilestoneTaskRowProps> = ({
 	statusBadgeClass,
 	priorityBadgeClass,
 	onEditTask,
-	onDragStart,
-	onDragEnd,
+	drag,
 }) => (
 	<div
-		draggable
-		onDragStart={(event) => onDragStart(event, task)}
-		onDragEnd={onDragEnd}
+		draggable={drag ? true : undefined}
+		onDragStart={drag ? (event) => drag.start(event, task) : undefined}
+		onDragEnd={drag?.end}
 		onClick={() => onEditTask(task)}
 		className="group grid grid-cols-[auto_auto_1fr_auto_auto] gap-3 items-center px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer"
 	>
 		<div className="w-6 flex justify-center opacity-40 group-hover:opacity-100 transition-opacity">
-			<DragHandle />
+			{drag && <DragHandle />}
 		</div>
 
 		<div className={`w-24 text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap ${isDone ? "opacity-60" : ""}`}>

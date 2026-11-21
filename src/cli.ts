@@ -6146,7 +6146,7 @@ addHelpSchema(program.command("cleanup"), {
 	});
 
 // Browser command for web UI
-program
+const browserCmd = program
 	.command("browser")
 	.description("open browser interface (default host: 127.0.0.1; press Ctrl+C or Cmd+C to stop)")
 	.option("-p, --port <port>", "port to run server on")
@@ -6232,6 +6232,32 @@ program
 			process.on("SIGQUIT", () => void shutdown("SIGQUIT"));
 		} catch (err) {
 			reportCommandFailure("Failed to start browser interface", err);
+		}
+	});
+
+addHelpSchema(browserCmd.command("export <directory>"), {
+	reads: "The current checkout's Backlog.md project, excluding drafts and archived records",
+	required: [
+		{ name: "directory", type: "path", description: "Output directory, relative to the project root or absolute" },
+	],
+	optional: [{ name: "tasksOnly", type: "boolean", description: "Include only task records" }],
+	writes: "A read-only static site in the output directory",
+	output: "The exported directory. Anyone who can access the site can read its included records.",
+	examples: ["backlog browser export public/backlog", "backlog browser export public/backlog --tasks-only"],
+})
+	.description("export the browser as a read-only static site")
+	.option("--tasks-only", "export tasks without documents, decisions, or milestones")
+	.action(async (directory: string, options: { tasksOnly?: boolean }) => {
+		try {
+			const cwd = await requireProjectRoot();
+			const core = new Core(cwd);
+			if (await printDuplicateIntegrityWarning(core)) return;
+			const { exportBrowserSite } = await import("./server/browser-export.ts");
+			const output = resolve(cwd, directory);
+			await exportBrowserSite(core, output, version, options.tasksOnly === true);
+			console.log(`Exported browser to ${output}`);
+		} catch (error) {
+			reportCommandFailure("Failed to export browser", error);
 		}
 	});
 
