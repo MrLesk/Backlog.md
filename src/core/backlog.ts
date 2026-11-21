@@ -4093,6 +4093,7 @@ export class Core {
 
 		return tasks.filter((task) => {
 			if (!isTerminalStatus(task.status, statuses)) return false;
+			if (olderThanDays === 0) return true;
 
 			// Check updatedDate first, then createdDate as fallback
 			const taskDate = task.updatedDate || task.createdDate;

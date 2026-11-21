@@ -63,9 +63,11 @@ afterEach(async () => {
 });
 
 describe("cleanup selection", () => {
-	it("clears confirmation immediately when the age changes and submits only the new preview", async () => {
+	it("clears confirmation when switching to Any age and submits only the new preview", async () => {
 		const next = deferred<Preview>();
-		spyOn(apiClient, "getCleanupPreview").mockResolvedValueOnce(preview("TASK-1")).mockReturnValueOnce(next.promise);
+		const getPreview = spyOn(apiClient, "getCleanupPreview")
+			.mockResolvedValueOnce(preview("TASK-1"))
+			.mockReturnValueOnce(next.promise);
 		const execute = spyOn(apiClient, "executeCleanup").mockResolvedValue({
 			success: true,
 			movedCount: 1,
@@ -75,7 +77,8 @@ describe("cleanup selection", () => {
 		await mount();
 		await click("1 day");
 		await click("Continue");
-		await click("1 month");
+		await click("Any age");
+		expect(getPreview).toHaveBeenLastCalledWith(0);
 		expect(document.body.textContent).not.toContain("Confirm Cleanup");
 		expect(button("Archive 1 Task")).toBeUndefined();
 		expect(execute).not.toHaveBeenCalled();
