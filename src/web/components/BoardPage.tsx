@@ -22,6 +22,7 @@ interface BoardPageProps {
 	loadingMessage?: string | null;
 	loadError?: Error | null;
 	hideEmptyColumns?: boolean;
+	titleStatusPrefix?: boolean;
 	dateFormat?: string;
 	availablePriorities?: string[];
 	availableTypes?: string[];
@@ -43,6 +44,7 @@ export default function BoardPage({
 	loadingMessage,
 	loadError,
 	hideEmptyColumns,
+	titleStatusPrefix,
 	dateFormat,
 	availablePriorities,
 	availableTypes,
@@ -218,6 +220,7 @@ export default function BoardPage({
 				availableProjects={availableProjects}
 				onFiltersChange={handleFiltersChange}
 				hideEmptyColumns={hideEmptyColumns}
+				titleStatusPrefix={titleStatusPrefix}
 				dateFormat={dateFormat}
 			/>
 		</div>

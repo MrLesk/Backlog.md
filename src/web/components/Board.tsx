@@ -9,6 +9,7 @@ import { getPriorityOptions, normalizePriorityValue } from '../../utils/priority
 import { getProjectValues, matchesProjectFilter } from '../../utils/project-config';
 import { getTaskTypeValues, matchesTaskTypeFilter } from '../../utils/task-type-config';
 import { resolveTaskById } from '../../utils/task-id';
+import { withStatusPrefix } from '../utils/title-status-prefix';
 import TaskColumn from './TaskColumn';
 import { BoardLoadingSkeleton } from './BoardLoadingSkeleton';
 import CleanupModal from './CleanupModal';
@@ -43,6 +44,7 @@ interface BoardProps {
   availableProjects?: string[];
   onFiltersChange?: (filters: { assignee: string; labels: string[]; priority: string; taskType: string; project: string }) => void;
   hideEmptyColumns?: boolean;
+  titleStatusPrefix?: boolean;
   dateFormat?: string;
 }
 
@@ -79,6 +81,7 @@ const Board: React.FC<BoardProps> = ({
   availableProjects,
   onFiltersChange,
   hideEmptyColumns = false,
+  titleStatusPrefix = false,
   dateFormat,
 }) => {
   const [updateError, setUpdateError] = useState<string | null>(null);
@@ -401,8 +404,16 @@ const Board: React.FC<BoardProps> = ({
       // Feed the moved tasks back through the board's own store update, exactly as a single-card
       // reorder does. Reloading every board resource instead remounts the whole view.
       const movedTasks = result.changedTasks ?? result.tasks;
-      if (requestTask && onTasksUpdated && movedTasks.length > 0) {
-        onTasksUpdated(movedTasks, requestTask);
+      const updatedTasks = titleStatusPrefix
+        ? await Promise.all(
+            movedTasks.map(async (task) => {
+              const nextTitle = withStatusPrefix(task.title, targetStatus, statuses, true);
+              return nextTitle === task.title ? task : await apiClient.updateTask(task.id, { title: nextTitle });
+            }),
+          )
+        : movedTasks;
+      if (requestTask && onTasksUpdated && updatedTasks.length > 0) {
+        onTasksUpdated(updatedTasks, requestTask);
       } else if (onRefreshData) await onRefreshData();
     } catch (err) {
       setUpdateError(err instanceof Error ? err.message : 'Failed to move tasks');
@@ -411,7 +422,14 @@ const Board: React.FC<BoardProps> = ({
 
   const handleTaskUpdate = async (taskId: string, updates: Partial<Task>) => {
     try {
-      await apiClient.updateTask(taskId, updates);
+      let payload = updates;
+      if (titleStatusPrefix && updates.status !== undefined) {
+        const current = resolveTaskById(tasks, taskId);
+        if (current.status === 'found') {
+          payload = { ...updates, title: withStatusPrefix(current.task.title, updates.status, statuses, true) };
+        }
+      }
+      await apiClient.updateTask(taskId, payload);
       // Refresh data to reflect the changes
       if (onRefreshData) {
         await onRefreshData();

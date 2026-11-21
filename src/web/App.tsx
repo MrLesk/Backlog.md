@@ -958,6 +958,7 @@ function AppContent() {
       isLoading={isLoading}
       loadError={loadError}
       hideEmptyColumns={config?.hideEmptyColumns ?? false}
+      titleStatusPrefix={config?.titleStatusPrefix ?? false}
       dateFormat={config?.dateFormat}
       availablePriorities={config?.priorities}
       availableTypes={availableTypes}
@@ -1088,6 +1089,7 @@ function AppContent() {
         onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
         onDependencyCleanup={reportDependencyCleanup}
         availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
+        titleStatusPrefix={config?.titleStatusPrefix ?? false}
         availableTasks={tasks}
         onNavigateToTask={handleEditTask}
         availableMilestones={milestones}

@@ -51,6 +51,7 @@ export function serializeConfig(config: BacklogConfig, original: string | undefi
 		default_editor: config.defaultEditor || undefined,
 		auto_open_browser: config.autoOpenBrowser,
 		hide_empty_columns: config.hideEmptyColumns,
+		title_status_prefix: config.titleStatusPrefix,
 		default_port: config.defaultPort || undefined,
 		browser_hostname: config.browserHostname,
 		remote_operations: config.remoteOperations,

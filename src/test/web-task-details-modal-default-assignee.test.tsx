@@ -65,9 +65,11 @@ type ModalProps = {
 	task?: Task;
 	defaultAssignee?: string[];
 	onSubmit?: (taskData: Partial<Task>) => Promise<void>;
+	titleStatusPrefix?: boolean;
+	availableStatuses?: string[];
 };
 
-const renderInto = async ({ task, defaultAssignee, onSubmit }: ModalProps): Promise<void> => {
+const renderInto = async ({ task, defaultAssignee, onSubmit, titleStatusPrefix, availableStatuses }: ModalProps): Promise<void> => {
 	await act(async () => {
 		activeRoot?.render(
 			<MemoryRouter initialEntries={["/"]}>
@@ -79,6 +81,8 @@ const renderInto = async ({ task, defaultAssignee, onSubmit }: ModalProps): Prom
 							onClose={() => {}}
 							onSubmit={onSubmit}
 							defaultAssignee={defaultAssignee}
+							titleStatusPrefix={titleStatusPrefix}
+							availableStatuses={availableStatuses}
 						/>
 					</TaskIdIndexProvider>
 				</ThemeProvider>
@@ -305,5 +309,39 @@ describe("Task details modal assignee outside create", () => {
 		} finally {
 			(apiClient as { updateTask: typeof apiClient.updateTask }).updateTask = originalUpdateTask;
 		}
+	});
+});
+
+describe("Task details modal status prefix", () => {
+	const statuses = ["To Do", "In Progress", "Done"];
+
+	it("prefixes the submitted title when the option is on", async () => {
+		const submitted: SubmittedPayloads = [];
+		const onSubmit = async (taskData: Partial<Task>) => {
+			submitted.push(taskData);
+		};
+		const container = await renderModal({
+			onSubmit,
+			titleStatusPrefix: true,
+			availableStatuses: statuses,
+		});
+		await fillTitle(container, "Fix chart flash");
+		await submitCreateForm(container);
+		expect(submitted[0]?.title).toBe("[To Do] Fix chart flash");
+	});
+
+	it("leaves the submitted title alone when the option is off", async () => {
+		const submitted: SubmittedPayloads = [];
+		const onSubmit = async (taskData: Partial<Task>) => {
+			submitted.push(taskData);
+		};
+		const container = await renderModal({
+			onSubmit,
+			titleStatusPrefix: false,
+			availableStatuses: statuses,
+		});
+		await fillTitle(container, "Fix chart flash");
+		await submitCreateForm(container);
+		expect(submitted[0]?.title).toBe("Fix chart flash");
 	});
 });

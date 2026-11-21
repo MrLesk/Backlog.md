@@ -1642,6 +1642,7 @@ export class BacklogServer {
 				"defaultPort",
 				"autoOpenBrowser",
 				"hideEmptyColumns",
+				"titleStatusPrefix",
 				"maxColumnWidth",
 				"zeroPaddedIds",
 			] as const;
@@ -1673,6 +1674,7 @@ export class BacklogServer {
 						case "remoteOperations":
 						case "autoOpenBrowser":
 						case "hideEmptyColumns":
+						case "titleStatusPrefix":
 							valid = typeof value === "boolean";
 							break;
 					}

@@ -2431,6 +2431,9 @@ ${description || `Milestone: ${title}`}`,
 				case "hide_empty_columns":
 					config.hideEmptyColumns = readScalar().toLowerCase() === "true";
 					break;
+				case "title_status_prefix":
+					config.titleStatusPrefix = readScalar().toLowerCase() === "true";
+					break;
 				case "default_port":
 					config.defaultPort = Number.parseInt(readScalar(), 10);
 					break;
@@ -2486,6 +2489,7 @@ ${description || `Milestone: ${title}`}`,
 			defaultEditor: config.defaultEditor,
 			autoOpenBrowser: config.autoOpenBrowser,
 			hideEmptyColumns: config.hideEmptyColumns,
+			titleStatusPrefix: config.titleStatusPrefix,
 			defaultPort: config.defaultPort,
 			browserHostname: config.browserHostname,
 			remoteOperations: config.remoteOperations,

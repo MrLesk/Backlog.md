@@ -19,6 +19,7 @@ import { buildTaskIdIndex, resolveTaskReference } from "../utils/task-id-links";
 import { findDirectSubtasks, findParentTask, summarizeSubtaskProgress } from "../../utils/task-subtasks.ts";
 import { isTerminalStatus } from "../../utils/terminal-status.ts";
 import { createUrlPath } from "../utils/urlHelpers";
+import { withStatusPrefix } from "../utils/title-status-prefix";
 
 interface Props {
   task?: Task | TaskDetail; // Optional for create mode
@@ -30,6 +31,7 @@ interface Props {
   onArchive?: () => Promise<void> | void; // For archiving tasks
   onDependencyCleanup?: (taskId: string, cleanedTaskIds: string[]) => void; // Reports records that lost a reference
   availableStatuses?: string[]; // Available statuses for new tasks
+  titleStatusPrefix?: boolean; // When enabled, browser status changes rewrite the title's [status] marker
   availableTasks?: Task[]; // Shared task corpus for dependency selection
   onNavigateToTask?: (task: Task) => void; // Opens another task, preserving close/back context
   isDraftMode?: boolean; // Whether creating a draft
@@ -193,6 +195,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   onArchive,
   onDependencyCleanup,
   availableStatuses = EMPTY_STATUSES,
+  titleStatusPrefix = false,
   availableTasks = EMPTY_TASKS,
   onNavigateToTask,
   availableMilestones: _availableMilestones,
@@ -919,7 +922,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
     try {
       const taskData: TaskUpdatePayload = {
-        title: title.trim(),
+        title: withStatusPrefix(title.trim(), status, availableStatuses, titleStatusPrefix),
         description,
         implementationPlan: plan,
         implementationNotes: notes,
@@ -1037,6 +1040,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
     // Optimistic UI
     if (updates.status !== undefined) setStatus(String(updates.status));
+    if (task && titleStatusPrefix && updates.status !== undefined) {
+      setTitle(withStatusPrefix(task.title, String(updates.status), availableStatuses, true));
+    }
     if (updates.assignee !== undefined) setAssignee(updates.assignee as string[]);
     if (updates.labels !== undefined) setLabels(updates.labels as string[]);
     if (updates.priority !== undefined) setPriority(String(updates.priority));
@@ -1050,7 +1056,11 @@ export const TaskDetailsModal: React.FC<Props> = ({
     // Only update server if editing existing task
     if (task) {
       try {
-        await persistTaskUpdates(updates);
+        const payload =
+          titleStatusPrefix && updates.status !== undefined
+            ? { ...updates, title: withStatusPrefix(task.title, String(updates.status), availableStatuses, true) }
+            : updates;
+        await persistTaskUpdates(payload);
         if (onSaved) await onSaved();
       } catch (err) {
         console.error("Failed to update task metadata", err);

@@ -410,6 +410,8 @@ export interface BacklogConfig {
 	browserHostname?: string;
 	/** When true, hide board columns whose status has no tasks. Columns reappear while a task is being dragged so they remain valid drop targets. Defaults to false. */
 	hideEmptyColumns?: boolean;
+	/** When true, browser status changes prepend [status] to the task title (and therefore its file name). Defaults to false. */
+	titleStatusPrefix?: boolean;
 	remoteOperations?: boolean;
 	autoCommit?: boolean;
 	/** Disable all Git integration for filesystem-only projects. */
