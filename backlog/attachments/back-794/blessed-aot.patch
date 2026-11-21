@@ -1,0 +1,82 @@
+From 8725fc42a21ac787ed07ce0c95235655a56e53fb Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Tue, 27 Oct 2026 15:11:12 -0700
+Subject: [PATCH] BACK-794 - Support AOT compilation of terminal data in
+ Blessed
+
+---
+ lib/tput.ts                 |  9 ++++++---
+ test/unit/tput-data.test.ts | 30 ++++++++++++++++++++++++++++++
+ 2 files changed, 36 insertions(+), 3 deletions(-)
+ create mode 100644 test/unit/tput-data.test.ts
+
+diff --git a/lib/tput.ts b/lib/tput.ts
+index 8bc0642..90bda2f 100644
+--- a/lib/tput.ts
++++ b/lib/tput.ts
+@@ -172,7 +172,8 @@ Tput.prototype._useXtermCap = function (this: TputInterface): void {
+ 
+ Tput.prototype._useXtermInfo = function (this: TputInterface): void {
+   try {
+-    return this.injectTerminfo(require.resolve('../usr/xterm'));
++    // Terminfo is binary data, not a module for bundlers or AOT compilers.
++    return this.injectTerminfo(path.join(__dirname, '../usr/xterm'));
+   } catch (e) {
+     var buf = Buffer.from(internalTerm['xterm'], 'base64');
+     var info = this.compile(this.parseTerminfo(buf, 'xterm'));
+@@ -186,7 +187,7 @@ Tput.prototype._useInternalInfo = function (
+ ): void {
+   name = path.basename(name);
+   try {
+-    return this.injectTerminfo(require.resolve('../usr/' + name));
++    return this.injectTerminfo(path.join(__dirname, '../usr', name));
+   } catch (e) {
+     if (internalTerm[name]) {
+       var buf = Buffer.from(internalTerm[name], 'base64');
+@@ -203,7 +204,9 @@ Tput.prototype._useInternalCap = function (
+ ): void {
+   name = path.basename(name);
+   try {
+-    return this.injectTermcap(require.resolve('../usr/' + name + '.termcap'));
++    return this.injectTermcap(
++      path.join(__dirname, '../usr', name + '.termcap')
++    );
+   } catch (e) {
+     if (internalTerm[name]) {
+       // We don't have termcap fallback; terminfo should suffice
+diff --git a/test/unit/tput-data.test.ts b/test/unit/tput-data.test.ts
+new file mode 100644
+index 0000000..60e9e7d
+--- /dev/null
++++ b/test/unit/tput-data.test.ts
+@@ -0,0 +1,30 @@
++import { describe, expect, it, vi } from 'vitest';
++import Tput from '../../lib/tput.js';
++
++describe('packaged terminal data', () => {
++  it('reads binary terminfo from disk and provides executable capabilities', () => {
++    const terminal = new Tput({});
++    terminal._useInternalInfo('linux');
++    expect(terminal.info.file).toMatch(/[/\\]usr[/\\]linux$/);
++    expect(terminal.clear()).toContain('\x1b');
++  });
++
++  it('reads the packaged termcap file', () => {
++    const terminal = new Tput({});
++    terminal._useInternalCap('xterm');
++    expect(terminal.clear()).toContain('\x1b');
++  });
++
++  it('uses embedded terminfo when packaged files are unavailable', () => {
++    const terminal = new Tput({});
++    vi.spyOn(terminal, 'injectTerminfo').mockImplementation(() => {
++      throw new Error('Packaged data is unavailable');
++    });
++    terminal._useInternalInfo('linux');
++    expect(terminal.info.name).toBe('linux');
++    expect(terminal.clear()).toContain('\x1b');
++    terminal._useXtermInfo();
++    expect(terminal.info.name).toBe('xterm');
++    expect(terminal.clear()).toContain('\x1b');
++  });
++});
