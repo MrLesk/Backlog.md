@@ -5,6 +5,7 @@ import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { parseMarkdown, parseTask } from "../markdown/parser.ts";
+import { CommentsManager } from "../markdown/structured-sections.ts";
 import { McpServer } from "../mcp/server.ts";
 import { registerTaskTools } from "../mcp/tools/tasks/index.ts";
 import { BacklogServer } from "../server/index.ts";
@@ -40,15 +41,23 @@ let filesystem: FileSystem;
 let server: BacklogServer | undefined;
 let mcp: McpServer | undefined;
 
-async function writeRecord(id = "TASK-1", metadata = METADATA, owned = ""): Promise<string> {
+async function writeRecord(id = "TASK-1", metadata = METADATA, owned = "", body = BODY): Promise<string> {
 	const draft = id.startsWith("DRAFT-");
 	const directory = draft ? await filesystem.getDraftsDir() : filesystem.tasksDir;
 	const path = join(directory, `${id.toLowerCase()} - Original.md`);
 	await Bun.write(
 		path,
-		`---\nid: ${id}\ntitle: Original\nstatus: ${draft ? "Draft" : "To Do"}\nassignee: [@alex]\ncreated_date: 2026-01-01\nlabels: []\ndependencies: []\n${owned}${metadata}---\n\n${BODY}`,
+		`---\nid: ${id}\ntitle: Original\nstatus: ${draft ? "Draft" : "To Do"}\nassignee: [@alex]\ncreated_date: 2026-01-01\nlabels: []\ndependencies: []\n${owned}${metadata}---\n\n${body}`,
 	);
 	return path;
+}
+
+async function startMcp(): Promise<McpServer> {
+	const instance = new McpServer(root, "Test instructions");
+	const config = await instance.filesystem.loadConfig();
+	if (!config) throw new Error("Missing config");
+	registerTaskTools(instance, config);
+	return instance;
 }
 
 async function expectMetadata(path: string): Promise<string> {
@@ -200,10 +209,7 @@ describe("task and draft unknown frontmatter", () => {
 	it("keeps metadata through MCP task/draft edits and both status transitions", async () => {
 		await writeRecord();
 		await writeRecord("DRAFT-1");
-		mcp = new McpServer(root, "Test instructions");
-		const config = await mcp.filesystem.loadConfig();
-		if (!config) throw new Error("Missing config");
-		registerTaskTools(mcp, config);
+		mcp = await startMcp();
 		for (const [id, updates] of [
 			["TASK-1", { labels: ["mcp"] }],
 			["DRAFT-1", { title: "MCP draft" }],
@@ -219,6 +225,65 @@ describe("task and draft unknown frontmatter", () => {
 				if (!record.filePath) throw new Error("Missing record path");
 				await expectMetadata(record.filePath);
 			}
+		}
+	});
+
+	it("keeps a legacy marked Comments section through MCP and CLI edits of unrelated fields", async () => {
+		const legacyBody = [
+			"## Description",
+			"",
+			"<!-- SECTION:DESCRIPTION:BEGIN -->",
+			"Original body",
+			"<!-- SECTION:DESCRIPTION:END -->",
+			"",
+			"## Comments",
+			"",
+			"<!-- COMMENTS:BEGIN -->",
+			"created: 2026-07-19 09:11",
+			"---",
+			"Version target update recorded before the section format changed.",
+			"---",
+			"<!-- COMMENTS:END -->",
+			"",
+		].join("\n");
+		mcp = await startMcp();
+		for (const id of ["TASK-1", "DRAFT-1"]) {
+			const path = await writeRecord(id, METADATA, "", legacyBody);
+			const comments = CommentsManager.parseAllComments(await Bun.file(path).text());
+			expect(comments).toHaveLength(1);
+
+			// A status change on a draft promotes it to a task (new id), so the
+			// draft pass edits a neutral field instead.
+			const mcpArgs = id === "TASK-1" ? { id, status: "Done", finalSummary: "Closed." } : { id, labels: ["kept"] };
+			const result = await mcp.testInterface.callTool({ params: { name: "task_edit", arguments: mcpArgs } });
+			expect(result.isError).not.toBe(true);
+			const afterMcp = await Bun.file(path).text();
+			if (id === "TASK-1") {
+				expect(parseTask(afterMcp)).toMatchObject({ status: "Done" });
+				expect(afterMcp).toContain("SECTION:FINAL_SUMMARY:BEGIN");
+				expect(afterMcp).toContain("Closed.");
+			} else {
+				expect(parseTask(afterMcp)).toMatchObject({ labels: ["kept"] });
+			}
+			expect(afterMcp.match(/^## Comments$/gm)).toHaveLength(1);
+			expect(afterMcp.match(/<!-- COMMENTS:BEGIN -->/g)).toHaveLength(1);
+			expect(CommentsManager.parseAllComments(afterMcp)).toEqual(comments);
+
+			const command = id === "TASK-1" ? "task" : "draft";
+			const cliChange = id === "TASK-1" ? ["-s", "In Progress"] : ["--label", "kept2"];
+			const cli = await $`bun ${CLI_PATH} ${command} edit ${id} ${cliChange}`.cwd(root).quiet().nothrow();
+			expect(cli.exitCode).toBe(0);
+			const afterCli = await Bun.file(path).text();
+			if (id === "TASK-1") {
+				expect(parseTask(afterCli)).toMatchObject({ status: "In Progress" });
+				expect(afterCli).toContain("SECTION:FINAL_SUMMARY:BEGIN");
+				expect(afterCli).toContain("Closed.");
+			} else {
+				expect(parseTask(afterCli)).toMatchObject({ labels: ["kept2"] });
+			}
+			expect(afterCli.match(/^## Comments$/gm)).toHaveLength(1);
+			expect(afterCli.match(/<!-- COMMENTS:BEGIN -->/g)).toHaveLength(1);
+			expect(CommentsManager.parseAllComments(afterCli)).toEqual(comments);
 		}
 	});
 
