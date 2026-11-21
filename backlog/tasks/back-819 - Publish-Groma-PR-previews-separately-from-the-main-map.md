@@ -1,11 +1,11 @@
 ---
 id: BACK-819
 title: Publish Groma PR previews separately from the main map
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-11-21T15:31:00Z'
-updated_date: '2026-11-21T15:35:00Z'
+updated_date: '2026-11-21T16:02:00Z'
 labels: []
 dependencies: []
 references:
@@ -25,16 +25,16 @@ Backlog.md loses already-built PR comparisons when its shared Pages job fails to
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Default-branch updates publish committed architecture at /architecture/auto/.
-- [ ] #2 A same-repository or manually reviewed PR can publish at /comparison/pr-N/auto/ independently of the default-branch map.
-- [ ] #3 Existing live site paths are preserved during the publisher migration and a PR preview is verified on live Pages.
+- [x] #1 Default-branch updates publish committed architecture at /architecture/auto/.
+- [x] #2 A same-repository or manually reviewed PR can publish at /comparison/pr-N/auto/ independently of the default-branch map.
+- [x] #3 Existing live site paths are preserved during the publisher migration and a PR preview is verified on live Pages.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 bun run check:types passes when TypeScript touched
-- [ ] #2 bun run check . passes when formatting/linting touched
-- [ ] #3 bun test (or scoped test) passes
+- [x] #1 bun run check:types passes when TypeScript touched
+- [x] #2 bun run check . passes when formatting/linting touched
+- [x] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -49,4 +49,12 @@ Backlog.md loses already-built PR comparisons when its shared Pages job fails to
 
 <!-- SECTION:NOTES:BEGIN -->
 Workflow YAML and Bash parsed. The separate map and comparison publishers share the Pages queue and retain the existing path layout. The last successful Pages deployment archived 23 files. All 23 were downloaded, checked against the original archive listing, and used to prepare the ownership seed.
+
+Action v1.3.0 is on GitHub Releases and Marketplace, and the release checks advanced v1 to the same commit. The production cutover merged in PR #1241 after CI and Codex review. The committed main-map deployment passed in run 44920646995. PR #1240 published independently in run 44920659149 and linked from the bot comment. The live comparison showed both expected revisions and 14 modified components. All 31 files served by Pages match the final publication branch; the existing two comparison directories were retained byte-for-byte.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Backlog.md uses the shared Groma publisher for independent committed-map and PR comparison deployments. Existing URLs survived the cutover. Verified the previously unavailable PR #1240 comparison on live Pages.
+<!-- SECTION:FINAL_SUMMARY:END -->
