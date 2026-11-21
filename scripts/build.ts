@@ -37,6 +37,8 @@ const result = await Bun.build({
 				bytecode: true,
 				compile: {
 					outfile,
+					autoloadBunfig: false,
+					autoloadDotenv: false,
 					...(executablePath ? { executablePath } : {}),
 					...(target ? { target: target as Bun.Build.CompileTarget } : {}),
 				},
