@@ -1088,6 +1088,7 @@ function AppContent() {
         onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
         onDependencyCleanup={reportDependencyCleanup}
         availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
+        availableLabels={availableLabels}
         availableTasks={tasks}
         onNavigateToTask={handleEditTask}
         availableMilestones={milestones}

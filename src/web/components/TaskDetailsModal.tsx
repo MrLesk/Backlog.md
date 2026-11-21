@@ -30,6 +30,7 @@ interface Props {
   onArchive?: () => Promise<void> | void; // For archiving tasks
   onDependencyCleanup?: (taskId: string, cleanedTaskIds: string[]) => void; // Reports records that lost a reference
   availableStatuses?: string[]; // Available statuses for new tasks
+  availableLabels?: string[]; // Configured labels offered as suggestions in the labels field
   availableTasks?: Task[]; // Shared task corpus for dependency selection
   onNavigateToTask?: (task: Task) => void; // Opens another task, preserving close/back context
   isDraftMode?: boolean; // Whether creating a draft
@@ -193,6 +194,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   onArchive,
   onDependencyCleanup,
   availableStatuses = EMPTY_STATUSES,
+  availableLabels,
   availableTasks = EMPTY_TASKS,
   onNavigateToTask,
   availableMilestones: _availableMilestones,
@@ -1947,6 +1949,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
               onChange={(value) => handleInlineMetaUpdate({ labels: value })}
               placeholder="Type label and press Enter or comma"
               disabled={isReadOnly}
+              suggestions={availableLabels}
             />
           </div>
 
