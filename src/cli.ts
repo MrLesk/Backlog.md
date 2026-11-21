@@ -57,6 +57,7 @@ import {
 } from "./index.ts";
 import { MilestoneHandlers, type MilestoneRemoveArgs } from "./mcp/tools/milestones/handlers.ts";
 import type { CallToolResult } from "./mcp/types.ts";
+import type { BrowserExportSections } from "./server/browser-export.ts";
 import {
 	type BacklogConfig,
 	type ContentRecordKind,
@@ -6236,25 +6237,38 @@ const browserCmd = program
 	});
 
 addHelpSchema(browserCmd.command("export <directory>"), {
-	reads: "The current checkout's Backlog.md project, excluding drafts and archived records",
+	reads:
+		"The current checkout. Pass flags to include only the named collections. With no flags, all four collections are included. Drafts and archived records are excluded.",
 	required: [
 		{ name: "directory", type: "path", description: "Output directory, relative to the project root or absolute" },
 	],
-	optional: [{ name: "tasksOnly", type: "boolean", description: "Include only task records" }],
+	optional: [
+		{ name: "--tasks", type: "Boolean", description: "Include tasks and task statistics" },
+		{ name: "--docs", type: "Boolean", description: "Include documents" },
+		{ name: "--decisions", type: "Boolean", description: "Include decisions" },
+		{ name: "--milestones", type: "Boolean", description: "Include milestones" },
+	],
 	writes: "A read-only static site in the output directory",
 	output: "The exported directory. Anyone who can access the site can read its included records.",
-	examples: ["backlog browser export public/backlog", "backlog browser export public/backlog --tasks-only"],
+	examples: ["backlog browser export public/backlog", "backlog browser export public/backlog --tasks --milestones"],
 })
 	.description("export the browser as a read-only static site")
-	.option("--tasks-only", "export tasks without documents, decisions, or milestones")
-	.action(async (directory: string, options: { tasksOnly?: boolean }) => {
+	.option("--tasks", "include tasks and task statistics")
+	.option("--docs", "include documents")
+	.option("--decisions", "include decisions")
+	.option("--milestones", "include milestones")
+	.action(async (directory: string, options: BrowserExportSections) => {
 		try {
+			const sections =
+				options.tasks || options.docs || options.decisions || options.milestones
+					? options
+					: { tasks: true, docs: true, decisions: true, milestones: true };
 			const cwd = await requireProjectRoot();
 			const core = new Core(cwd);
-			if (await printDuplicateIntegrityWarning(core)) return;
+			if (sections.tasks && (await printDuplicateIntegrityWarning(core))) return;
 			const { exportBrowserSite } = await import("./server/browser-export.ts");
 			const output = resolve(cwd, directory);
-			await exportBrowserSite(core, output, version, options.tasksOnly === true);
+			await exportBrowserSite(core, output, version, sections);
 			console.log(`Exported browser to ${output}`);
 		} catch (error) {
 			reportCommandFailure("Failed to export browser", error);

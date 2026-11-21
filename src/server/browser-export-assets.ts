@@ -54,7 +54,12 @@ function assetName(href: string): string | undefined {
 }
 
 function publishedAssetNames(snapshot: BrowserSnapshot): string[] {
-	const records = [...snapshot.tasks, ...snapshot.docs, ...snapshot.decisions, ...snapshot.milestones];
+	const records = [
+		...(snapshot.tasks ?? []),
+		...(snapshot.docs ?? []),
+		...(snapshot.decisions ?? []),
+		...(snapshot.milestones ?? []),
+	];
 	const urls = records.flatMap((record) => markdownLinks(record.rawContent ?? ""));
 	return [...new Set(urls.map(assetName).filter((name) => name !== undefined))].sort();
 }

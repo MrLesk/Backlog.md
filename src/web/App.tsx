@@ -211,7 +211,11 @@ type TaskModalState =
     };
 
 function AppContent() {
-  const { canWrite, tasksOnly } = useBrowserAccess();
+  const { canWrite, sections } = useBrowserAccess();
+  const landingPath = (sections.tasks && '/board')
+    || (sections.docs && '/documentation')
+    || (sections.decisions && '/decisions')
+    || '/milestones';
   const [modal, setModal] = useState<TaskModalState>({ kind: 'closed' });
   // Each entry into the modal takes the next session number, so a response can name the modal it
   // was read for.
@@ -607,7 +611,7 @@ function AppContent() {
   // one: from this moment the modal names a different session.
   useEffect(() => {
     const current = modalRef.current;
-    if (!routeTaskId || !routeBasePath || isInitialized !== true) {
+    if (!sections.tasks || !routeTaskId || !routeBasePath || isInitialized !== true) {
       if (!routeTaskId && current.kind === 'detail' && current.fromRoute) {
         clearTaskModal();
       }
@@ -629,7 +633,7 @@ function AppContent() {
       return;
     }
     openDetailModal(routeTaskId, { fromRoute: true });
-  }, [clearTaskModal, isInitialized, location.search, navigate, openDetailModal, routeBasePath, routeTaskId]);
+  }, [clearTaskModal, isInitialized, location.search, navigate, openDetailModal, routeBasePath, routeTaskId, sections.tasks]);
 
   useEffect(() => {
     if (taskRouteError) {
@@ -976,38 +980,76 @@ function AppContent() {
     />
   );
 
-  const projectRecordRoutes = !tasksOnly && (
+  const taskRoutes = sections.tasks && (
     <>
+      <Route path="board" element={boardPage} />
+      <Route path="board/:id" element={boardPage} />
+      <Route path="board/:id/:title" element={boardPage} />
       <Route
-        path="milestones"
+        path="board/*"
         element={
-          <MilestonesPage
-            tasks={tasks}
-            statuses={statuses}
-            milestoneEntities={milestoneEntities}
-            archivedMilestones={archivedMilestones}
-            onEditTask={handleOpenTask}
-            onRefreshData={refreshMilestoneData}
-            dateFormat={config?.dateFormat}
+          <Navigate
+            to={{ pathname: '/board', search: location.search }}
+            replace
+            state={{ taskRouteError: 'That task link is not valid.' } satisfies TaskRouteNavigationState}
           />
         }
       />
+      <Route path="tasks" element={taskListPage} />
+      <Route path="tasks/:id" element={taskListPage} />
+      <Route path="tasks/:id/:title" element={taskListPage} />
       <Route
-        path="documentation/:id?/:title?"
-        element={<DocumentationDetail docs={docs} onRefreshData={refreshData} dateFormat={config?.dateFormat} />}
+        path="tasks/*"
+        element={
+          <Navigate
+            to={{ pathname: '/tasks', search: location.search }}
+            replace
+            state={{ taskRouteError: 'That task link is not valid.' } satisfies TaskRouteNavigationState}
+          />
+        }
       />
-      <Route
-        path="decisions/:id?/:title?"
-        element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} dateFormat={config?.dateFormat} />}
-      />
+      <Route path="statistics" element={<Statistics statuses={statuses} tasks={tasks} isLoading={isLoading} onEditTask={handleOpenTask} projectName={projectName} dateFormat={config?.dateFormat} />} />
+    </>
+  );
+
+  const projectRecordRoutes = (
+    <>
+      {sections.milestones && (
+        <Route
+          path="milestones"
+          element={
+            <MilestonesPage
+              tasks={tasks}
+              statuses={statuses}
+              milestoneEntities={milestoneEntities}
+              archivedMilestones={archivedMilestones}
+              onEditTask={handleOpenTask}
+              onRefreshData={refreshMilestoneData}
+              dateFormat={config?.dateFormat}
+            />
+          }
+        />
+      )}
+      {sections.docs && (
+        <Route
+          path="documentation/:id?/:title?"
+          element={<DocumentationDetail docs={docs} onRefreshData={refreshData} dateFormat={config?.dateFormat} />}
+        />
+      )}
+      {sections.decisions && (
+        <Route
+          path="decisions/:id?/:title?"
+          element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} dateFormat={config?.dateFormat} />}
+        />
+      )}
     </>
   );
 
   return (
     <ThemeProvider>
       <TaskIdIndexProvider tasks={tasks}>
-      <Routes>
-            <Route
+        <Routes>
+          <Route
             path="/"
             element={
               <Layout
@@ -1027,43 +1069,17 @@ function AppContent() {
           >
             <Route
               index
-              element={<Navigate to={{ pathname: '/board', search: location.search }} replace state={location.state} />}
+              element={<Navigate to={{ pathname: landingPath, search: location.search }} replace state={location.state} />}
             />
-            <Route path="board" element={boardPage} />
-            <Route path="board/:id" element={boardPage} />
-            <Route path="board/:id/:title" element={boardPage} />
-            <Route
-              path="board/*"
-              element={
-                <Navigate
-                  to={{ pathname: '/board', search: location.search }}
-                  replace
-                  state={{ taskRouteError: 'That task link is not valid.' } satisfies TaskRouteNavigationState}
-                />
-              }
-            />
-            <Route path="tasks" element={taskListPage} />
-            <Route path="tasks/:id" element={taskListPage} />
-            <Route path="tasks/:id/:title" element={taskListPage} />
-            <Route
-              path="tasks/*"
-              element={
-                <Navigate
-                  to={{ pathname: '/tasks', search: location.search }}
-                  replace
-                  state={{ taskRouteError: 'That task link is not valid.' } satisfies TaskRouteNavigationState}
-                />
-              }
-            />
+            {taskRoutes}
             {canWrite && (
               <Route path="drafts" element={<DraftsList onEditTask={openDraftModal} onNewDraft={handleNewDraft} dateFormat={config?.dateFormat} />} />
             )}
             {projectRecordRoutes}
-            <Route path="statistics" element={<Statistics statuses={statuses} tasks={tasks} isLoading={isLoading} onEditTask={handleOpenTask} projectName={projectName} dateFormat={config?.dateFormat} />} />
             <Route path="settings" element={<Settings />} />
-            {!canWrite && <Route path="*" element={<Navigate to="/board" replace />} />}
+            {!canWrite && <Route path="*" element={<Navigate to={landingPath} replace />} />}
           </Route>
-      </Routes>
+        </Routes>
 
       {taskRouteError && (
         <div
@@ -1083,29 +1099,31 @@ function AppContent() {
         </div>
       )}
 
-      <TaskDetailsModal
-        task={editingTask || undefined}
-        isOpen={showModal}
-        onClose={handleCloseModal}
-        onSaved={refreshData}
-        onTaskUpdated={acknowledgeTaskUpdate}
-        onSubmit={canWrite ? handleCreateTask : undefined}
-        onArchive={canWrite && editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
-        onDependencyCleanup={reportDependencyCleanup}
-        availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
-        availableLabels={availableLabels}
-        availableTasks={tasks}
-        onNavigateToTask={handleOpenTask}
-        availablePriorities={config?.priorities}
-        availableTypes={availableTypes}
-        availableProjects={availableProjects}
-        milestoneEntities={milestoneEntities}
-        archivedMilestoneEntities={archivedMilestones}
-        isDraftMode={isDraftMode}
-        definitionOfDoneDefaults={config?.definitionOfDone ?? []}
-        defaultAssignee={config?.defaultAssignee}
-        dateFormat={config?.dateFormat}
-      />
+      {sections.tasks && (
+        <TaskDetailsModal
+          task={editingTask || undefined}
+          isOpen={showModal}
+          onClose={handleCloseModal}
+          onSaved={refreshData}
+          onTaskUpdated={acknowledgeTaskUpdate}
+          onSubmit={canWrite ? handleCreateTask : undefined}
+          onArchive={canWrite && editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
+          onDependencyCleanup={reportDependencyCleanup}
+          availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
+          availableLabels={availableLabels}
+          availableTasks={tasks}
+          onNavigateToTask={handleOpenTask}
+          availablePriorities={config?.priorities}
+          availableTypes={availableTypes}
+          availableProjects={availableProjects}
+          milestoneEntities={milestoneEntities}
+          archivedMilestoneEntities={archivedMilestones}
+          isDraftMode={isDraftMode}
+          definitionOfDoneDefaults={config?.definitionOfDone ?? []}
+          defaultAssignee={config?.defaultAssignee}
+          dateFormat={config?.dateFormat}
+        />
+      )}
 
       {dependencyCleanupNotice && (
         <SuccessToast

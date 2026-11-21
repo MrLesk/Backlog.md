@@ -21,7 +21,7 @@ describe("CLI Integration", () => {
 		await safeCleanup(TEST_DIR);
 	});
 
-	it("removes document attachments from a tasks-only browser re-export", async () => {
+	it("removes document data and attachments when re-exporting with only --tasks", async () => {
 		await $`git init -b main`.cwd(TEST_DIR).quiet();
 		const core = new Core(TEST_DIR);
 		await initializeTestProject(core, "Published Backlog");
@@ -44,10 +44,15 @@ describe("CLI Integration", () => {
 		await Bun.write(join(assets, "guide.txt"), "guide attachment");
 		await Bun.write(join(output, "assets", "site.txt"), "site attachment");
 
-		await $`bun ${CLI_PATH} browser export ${output}`.cwd(TEST_DIR).quiet();
+		const index = Bun.file(join(output, "index.html"));
+		await $`bun ${CLI_PATH} browser export ${output} --tasks --docs`.cwd(TEST_DIR).quiet();
+		expect(await index.text()).toContain("Publishing guide");
 		expect(await Bun.file(join(output, "assets", "guide.txt")).text()).toBe("guide attachment");
 
-		await $`bun ${CLI_PATH} browser export ${output} --tasks-only`.cwd(TEST_DIR).quiet();
+		await $`bun ${CLI_PATH} browser export ${output} --tasks`.cwd(TEST_DIR).quiet();
+		const taskExport = await index.text();
+		expect(taskExport).toContain("Publish this task");
+		expect(taskExport).not.toContain("Publishing guide");
 		expect(await Bun.file(join(output, "assets", "guide.txt")).exists()).toBe(false);
 		expect(await Bun.file(join(output, "assets", "task.txt")).text()).toBe("task attachment");
 		expect(await Bun.file(join(output, "assets", "site.txt")).text()).toBe("site attachment");

@@ -236,9 +236,9 @@ export class ApiClient {
 		this.config = { ...DEFAULT_CONFIG, ...config };
 		if (snapshot) {
 			this.snapshotSearch = new SearchIndex({
-				tasks: snapshot.tasks,
-				documents: snapshot.docs,
-				decisions: snapshot.decisions,
+				tasks: snapshot.tasks ?? [],
+				documents: snapshot.docs ?? [],
+				decisions: snapshot.decisions ?? [],
 			});
 		}
 	}
@@ -375,7 +375,7 @@ export class ApiClient {
 	/** Reads one task through the detail path, so the response already carries its dependency graph. */
 	async fetchTask(id: string): Promise<TaskDetail> {
 		if (this.snapshot) {
-			const { tasks, config, archivedDependencyStatuses } = this.snapshot;
+			const { tasks = [], config, archivedDependencyStatuses = [] } = this.snapshot;
 			const result = resolveTaskById(tasks, id);
 			switch (result.status) {
 				case "found":
@@ -515,8 +515,8 @@ export class ApiClient {
 	}
 
 	async fetchDoc(id: string): Promise<Document> {
-		const docs = this.snapshot?.docs;
-		if (docs) {
+		if (this.snapshot) {
+			const docs = this.snapshot.docs ?? [];
 			return requirePublishedRecord(() => findDocumentById(docs, id, (doc) => doc.path ?? doc.title), "Document");
 		}
 		const response = await this.fetchLive(`${API_BASE}/docs/${encodeURIComponent(id)}`);
@@ -573,8 +573,8 @@ export class ApiClient {
 	}
 
 	async fetchDecision(id: string): Promise<Decision> {
-		const decisions = this.snapshot?.decisions;
-		if (decisions) {
+		if (this.snapshot) {
+			const decisions = this.snapshot.decisions ?? [];
 			return requirePublishedRecord(
 				() => findDecisionById(decisions, id, (decision) => decision.path ?? decision.title),
 				"Decision",
@@ -615,7 +615,7 @@ export class ApiClient {
 	}
 
 	async fetchMilestones(): Promise<Milestone[]> {
-		if (this.snapshot) return this.snapshot.milestones;
+		if (this.snapshot) return this.snapshot.milestones ?? [];
 		const response = await this.fetchLive(`${API_BASE}/milestones`);
 		if (!response.ok) {
 			throw new Error("Failed to fetch milestones");
@@ -697,7 +697,7 @@ export class ApiClient {
 
 	async fetchStatistics(): Promise<BrowserStatistics> {
 		if (this.snapshot) {
-			const { config, tasks, archivedDependencyStatuses } = this.snapshot;
+			const { config, tasks = [], archivedDependencyStatuses = [] } = this.snapshot;
 			const statistics = getTaskStatistics(tasks, [], publishedStatuses(config), config.priorities, [
 				...tasks,
 				...archivedDependencyStatuses,

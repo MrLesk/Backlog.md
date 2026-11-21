@@ -31,7 +31,8 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	onRefreshData,
 	dateFormat,
 }) => {
-	const { canWrite } = useBrowserAccess();
+	const { canWrite, sections } = useBrowserAccess();
+	const showTasks = sections.tasks;
 	const [newMilestone, setNewMilestone] = useState("");
 	const [newMilestoneDueDate, setNewMilestoneDueDate] = useState("");
 	const [error, setError] = useState<string | null>(null);
@@ -68,7 +69,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		[tasks, milestoneEntities, statuses, archivedMilestoneIds, archivedMilestones],
 	);
 	const searchQueryTrimmed = searchQuery.trim();
-	const isSearchActive = searchQueryTrimmed.length > 0;
+	const isSearchActive = showTasks && searchQueryTrimmed.length > 0;
 	const defaultExpandedByBucketKey = useMemo(() => {
 		const map: Record<string, boolean> = {};
 		for (const bucket of buckets) {
@@ -494,6 +495,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	// Render a milestone card (drop target)
 	const renderMilestoneCard = (bucket: MilestoneBucket, isEmpty: boolean) => {
 		const progress = bucket.progress;
+		const showTaskDetails = showTasks && !isEmpty;
 		const defaultExpanded = defaultExpandedByBucketKey[bucket.key] ?? (bucket.total > 0 && bucket.total <= 8);
 		const isExpanded = expandedBuckets[bucket.key] ?? defaultExpanded;
 		const listId = `milestone-${safeIdSegment(bucket.key)}`;
@@ -529,84 +531,83 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 								</p>
 							)}
 						</div>
-						{isEmpty ? (
-							<span className="text-sm text-gray-400 dark:text-gray-500">
-								{isDragging ? "Drop here" : "No tasks"}
-							</span>
-						) : (
-							<div className="flex items-center gap-3">
-								<span className="text-sm text-gray-500 dark:text-gray-400">
-									{bucket.total} task{bucket.total === 1 ? "" : "s"}
-								</span>
-								<span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
-									{progress}%
-								</span>
-							</div>
-						)}
-					</div>
-
-					{/* Progress bar - only for non-empty */}
-					{!isEmpty && (
-						<div className="mt-3 w-full h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-							<div className="h-full bg-emerald-500 transition-all duration-300" style={{ width: `${progress}%` }} />
-						</div>
-					)}
-
-					{/* Status breakdown - only for non-empty */}
-					{!isEmpty && (
-						<div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-							{statuses.map((status) => {
-								const count = bucket.statusCounts[status] ?? 0;
-								if (count === 0) return null;
-								return (
-									<span key={status} className={`inline-flex items-center gap-1.5 ${getInlineStatusClass(status)}`}>
-										<span className="h-2 w-2 rounded-full" style={{ backgroundColor: getStatusDotColor(status) }} />
-										{count} {status}
+						{showTasks &&
+							(isEmpty ? (
+									<span className="text-sm text-gray-400 dark:text-gray-500">
+										{isDragging ? "Drop here" : "No tasks"}
 									</span>
-								);
-							})}
-						</div>
+								) : (
+									<div className="flex items-center gap-3">
+										<span className="text-sm text-gray-500 dark:text-gray-400">
+											{bucket.total} task{bucket.total === 1 ? "" : "s"}
+										</span>
+										<span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+											{progress}%
+										</span>
+									</div>
+							))}
+					</div>
+
+					{showTaskDetails && (
+						<>
+							<div className="mt-3 w-full h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+								<div className="h-full bg-emerald-500 transition-all duration-300" style={{ width: `${progress}%` }} />
+							</div>
+							<div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+								{statuses.map((status) => {
+									const count = bucket.statusCounts[status] ?? 0;
+									if (count === 0) return null;
+									return (
+										<span key={status} className={`inline-flex items-center gap-1.5 ${getInlineStatusClass(status)}`}>
+											<span className="h-2 w-2 rounded-full" style={{ backgroundColor: getStatusDotColor(status) }} />
+											{count} {status}
+										</span>
+									);
+								})}
+							</div>
+						</>
 					)}
 
-					{/* Actions */}
-					<div className="mt-4 flex items-center justify-between gap-3 border-t border-gray-100 dark:border-gray-700 pt-4">
-						<div className="flex items-center gap-2">
-							<Link
-								to={`/?lane=milestone&milestone=${encodeURIComponent(bucket.milestone ?? "")}`}
-								className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+					{showTasks && (
+						<div className="mt-4 flex items-center justify-between gap-3 border-t border-gray-100 dark:border-gray-700 pt-4">
+							<div className="flex items-center gap-2">
+								<Link
+									to={`/?lane=milestone&milestone=${encodeURIComponent(bucket.milestone ?? "")}`}
+									className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+								>
+									<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+									</svg>
+									Board
+								</Link>
+								<Link
+									to={`/tasks?milestone=${encodeURIComponent(bucket.milestone ?? "")}`}
+									className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+								>
+									<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+									</svg>
+									List
+								</Link>
+								{renderMilestoneWriteActions(bucket)}
+							</div>
+							<button
+								type="button"
+								aria-expanded={isExpanded}
+								aria-controls={listId}
+								onClick={() => setExpandedBuckets((c) => ({ ...c, [bucket.key]: !isExpanded }))}
+								className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
 							>
-								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+								{isExpanded ? "Hide" : "Show"} tasks
+								<svg className={`w-4 h-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
 								</svg>
-								Board
-							</Link>
-							<Link
-								to={`/tasks?milestone=${encodeURIComponent(bucket.milestone ?? "")}`}
-								className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-							>
-								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-								</svg>
-								List
-							</Link>
-							{renderMilestoneWriteActions(bucket)}
+							</button>
 						</div>
-						<button
-							type="button"
-							aria-expanded={isExpanded}
-							aria-controls={listId}
-							onClick={() => setExpandedBuckets((c) => ({ ...c, [bucket.key]: !isExpanded }))}
-							className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
-						>
-							{isExpanded ? "Hide" : "Show"} tasks
-							<svg className={`w-4 h-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-							</svg>
-						</button>
-					</div>
+					)}
 
 					{/* Task list */}
-					{isExpanded && !isEmpty && (
+					{showTaskDetails && isExpanded && (
 						<div id={listId} className="mt-4 rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">
 							<div className="divide-y divide-gray-200 dark:divide-gray-700">
 								{sortedTasks.slice(0, 10).map((task) => {
@@ -752,37 +753,39 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 			<div className="flex flex-wrap items-center justify-between gap-4 mb-6">
 				<div className="flex flex-wrap items-center gap-4">
 					<h1 className="text-2xl font-bold text-gray-900 dark:text-white">Milestones</h1>
-					<div className="relative w-full min-w-[240px] max-w-[420px]">
-						<span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 dark:text-gray-500">
-							<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-							</svg>
-						</span>
-						<label htmlFor="milestones-search" className="sr-only">
-							Search milestones
-						</label>
-						<input
-							id="milestones-search"
-							type="text"
-							value={searchQuery}
-							onInput={(event) => setSearchQuery((event.target as HTMLInputElement).value)}
-							placeholder="Search tasks"
-							aria-label="Search milestones"
-							className="w-full pl-10 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200"
-						/>
-						{isSearchActive && (
-							<button
-								type="button"
-								onClick={() => setSearchQuery("")}
-								aria-label="Clear milestone search"
-								className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
-							>
+					{showTasks && (
+						<div className="relative w-full min-w-[240px] max-w-[420px]">
+							<span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 dark:text-gray-500">
 								<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
 								</svg>
-							</button>
-						)}
-					</div>
+							</span>
+							<label htmlFor="milestones-search" className="sr-only">
+								Search milestones
+							</label>
+							<input
+								id="milestones-search"
+								type="text"
+								value={searchQuery}
+								onInput={(event) => setSearchQuery((event.target as HTMLInputElement).value)}
+								placeholder="Search tasks"
+								aria-label="Search milestones"
+								className="w-full pl-10 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200"
+							/>
+							{isSearchActive && (
+								<button
+									type="button"
+									onClick={() => setSearchQuery("")}
+									aria-label="Clear milestone search"
+									className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
+								>
+									<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+									</svg>
+								</button>
+							)}
+						</div>
+					)}
 				</div>
 				<div className="flex items-center gap-3">
 					{success && (
@@ -830,7 +833,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 			)}
 
 			{/* Unassigned tasks */}
-			{renderUnassignedSection()}
+			{showTasks && renderUnassignedSection()}
 
 			{/* Active milestones */}
 			{activeMilestones.length > 0 && (

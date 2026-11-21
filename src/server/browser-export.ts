@@ -3,12 +3,14 @@ import { basename, resolve } from "node:path";
 import lockfile from "proper-lockfile";
 import type { Core } from "../core/backlog.ts";
 import { collectArchivedMilestoneKeys, milestoneKey } from "../core/milestones.ts";
-import type { BacklogConfig } from "../types/index.ts";
+import type { BacklogConfig, Milestone } from "../types/index.ts";
 import { createMilestoneFilterValueResolver } from "../utils/milestone-filter.ts";
 import { canonicalTaskId } from "../utils/task-id.ts";
 import browserBundle from "../web/index.html";
 import { BROWSER_SNAPSHOT_ID, type BrowserSnapshot } from "../web/lib/browser-snapshot.ts";
 import { copyBrowserAttachments } from "./browser-export-assets.ts";
+
+export type BrowserExportSections = Partial<Record<"tasks" | "docs" | "decisions" | "milestones", boolean>>;
 
 function publishedConfig(config: BacklogConfig): BacklogConfig {
 	return {
@@ -28,17 +30,12 @@ function publishedConfig(config: BacklogConfig): BacklogConfig {
 	};
 }
 
-async function loadBrowserSnapshot(core: Core, version: string, tasksOnly: boolean): Promise<BrowserSnapshot> {
+async function loadPublishedTasks(core: Core, activeMilestones: Promise<Milestone[]>) {
 	const fs = core.filesystem;
-	const config = await fs.loadConfig();
-	if (!config) throw new Error("No Backlog.md project found. Run `backlog init` to initialize.");
-
-	const [records, archivedTasks, docs, decisions, milestones, archivedMilestones] = await Promise.all([
+	const [records, archivedTasks, milestones, archivedMilestones] = await Promise.all([
 		core.queryTasks({ includeCrossBranch: false }),
 		fs.listArchivedTasks(),
-		tasksOnly ? [] : fs.listDocuments(),
-		tasksOnly ? [] : fs.listDecisions(),
-		fs.listMilestones(),
+		activeMilestones,
 		fs.listArchivedMilestones(),
 	]);
 	const archivedKeys = new Set(collectArchivedMilestoneKeys(archivedMilestones, milestones));
@@ -55,17 +52,27 @@ async function loadBrowserSnapshot(core: Core, version: string, tasksOnly: boole
 	const archivedDependencyStatuses = archivedTasks
 		.filter(({ id }) => dependencyIds.has(canonicalTaskId(id)))
 		.map(({ id, status }) => ({ id, status }));
+	return { tasks, archivedDependencyStatuses };
+}
 
-	return {
-		version,
-		config: publishedConfig(config),
-		tasks,
-		archivedDependencyStatuses,
-		docs,
-		decisions,
-		milestones: tasksOnly ? [] : milestones,
-		tasksOnly,
-	};
+async function loadBrowserSnapshot(
+	core: Core,
+	version: string,
+	sections: BrowserExportSections,
+): Promise<BrowserSnapshot> {
+	const fs = core.filesystem;
+	const config = await fs.loadConfig();
+	if (!config) throw new Error("No Backlog.md project found. Run `backlog init` to initialize.");
+
+	// Task exports use active milestone IDs to distinguish them from archived references.
+	const activeMilestones = sections.tasks || sections.milestones ? fs.listMilestones() : Promise.resolve([]);
+	const [taskData, docs, decisions, milestones] = await Promise.all([
+		sections.tasks ? loadPublishedTasks(core, activeMilestones) : undefined,
+		sections.docs ? fs.listDocuments() : undefined,
+		sections.decisions ? fs.listDecisions() : undefined,
+		sections.milestones ? activeMilestones : undefined,
+	]);
+	return { version, config: publishedConfig(config), ...taskData, docs, decisions, milestones };
 }
 
 type BrowserAsset = { name: string; contents: Blob };
@@ -131,9 +138,9 @@ export async function exportBrowserSite(
 	core: Core,
 	directory: string,
 	version: string,
-	tasksOnly: boolean,
+	sections: BrowserExportSections,
 ): Promise<void> {
-	const snapshot = await loadBrowserSnapshot(core, version, tasksOnly);
+	const snapshot = await loadBrowserSnapshot(core, version, sections);
 	const { html, assets } = await loadBrowserAssets();
 	await mkdir(directory, { recursive: true });
 	const release = await lockfile.lock(directory, { lockfilePath: resolve(directory, ".backlog-export.lock") });

@@ -272,7 +272,8 @@ const SideNavigation = memo(function SideNavigation({
 	error,
 	onRetry
 }: SideNavigationProps) {
-	const { canWrite, tasksOnly } = useBrowserAccess();
+	const { canWrite, sections } = useBrowserAccess();
+	const canSearch = sections.tasks || sections.docs || sections.decisions;
 	const [isCollapsed, setIsCollapsed] = useState(() => {
 		const saved = localStorage.getItem('sideNavCollapsed');
 		return saved ? JSON.parse(saved) : false;
@@ -356,6 +357,7 @@ const SideNavigation = memo(function SideNavigation({
 
 	// Add keyboard shortcut for search
 	useEffect(() => {
+		if (!canSearch) return;
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
 				e.preventDefault();
@@ -369,7 +371,7 @@ const SideNavigation = memo(function SideNavigation({
 
 		document.addEventListener('keydown', handleKeyDown);
 		return () => document.removeEventListener('keydown', handleKeyDown);
-	}, [expandAndFocusSearch, searchInputRef, isCollapsed]);
+	}, [canSearch, expandAndFocusSearch, searchInputRef, isCollapsed]);
 
 	// Auto-focus search only after an explicit collapsed-to-expanded transition.
 	useEffect(() => {
@@ -378,10 +380,6 @@ const SideNavigation = memo(function SideNavigation({
 			searchInputRef.focus();
 		}
 	}, [isCollapsed, searchInputRef]);
-
-	location.pathname.startsWith('/documentation');
-	location.pathname.startsWith('/decisions');
-
 
 	// Perform unified search via centralized API (debounced)
 	useEffect(() => {
@@ -462,13 +460,13 @@ const SideNavigation = memo(function SideNavigation({
 		setIsCollapsed(true);
 	}, [expandAndFocusSearch, isCollapsed]);
 
-	const milestoneLink = { path: '/milestones', label: 'Milestones', Icon: Icons.Milestone, visible: !tasksOnly };
+	const milestoneLink = { path: '/milestones', label: 'Milestones', Icon: Icons.Milestone, visible: sections.milestones };
 	const draftLink = { path: '/drafts', label: 'Drafts', Icon: Icons.Draft, visible: canWrite };
 	const pageLinks = [
-		{ path: '/board', label: 'Kanban Board', Icon: Icons.Board, visible: true },
-		{ path: '/tasks', label: 'All Tasks', Icon: Icons.List, visible: true },
+		{ path: '/board', label: 'Kanban Board', Icon: Icons.Board, visible: sections.tasks },
+		{ path: '/tasks', label: 'All Tasks', Icon: Icons.List, visible: sections.tasks },
 		...(isCollapsed ? [draftLink, milestoneLink] : [milestoneLink, draftLink]),
-		{ path: '/statistics', label: 'Statistics', Icon: Icons.Statistics, visible: true },
+		{ path: '/statistics', label: 'Statistics', Icon: Icons.Statistics, visible: sections.tasks },
 	].filter(({ visible }) => visible);
 
 	return (
@@ -486,7 +484,7 @@ const SideNavigation = memo(function SideNavigation({
 					{isCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronLeft />}
 				</button>
 				
-				{!isCollapsed ? (
+				{canSearch && (!isCollapsed ? (
 					<div className="flex items-center w-full">
 						<div className="relative flex-1">
 							<div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 dark:text-gray-500">
@@ -522,7 +520,7 @@ const SideNavigation = memo(function SideNavigation({
 								<Icons.Search />
 						</button>
 					</div>
-				)}
+				))}
 			</div>
 
 			{/* Unified Search Results */}
@@ -637,7 +635,7 @@ const SideNavigation = memo(function SideNavigation({
 				)}
 				
 				{/* Task loading only changes the count; navigation remains stable. */}
-				{!isCollapsed && (
+				{!isCollapsed && sections.tasks && (
 					<div className="px-4 py-4">
 						<div className="flex items-center space-x-3 text-gray-700 dark:text-gray-300">
 							<span className="text-gray-500 dark:text-gray-400"><Icons.Tasks /></span>
@@ -675,10 +673,9 @@ const SideNavigation = memo(function SideNavigation({
 					))}
 				</div>
 
-				{!isCollapsed && !tasksOnly && (
+				{!isCollapsed && sections.docs && (
 					<>
-						{/* Divider between Tasks and Documents */}
-						<div className="mx-4 my-2 border-t border-gray-200 dark:border-gray-700"></div>
+						{pageLinks.length > 0 && <div className="mx-4 my-2 border-t border-gray-200 dark:border-gray-700" />}
 						
 						{/* Documents Section */}
 						<div className="px-4 py-4">
@@ -743,9 +740,14 @@ const SideNavigation = memo(function SideNavigation({
 								</div>
 							)}
 						</div>
+					</>
+				)}
 
-						{/* Divider between Documents and Decisions */}
-						<div className="mx-4 my-2 border-t border-gray-200 dark:border-gray-700"></div>
+				{!isCollapsed && sections.decisions && (
+					<>
+						{(pageLinks.length > 0 || sections.docs) && (
+							<div className="mx-4 my-2 border-t border-gray-200 dark:border-gray-700" />
+						)}
 
 						{/* Decisions Section */}
 						<div className="px-4 py-4">
@@ -798,42 +800,46 @@ const SideNavigation = memo(function SideNavigation({
 					</>
 				)}
 
-				{isCollapsed && !tasksOnly && (
+				{isCollapsed && (sections.docs || sections.decisions) && (
 					<div className="px-2 space-y-2">
-						<button
-							onClick={() => {
-								setIsCollapsed(false);
-								setIsDocsCollapsed(false);
-							}}
-								data-tooltip-id="sidebar-tooltip"
-								data-tooltip-content="Documentation"
-								className={`flex items-center justify-center p-3 rounded-md transition-colors duration-200 w-full ${
-									location.pathname.startsWith('/documentation')
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
-										: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`}
-						>
-							<div className="w-6 h-6 flex items-center justify-center">
-								<Icons.Document />
-							</div>
-						</button>
-						<button
-							onClick={() => {
-								setIsCollapsed(false);
-								setIsDecisionsCollapsed(false);
-							}}
-								data-tooltip-id="sidebar-tooltip"
-								data-tooltip-content="Decisions"
-								className={`flex items-center justify-center p-3 rounded-md transition-colors duration-200 w-full ${
-									location.pathname.startsWith('/decisions')
-										? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
-										: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-								}`}
-						>
-							<div className="w-6 h-6 flex items-center justify-center">
-								<Icons.Decision />
-							</div>
-						</button>
+						{sections.docs && (
+							<button
+								onClick={() => {
+									setIsCollapsed(false);
+									setIsDocsCollapsed(false);
+								}}
+									data-tooltip-id="sidebar-tooltip"
+									data-tooltip-content="Documentation"
+									className={`flex items-center justify-center p-3 rounded-md transition-colors duration-200 w-full ${
+										location.pathname.startsWith('/documentation')
+											? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
+											: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+									}`}
+							>
+								<div className="w-6 h-6 flex items-center justify-center">
+									<Icons.Document />
+								</div>
+							</button>
+						)}
+						{sections.decisions && (
+							<button
+								onClick={() => {
+									setIsCollapsed(false);
+									setIsDecisionsCollapsed(false);
+								}}
+									data-tooltip-id="sidebar-tooltip"
+									data-tooltip-content="Decisions"
+									className={`flex items-center justify-center p-3 rounded-md transition-colors duration-200 w-full ${
+										location.pathname.startsWith('/decisions')
+											? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
+											: 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+									}`}
+							>
+								<div className="w-6 h-6 flex items-center justify-center">
+									<Icons.Decision />
+								</div>
+							</button>
+						)}
 					</div>
 				)}
 			</nav>
