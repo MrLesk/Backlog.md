@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, setSystemTime } from "bun:test";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
@@ -76,6 +76,7 @@ describe("document and decision unknown frontmatter", () => {
 	});
 
 	afterEach(async () => {
+		setSystemTime();
 		await server?.stop();
 		server = undefined;
 		await mcp?.stop();
@@ -163,6 +164,8 @@ describe("document and decision unknown frontmatter", () => {
 		);
 		const port = await startServer();
 		const movedPath = join(filesystem.decisionsDir, "decision-1 - Renamed.md");
+		const httpEditTime = "2020-01-02T03:04:05Z";
+		setSystemTime(new Date(httpEditTime));
 		for (const context of ["First context", "Second context"]) {
 			const response = await fetch(`http://127.0.0.1:${port}/api/decisions/decision-1`, {
 				method: "PUT",
@@ -188,9 +191,21 @@ describe("document and decision unknown frontmatter", () => {
 			});
 		}
 		expect(await Bun.file(originalPath).exists()).toBe(false);
+		setSystemTime();
 		const beforeStatus = await Bun.file(movedPath).text();
+		expect(parseDecision(beforeStatus).updatedDate).toBe(httpEditTime);
+		const startedAt = Math.floor(Date.now() / 1000) * 1000;
 		await $`bun ${CLI_PATH} decision edit decision-1 -s superseded`.cwd(root).quiet();
-		expect(await Bun.file(movedPath).text()).toBe(beforeStatus.replace("status: accepted", "status: superseded"));
+		const afterStatus = await Bun.file(movedPath).text();
+		const updatedDate = parseDecision(afterStatus).updatedDate;
+		const updatedAt = Date.parse(updatedDate ?? "");
+		expect(updatedAt).toBeGreaterThanOrEqual(startedAt);
+		expect(updatedAt).toBeLessThanOrEqual(Date.now());
+		expect(afterStatus).toBe(
+			beforeStatus
+				.replace("status: accepted", "status: superseded")
+				.replace(`updated_date: '${httpEditTime}'`, `updated_date: '${updatedDate}'`),
+		);
 	});
 
 	it("keeps explicit null entries before an owned title and at the end across repeated saves", async () => {
