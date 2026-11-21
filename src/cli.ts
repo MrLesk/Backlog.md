@@ -84,6 +84,7 @@ import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-s
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
 import { DEFAULT_BROWSER_HOSTNAME, REMOTE_ACCESS_WARNING } from "./utils/browser-host.ts";
 import { launchBrowser } from "./utils/browser-launch.ts";
+import { CLEANUP_AGE_OPTIONS } from "./utils/cleanup-age.ts";
 import { formatDependencyCleanupMessage } from "./utils/dependency-graph.ts";
 import {
 	type ContentIdentityReport,
@@ -6054,7 +6055,7 @@ addHelpSchema(program.command("cleanup"), {
 		"Interactive cleanup summary. The command asks for an age and a confirmation, so it needs an interactive terminal for both its input and its output; without that it exits non-zero and archives nothing",
 	examples: ["backlog cleanup"],
 })
-	.description("archive tasks in the final status that are older than a chosen age")
+	.description("archive tasks in the final status, optionally filtered by age")
 	.action(async () => {
 		// Cleanup asks two questions. Unless its input and its output are both a terminal nobody can
 		// answer them, and exiting 0 after archiving nothing would read as success.
@@ -6092,19 +6093,9 @@ addHelpSchema(program.command("cleanup"), {
 
 			console.log(`Found ${terminalStatusTasks.length} tasks marked as ${terminalStatus}.`);
 
-			const ageOptions = [
-				{ title: "1 day", value: 1 },
-				{ title: "1 week", value: 7 },
-				{ title: "2 weeks", value: 14 },
-				{ title: "3 weeks", value: 21 },
-				{ title: "1 month", value: 30 },
-				{ title: "3 months", value: 90 },
-				{ title: "1 year", value: 365 },
-			];
-
 			const selectedAgePrompt = await clack.select({
-				message: "Archive tasks if they are older than:",
-				options: ageOptions.map((option) => ({ label: option.title, value: option.value })),
+				message: "Minimum age for cleanup",
+				options: CLEANUP_AGE_OPTIONS,
 			});
 			const selectedAge = clack.isCancel(selectedAgePrompt) ? undefined : selectedAgePrompt;
 
@@ -6113,17 +6104,14 @@ addHelpSchema(program.command("cleanup"), {
 				return;
 			}
 
-			// Get tasks older than selected period
 			const tasksToArchive = await core.getTerminalStatusTasksByAge(selectedAge);
 
 			if (tasksToArchive.length === 0) {
-				console.log(`No tasks found that are older than ${ageOptions.find((o) => o.value === selectedAge)?.title}.`);
+				console.log("No finished tasks match this selection.");
 				return;
 			}
 
-			console.log(
-				`\nFound ${tasksToArchive.length} tasks older than ${ageOptions.find((o) => o.value === selectedAge)?.title}:`,
-			);
+			console.log(`\nFound ${tasksToArchive.length} to archive:`);
 			for (const task of tasksToArchive.slice(0, 5)) {
 				const date = formatUtcDateForDisplay(task.updatedDate || task.createdDate, {
 					dateFormat: config.dateFormat,

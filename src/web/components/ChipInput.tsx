@@ -1,4 +1,4 @@
-import React, { useState, type KeyboardEvent } from 'react';
+import React, { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 interface ChipInputProps {
   value: string[];
@@ -7,41 +7,75 @@ interface ChipInputProps {
   label: string;
   name: string;
   disabled?: boolean;
+  suggestions?: string[];
 }
 
-const ChipInput: React.FC<ChipInputProps> = ({ value, onChange, placeholder, label, name, disabled }) => {
+const ChipInput: React.FC<ChipInputProps> = ({ value, onChange, placeholder, label, name, disabled, suggestions }) => {
   const [inputValue, setInputValue] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const activeOptionRef = useRef<HTMLLIElement>(null);
   const inputId = `chip-input-${name}`;
+  const listId = `${inputId}-options`;
+  const query = inputValue.trim().toLowerCase();
+  const sameChip = (left: string, right: string) => suggestions
+    ? left.trim().toLowerCase() === right.trim().toLowerCase()
+    : left === right;
+  const isSelected = (item: string) => value.some((chip) => sameChip(chip, item));
+  const matches = query && suggestions
+    ? suggestions.filter((item) => item.toLowerCase().includes(query) && !isSelected(item))
+    : [];
+  const expanded = !disabled && showSuggestions && matches.length > 0;
+  const activeSuggestion = expanded ? matches[activeIndex] : undefined;
+
+  useEffect(() => {
+    activeOptionRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [activeSuggestion]);
+
+  const closeSuggestions = () => {
+    setShowSuggestions(false);
+    setActiveIndex(-1);
+  };
+
+  const addValue = (text: string) => {
+    const typed = text.trim();
+    const chip = suggestions?.find((item) => sameChip(item, typed))?.trim() ?? typed;
+    if (chip && !isSelected(chip)) onChange([...value, chip]);
+    setInputValue('');
+    closeSuggestions();
+  };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (disabled) return;
-    if ((e.key === 'Enter' || e.key === ',') && inputValue.trim()) {
+    if (disabled || e.nativeEvent.isComposing) return;
+    if (matches.length && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
       e.preventDefault();
-      const newValue = inputValue.trim();
-      if (!value.includes(newValue)) {
-        onChange([...value, newValue]);
+      setShowSuggestions(true);
+      if (e.key === 'ArrowDown') {
+        setActiveIndex((activeIndex + 1) % matches.length);
+      } else {
+        setActiveIndex(activeIndex <= 0 ? matches.length - 1 : activeIndex - 1);
       }
-      setInputValue('');
+    } else if (expanded && e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      closeSuggestions();
+    } else if ((e.key === 'Enter' || e.key === ',') && inputValue.trim()) {
+      e.preventDefault();
+      addValue(e.key === 'Enter' && activeSuggestion ? activeSuggestion : inputValue);
     } else if (e.key === 'Backspace' && !inputValue && value.length > 0) {
-      // Remove last chip when backspace is pressed on empty input
       onChange(value.slice(0, -1));
     }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (disabled) return;
-    const newValue = e.target.value;
-    // Check if user typed a comma
-    if (newValue.endsWith(',')) {
-      const chipValue = newValue.slice(0, -1).trim();
-      if (chipValue && !value.includes(chipValue)) {
-        onChange([...value, chipValue]);
-        setInputValue('');
-      } else {
-        setInputValue('');
-      }
+    const text = e.target.value;
+    if (text.endsWith(',')) {
+      addValue(text.slice(0, -1));
     } else {
-      setInputValue(newValue);
+      setInputValue(text);
+      setActiveIndex(-1);
+      setShowSuggestions(true);
     }
   };
 
@@ -84,6 +118,14 @@ const ChipInput: React.FC<ChipInputProps> = ({ value, onChange, placeholder, lab
           <input
             id={inputId}
             type="text"
+            role={suggestions ? 'combobox' : undefined}
+            aria-label={label || name}
+            aria-autocomplete={suggestions ? 'list' : undefined}
+            aria-expanded={suggestions ? expanded : undefined}
+            aria-controls={expanded ? listId : undefined}
+            aria-activedescendant={activeSuggestion ? `${listId}-${activeIndex}` : undefined}
+            onFocus={() => setShowSuggestions(true)}
+            onBlur={closeSuggestions}
             value={inputValue}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
@@ -92,6 +134,29 @@ const ChipInput: React.FC<ChipInputProps> = ({ value, onChange, placeholder, lab
             disabled={disabled}
           />
         </div>
+        {expanded && (
+          <ul
+            id={listId}
+            role="listbox"
+            aria-label={label || name}
+            className="absolute left-0 top-full z-10 mt-1 w-full max-h-48 overflow-y-auto overscroll-contain rounded-md border border-gray-300 bg-white shadow-lg dark:border-gray-600 dark:bg-gray-800"
+          >
+            {matches.map((item, index) => (
+              <li
+                key={item}
+                id={`${listId}-${index}`}
+                ref={index === activeIndex ? activeOptionRef : undefined}
+                role="option"
+                aria-selected={index === activeIndex}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => addValue(item)}
+                className={`cursor-pointer px-3 py-2 text-sm text-gray-900 hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-gray-700 ${index === activeIndex ? 'bg-blue-100 dark:bg-blue-900' : ''}`}
+              >
+                {item}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

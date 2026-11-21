@@ -1,5 +1,10 @@
 import React, { useEffect, useRef } from "react";
 
+// The open list handles the first Escape before a dialog or edit session closes.
+export function isExpandedCombobox(target: EventTarget | null): boolean {
+	return (target as Element | null)?.matches?.('[role="combobox"][aria-expanded="true"]') ?? false;
+}
+
 interface ModalProps {
 	isOpen: boolean;
 	onClose: () => void;
@@ -47,6 +52,7 @@ const Modal: React.FC<ModalProps> = ({
 		const previousOverflow = ownerDocument.body.style.overflow;
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key === "Escape") {
+				if (isExpandedCombobox(event.target)) return;
 				event.preventDefault();
 				event.stopPropagation();
 				if (!disableEscapeCloseRef.current) {
