@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -6,6 +6,7 @@ import type { Task } from "../types/index.ts";
 import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
 import { ThemeProvider } from "../web/contexts/ThemeContext";
 import { apiClient } from "../web/lib/api.ts";
+import { setNativeInputValue } from "./react-dom-input.ts";
 
 let activeRoot: Root | null = null;
 let activeDom: JSDOM | null = null;
@@ -60,7 +61,7 @@ const setupDom = () => {
 const mountModal = async (
 	modalTask: Task = task,
 	isOpen = true,
-	props: { availableStatuses?: string[]; onArchive?: () => void } = {},
+	props: { availableStatuses?: string[]; availableLabels?: string[]; onArchive?: () => void } = {},
 ): Promise<HTMLElement> => {
 	setupDom();
 	const container = document.getElementById("root");
@@ -270,6 +271,57 @@ describe("Web task popup keyboard shortcuts", () => {
 			activeDom?.window.close();
 			activeDom = null;
 		}
+	});
+
+	it("reuses configured labels by keyboard or mouse and keeps free-text labels", async () => {
+		const update = spyOn(apiClient, "updateTask").mockImplementation(async (_id, updates) => ({
+			...task,
+			labels: updates.labels ?? [],
+		}));
+		try {
+			const container = await mountModal(task, true, { availableLabels: ["Build", "Bug", "Docs"] });
+			const input = container.querySelector<HTMLInputElement>("#chip-input-labels")!;
+			const type = (value: string) => act(async () => setNativeInputValue(input, value));
+			const options = () => Array.from(container.querySelectorAll('[role="option"]'));
+			const selected = () => update.mock.lastCall?.[1].labels;
+
+			await type("U");
+			expect(options().map((option) => option.textContent)).toEqual(["Build", "Bug"]);
+			await press(input, "ArrowDown");
+			await press(input, "ArrowDown");
+			await press(input, "Enter");
+			expect(selected()).toEqual(["Bug"]);
+
+			await type("u");
+			expect(options().map((option) => option.textContent)).toEqual(["Build"]);
+			await type("doc");
+			await click(options()[0]!);
+			expect(selected()).toEqual(["Bug", "Docs"]);
+
+			await type("BUG,");
+			expect(update).toHaveBeenCalledTimes(2);
+			await type("bui");
+			await press(input, "Enter");
+			expect(selected()).toEqual(["Bug", "Docs", "bui"]);
+			await type("build,");
+			expect(selected()).toEqual(["Bug", "Docs", "bui", "Build"]);
+		} finally {
+			update.mockRestore();
+		}
+	});
+
+	it("dismisses label suggestions before Escape cancels a full edit", async () => {
+		const container = await mountModal(task, true, { availableLabels: ["Bug"] });
+		await click(findButton(container, "Edit")!);
+		const input = container.querySelector<HTMLInputElement>("#chip-input-labels")!;
+		await act(async () => setNativeInputValue(input, "b"));
+		await press(input, "ArrowUp");
+		expect(container.querySelector('[role="option"][aria-selected="true"]')?.textContent).toBe("Bug");
+		await press(input, "Escape");
+		expect(container.querySelector('[role="listbox"]')).toBeNull();
+		expect(findButton(container, "Save")).toBeTruthy();
+		await press(input, "Escape");
+		expect(findButton(container, "Edit")).toBeTruthy();
 	});
 
 	it("keeps Escape active inside full-edit inputs", async () => {

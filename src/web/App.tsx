@@ -30,6 +30,7 @@ import { formatDependencyCleanupMessage } from '../utils/dependency-graph';
 import { ApiError, apiClient, readMovedFailureState } from './lib/api';
 import type { TaskDetail } from '../core/task-detail';
 import type { DuplicateRepairPlan } from '../core/duplicate-task-repair';
+import { collectAvailableLabels } from '../utils/label-filter';
 import { isValidTaskId } from '../utils/task-id';
 import { useHealthCheckContext } from './contexts/HealthCheckContext';
 import { getWebVersion } from './utils/version';
@@ -434,7 +435,7 @@ function AppContent() {
 
       setStatuses(statusesData);
       setProjectName(configData.projectName);
-      setAvailableLabels(configData.labels || []);
+      setAvailableLabels(collectAvailableLabels([], configData.labels || []));
       setConfig(configData);
       milestoneEntitiesRef.current = milestonesData;
       archivedMilestonesRef.current = archivedMilestonesData;
@@ -1088,6 +1089,7 @@ function AppContent() {
         onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
         onDependencyCleanup={reportDependencyCleanup}
         availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
+        availableLabels={availableLabels}
         availableTasks={tasks}
         onNavigateToTask={handleEditTask}
         availableMilestones={milestones}

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isReadOnlyTask, isWorkingCopyTask, type AcceptanceCriterion, type Milestone, type Task, type TaskComment } from "../../types";
 import { type TaskDetail, taskDependencyGraph, taskReadiness } from "../../core/task-detail";
-import Modal from "./Modal";
+import Modal, { isExpandedCombobox } from "./Modal";
 import { apiClient, ApiError, NetworkError, readDemotionFailureCause, readMovedFailureState } from "../lib/api";
 import { useTheme } from "../contexts/ThemeContext";
 import MDEditor from "@uiw/react-md-editor";
@@ -30,6 +30,7 @@ interface Props {
   onArchive?: () => Promise<void> | void; // For archiving tasks
   onDependencyCleanup?: (taskId: string, cleanedTaskIds: string[]) => void; // Reports records that lost a reference
   availableStatuses?: string[]; // Available statuses for new tasks
+  availableLabels?: string[];
   availableTasks?: Task[]; // Shared task corpus for dependency selection
   onNavigateToTask?: (task: Task) => void; // Opens another task, preserving close/back context
   isDraftMode?: boolean; // Whether creating a draft
@@ -193,6 +194,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   onArchive,
   onDependencyCleanup,
   availableStatuses = EMPTY_STATUSES,
+  availableLabels = [],
   availableTasks = EMPTY_TASKS,
   onNavigateToTask,
   availableMilestones: _availableMilestones,
@@ -568,7 +570,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
   // Intercept Escape to cancel edit (not close modal) when in edit mode
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (mode === "edit" && (e.key === "Escape")) {
+      if (mode === "edit" && e.key === "Escape" && !isExpandedCombobox(e.target)) {
         e.preventDefault();
         e.stopPropagation();
         handleCancelEdit();
@@ -1942,6 +1944,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
             <SectionHeader title="Labels" />
             <ChipInput
               name="labels"
+              suggestions={availableLabels}
               label=""
               value={labels}
               onChange={(value) => handleInlineMetaUpdate({ labels: value })}
