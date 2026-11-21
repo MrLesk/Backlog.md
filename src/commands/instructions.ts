@@ -33,7 +33,7 @@ export function formatInstructionGuideIndex(): string {
 		"Backlog.md instructions",
 		"",
 		"Start here:",
-		commandLine("backlog instructions overview", "Required first read before answering any user request"),
+		commandLine("backlog instructions overview", "Required first read before working on tracked tasks"),
 		commandLine("backlog <command> --help", "Show options, fields, and examples"),
 		"",
 		"Guides:",
