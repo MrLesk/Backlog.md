@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-11-21T21:50:00Z'
-updated_date: '2026-11-21T22:26:00Z'
+updated_date: '2026-11-21T22:28:00Z'
 labels: []
 dependencies: []
 references:
@@ -86,6 +86,8 @@ Verified the updated reading flow in the published sample at 365 px. Both status
 Alex approved the revised phone preview and requested pull request review.
 
 PR review found that the task list could inherit the board’s scroll position and that index links did not mark the selected document or decision in the drawer. Switching full pages now starts at the top. Verified at 365 × 640 that closing a task preserves both board offsets and using Back preserves the list position. Verified active links and scrolling between long documents and decisions. Types, Biome and all 417 focused tests pass with the fixes.
+
+The shared record links also keep doc-new and decision-new distinct from the New Document and New Decision commands. Verified through both read-only and writable views.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

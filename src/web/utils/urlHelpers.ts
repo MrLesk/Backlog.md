@@ -35,5 +35,8 @@ export type RecordListPath = "/documentation" | "/decisions";
 
 export function createRecordUrlPath(path: RecordListPath, record: { id: string; title: string }): string {
 	const prefix = path === "/documentation" ? "doc" : "decision";
-	return createUrlPath(path, extractIdBody(record.id, prefix), record.title);
+	const id = extractIdBody(record.id, prefix);
+	// The unprefixed "new" route opens the record editor.
+	const routeId = id === "new" ? `${prefix}-new` : id;
+	return createUrlPath(path, routeId, record.title);
 }
