@@ -318,14 +318,9 @@ function recordUnreadableDirectory(error: unknown, unreadable?: string[]): void 
 	unreadable?.push("");
 }
 
-/**
- * A decision's file name. Decisions are stored flat, so a path with a folder in it, or one that
- * leaves the folder, is refused.
- */
-function decisionFileName(decision: ContentRecord): string {
-	const name = decision.path ?? `${decision.id}.md`;
+function requireRecordFilename(name: string, recordKind: string): string {
 	if (name === "" || name === "." || name === ".." || /[\\/]/.test(name)) {
-		throw new Error(`Decision path must be one file name in its folder: ${name}`);
+		throw new Error(`${recordKind} path must be one file name in its folder: ${name}`);
 	}
 	return name;
 }
@@ -1598,7 +1593,10 @@ export class FileSystem {
 			throw new Error(`Cannot save decision ${decision.id}: it is archived, and archived decisions are read-only.`);
 		}
 		// The file name always starts with a lower-case "decision-", whatever letter case the stored ID uses.
-		const filename = `decision-${extractIdBody(decision.id, "decision")} - ${this.sanitizeFilename(decision.title)}.md`;
+		const filename = requireRecordFilename(
+			`decision-${extractIdBody(decision.id, "decision")} - ${this.sanitizeFilename(decision.title)}.md`,
+			"Decision",
+		);
 		const decisionsDir = await this.getDecisionsDir();
 		const filepath = join(decisionsDir, filename);
 		const loadedFromPath = decision.path ? this.contentRecordFilePath("decision", decision) : undefined;
@@ -1647,8 +1645,8 @@ export class FileSystem {
 		}
 		const docsDir = await this.getDocsDir();
 		const canonicalId = normalizeDocumentId(document.id);
+		const filename = requireRecordFilename(`${canonicalId} - ${this.sanitizeFilename(document.title)}.md`, "Document");
 		document.id = canonicalId;
-		const filename = `${canonicalId} - ${this.sanitizeFilename(document.title)}.md`;
 		const normalizedSubPath = normalizeDocumentSubPath(subPath);
 		const relativePath = normalizedSubPath ? `${normalizedSubPath}/${filename}` : filename;
 		const filepath = join(docsDir, ...relativePath.split("/"));
@@ -1856,7 +1854,8 @@ export class FileSystem {
 				return {
 					folder: this.decisionsDir,
 					archiveFolder: this.archiveDecisionsDir,
-					relativePath: decisionFileName,
+					relativePath: (decision: ContentRecord) =>
+						requireRecordFilename(decision.path ?? `${decision.id}.md`, "Decision"),
 					storedId: (content: string) => parseDecision(content).id,
 					idsEqual: decisionIdsEqual,
 				};
@@ -1958,7 +1957,7 @@ export class FileSystem {
 			.replace(/\s+/g, "-")
 			.toLowerCase()
 			.slice(0, 50);
-		return `${id} - ${safeTitle}.md`;
+		return requireRecordFilename(`${id} - ${safeTitle}.md`, "Milestone");
 	}
 
 	private serializeMilestoneContent(id: string, title: string, rawContent: string, dueDate?: string): string {

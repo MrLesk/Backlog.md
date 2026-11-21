@@ -552,6 +552,21 @@ Invalid content`,
 			expect(decisionFiles).toContain("decision-3 - Use-OAuth-v2.md");
 		});
 
+		it.each(["/", "\\"])("rejects a folder separator in a decision ID (%s)", async (separator) => {
+			const { filepath } = await filesystem.saveDecision(sampleDecision);
+			const original = await Bun.file(filepath).text();
+
+			await expect(
+				filesystem.saveDecision({
+					...sampleDecision,
+					id: ["decision-team", "entry"].join(separator),
+					path: "decision-1 - Use-TypeScript.md",
+				}),
+			).rejects.toThrow("Decision path must be one file name");
+			expect(await Bun.file(filepath).text()).toBe(original);
+			expect(await readdir(filesystem.decisionsDir)).toEqual(["decision-1 - Use-TypeScript.md"]);
+		});
+
 		it("should save decision log with alternatives", async () => {
 			const decisionWithAlternatives: Decision = {
 				...sampleDecision,
@@ -646,6 +661,21 @@ Invalid content`,
 			expect(docsFiles).toContain("doc-9 - Docs-Guide-1.md");
 		});
 
+		it.each(["/", "\\"])("rejects a folder separator in a document ID (%s)", async (separator) => {
+			const { relativePath } = await filesystem.saveDocument({ ...sampleDocument }, "guides");
+			const originalPath = join(filesystem.docsDir, relativePath);
+			const original = await Bun.file(originalPath).text();
+
+			await expect(
+				filesystem.saveDocument(
+					{ ...sampleDocument, id: ["doc-team", "entry"].join(separator), path: relativePath },
+					"guides",
+				),
+			).rejects.toThrow("Document path must be one file name");
+			expect(await Bun.file(originalPath).text()).toBe(original);
+			expect(await readdir(join(filesystem.docsDir, "guides"))).toEqual(["doc-1 - API-Guide.md"]);
+		});
+
 		it("removes the previous document file when the title changes", async () => {
 			await filesystem.saveDocument(sampleDocument);
 
@@ -731,6 +761,17 @@ Invalid content`,
 			);
 			expect(canonicalFiles.some((file) => file.startsWith("doc-0009"))).toBe(true);
 		});
+	});
+
+	it("rejects a folder separator in a saved milestone ID when renaming it", async () => {
+		const filepath = join(filesystem.milestonesDir, "m-0 - Example.md");
+		const original = "---\nid: m-team/entry\ntitle: Example\n---\n";
+		await mkdir(join(filesystem.milestonesDir, "m-team"));
+		await Bun.write(filepath, original);
+
+		expect((await filesystem.renameMilestone("Example", "New title")).success).toBe(false);
+		expect(await Bun.file(filepath).text()).toBe(original);
+		expect(await readdir(join(filesystem.milestonesDir, "m-team"))).toEqual([]);
 	});
 
 	describe("edge cases", () => {
