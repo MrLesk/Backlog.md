@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { CLEANUP_AGE_OPTIONS } from "../../utils/cleanup-age";
 import Modal from "./Modal";
 import { apiClient } from "../lib/api";
 import StoredDate from "./StoredDate";
@@ -16,16 +17,6 @@ interface TaskPreview {
 	updatedDate?: string;
 	createdDate: string;
 }
-
-const AGE_OPTIONS = [
-	{ label: "1 day", value: 1 },
-	{ label: "1 week", value: 7 },
-	{ label: "2 weeks", value: 14 },
-	{ label: "3 weeks", value: 21 },
-	{ label: "1 month", value: 30 },
-	{ label: "3 months", value: 90 },
-	{ label: "1 year", value: 365 },
-];
 
 type CleanupSelection =
 	| { phase: "choose" }
@@ -124,10 +115,10 @@ const CleanupModal: React.FC<CleanupModalProps> = ({ isOpen, onClose, onSuccess,
 				{/* Age Selector */}
 				<div>
 					<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-						Archive tasks if they are older than:
+						Minimum age for cleanup
 					</label>
 					<div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-						{AGE_OPTIONS.map((option) => (
+						{CLEANUP_AGE_OPTIONS.map((option) => (
 							<button
 								key={option.value}
 								onClick={() => handleAgeSelect(option.value)}
@@ -163,7 +154,7 @@ const CleanupModal: React.FC<CleanupModalProps> = ({ isOpen, onClose, onSuccess,
 					<div>
 						{previewCount === 0 ? (
 							<div className="text-center py-8 text-gray-500 dark:text-gray-400">
-								No tasks found that are older than {AGE_OPTIONS.find((o) => o.value === selectedAge)?.label}.
+								No finished tasks match this selection.
 							</div>
 						) : (
 							<>

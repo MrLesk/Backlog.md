@@ -15,7 +15,7 @@ import {
 const CLI_PATH = getTestCliPath();
 const itPty = HAS_PSEUDO_TERMINAL ? it : it.skip;
 const TERMINAL_NOTICE = "Cleanup needs an interactive terminal";
-const AGE_QUESTION = "Archive tasks if they are older than:";
+const AGE_QUESTION = "Minimum age for cleanup";
 const ESCAPE = "\x1b";
 
 let testDir: string;
@@ -101,6 +101,7 @@ describe("backlog cleanup and the terminal it needs", () => {
 		expect(result.output).not.toContain(TERMINAL_NOTICE);
 		expect(result.output).toContain("Found 1 tasks marked as Done.");
 		expect(result.output).toContain(AGE_QUESTION);
+		expect(result.output).toContain("Any age");
 		expect(result.output).toContain("Cleanup cancelled.");
 		expect(result.exitCode).toBe(0);
 		// The question was cancelled, so nothing was archived.

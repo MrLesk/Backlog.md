@@ -274,7 +274,8 @@ describe("Cleanup functionality", () => {
 			await core.createTask(task, false);
 
 			const oldTasks = await core.getTerminalStatusTasksByAge(1);
-			expect(oldTasks).toHaveLength(0); // Should not include tasks without valid dates
+			expect(oldTasks).toHaveLength(0);
+			expect((await core.getTerminalStatusTasksByAge(0)).map((item) => item.id)).toEqual(["TASK-1"]);
 		});
 
 		it("should use updatedDate over createdDate when available", async () => {
