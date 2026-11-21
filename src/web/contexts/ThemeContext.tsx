@@ -9,6 +9,19 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+// Only an explicit toggle is stored. The old 'backlog-theme' key also held themes saved on
+// every load, so it is not read: everyone follows the OS again until they toggle.
+// index.html reads this key too, to apply the theme before the page renders.
+const THEME_CHOICE_KEY = 'backlog-theme-choice';
+const OS_DARK_QUERY = '(prefers-color-scheme: dark)';
+
+const readOsTheme = (): Theme => (window.matchMedia?.(OS_DARK_QUERY).matches ? 'dark' : 'light');
+
+const readThemeChoice = (): Theme | null => {
+	const choice = localStorage.getItem(THEME_CHOICE_KEY);
+	return choice === 'light' || choice === 'dark' ? choice : null;
+};
+
 export const useTheme = () => {
 	const context = useContext(ThemeContext);
 	if (context === undefined) {
@@ -22,37 +35,34 @@ interface ThemeProviderProps {
 }
 
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
-	const [theme, setTheme] = useState<Theme>(() => {
-		// Check localStorage for saved theme preference
-		const savedTheme = localStorage.getItem('backlog-theme') as Theme;
-		if (savedTheme && (savedTheme === 'light' || savedTheme === 'dark')) {
-			return savedTheme;
-		}
-		
-		// Check system preference
-		if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-			return 'dark';
-		}
-		
-		return 'light';
-	});
+	const [osTheme, setOsTheme] = useState<Theme>(readOsTheme);
+	const [themeChoice, setThemeChoice] = useState<Theme | null>(readThemeChoice);
+	const theme = themeChoice ?? osTheme;
 
 	useEffect(() => {
-		// Apply theme to document root
-		const root = document.documentElement;
-		
-		if (theme === 'dark') {
-			root.classList.add('dark');
-		} else {
-			root.classList.remove('dark');
+		const osDarkQuery = window.matchMedia?.(OS_DARK_QUERY);
+		if (!osDarkQuery) {
+			return;
 		}
-		
-		// Save to localStorage
-		localStorage.setItem('backlog-theme', theme);
+		const handleOsChange = (event: { matches: boolean }) => setOsTheme(event.matches ? 'dark' : 'light');
+		osDarkQuery.addEventListener('change', handleOsChange);
+		return () => osDarkQuery.removeEventListener('change', handleOsChange);
+	}, []);
+
+	useEffect(() => {
+		document.documentElement.classList.toggle('dark', theme === 'dark');
 	}, [theme]);
 
+	// Toggling to the theme the OS shows drops the choice, so the UI follows the OS again.
 	const toggleTheme = () => {
-		setTheme(prev => prev === 'light' ? 'dark' : 'light');
+		const nextTheme: Theme = theme === 'light' ? 'dark' : 'light';
+		if (nextTheme === osTheme) {
+			localStorage.removeItem(THEME_CHOICE_KEY);
+			setThemeChoice(null);
+		} else {
+			localStorage.setItem(THEME_CHOICE_KEY, nextTheme);
+			setThemeChoice(nextTheme);
+		}
 	};
 
 	return (
