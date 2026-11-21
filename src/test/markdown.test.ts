@@ -16,7 +16,31 @@ describe("Markdown Parser", () => {
 		expect(parseDecision(`---\nid: decision-1\ndate: ${value}\n---`).date).toBe(value);
 		expect(parseTask("---\ncreated_date: 2026-10-19\n---").createdDate).toBe("2026-10-19");
 	});
+	it("keeps the written due day on a title edit with any YAML opening line", () => {
+		for (const opening of ["---", "\uFEFF---", "---yaml", "\uFEFF---YML"]) {
+			const source = `${opening}\r\nid: task-1\r\ntitle: Before\r\ndue_date: 2026-09-05T00:30:00+14:00\r\n---\r\nBody`;
+			const task = parseTask(source);
+			expect(task.dueDate).toBe("2026-09-05");
+			const edited = serializeTask({ ...task, title: "After" }, source);
+			expect(parseTask(edited).dueDate).toBe("2026-09-05");
+		}
+	});
 	describe("parseMarkdown", () => {
+		it("rejects non-YAML headers, even when their metadata is empty", () => {
+			expect(() => parseMarkdown('---json\n{"title":"Example"}\n---')).toThrow(/frontmatter must use YAML/i);
+			expect(() => parseMarkdown("\uFEFF---JavaScript\r\n\r\n---")).toThrow(/frontmatter must use YAML/i);
+		});
+
+		it("reads explicitly labeled YAML and leaves Markdown rules in the body", () => {
+			for (const label of ["yaml", "YML"]) {
+				expect(parseMarkdown(`\uFEFF---${label}\r\ntitle: Example\r\n---\r\nBody`)).toEqual({
+					frontmatter: { title: "Example" },
+					content: "Body",
+				});
+			}
+			expect(parseMarkdown("----\nBody")).toEqual({ frontmatter: {}, content: "----\nBody" });
+		});
+
 		it("should parse frontmatter and content", () => {
 			const content = `---
 title: "Test Task"
@@ -406,6 +430,27 @@ describe("frontmatter parse cache", () => {
 });
 
 describe("Markdown Serializer", () => {
+	it("rejects non-YAML metadata when preserving an existing document header", () => {
+		const document = parseDocument("---\nid: doc-1\ntitle: Example\n---\nBody");
+		const original = '---json\n{"id":"doc-1","custom":true}\n---\nBody';
+		expect(() => serializeDocument(document, original)).toThrow(/frontmatter must use YAML/i);
+	});
+
+	it("preserves an explicitly labeled YAML header when editing a decision", () => {
+		const source =
+			"\uFEFF---YML\r\nid: decision-1\r\ntitle: Example\r\nstatus: proposed\r\ncustom: keep\r\n---\r\nBody";
+		const saved = serializeDecision({ ...parseDecision(source), status: "accepted" }, source);
+		expect(saved).toBe(source.replace("status: proposed", "status: accepted"));
+	});
+
+	it("preserves header-like text supplied as a new decision body", () => {
+		const decision = parseDecision("---\nid: decision-1\ntitle: Example\n---\nBody");
+		const body = '---json\n{"example":true}\n---\nBody';
+		const saved = parseMarkdown(serializeDecision({ ...decision, rawContent: body }));
+		expect(saved.content).toStartWith(`${body}\n\n`);
+		expect(saved.frontmatter).not.toHaveProperty("example");
+	});
+
 	describe("serializeTask", () => {
 		it("should serialize a task correctly", () => {
 			const task: Task = {

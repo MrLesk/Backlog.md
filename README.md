@@ -122,6 +122,8 @@ For Cursor with CLI instructions, select AGENTS.md or pass `--agent-instructions
 
 Everything is stored as human-readable Markdown in a project-local backlog folder such as `backlog/`, `.backlog/`, or a custom project-relative path configured through `backlog.config.yml` (e.g. `backlog_directory: my-backlog`). Task IDs use a configurable prefix (`backlog init --task-prefix`): the default produces `TASK-1`-style IDs, while this repository uses `back`, so examples below show `BACK-1`-style IDs. Git is optional: `backlog init --no-git` creates a filesystem-only project.
 
+Backlog.md reads record metadata as YAML between `---` lines at the top of each Markdown file. If an existing file declares a different header format, convert its metadata to YAML before opening it with Backlog.md.
+
 > [!TIP]
 > **Want an architecture diagram of your repo, kept up to date automatically?** See the [Backlog.md + Groma.md integration](#groma-md) below.
 

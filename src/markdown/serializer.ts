@@ -137,8 +137,8 @@ export function serializeDecision(decision: Decision, originalContent = ""): str
 		updated_date: decision.updatedDate,
 		superseded_by: decision.supersededBy,
 	};
-	// Keep the entire original header and body. parseMarkdown intentionally trims bodies for readers.
-	const header = originalContent.match(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---[^\r\n]*(?:\r?\n|$)/)?.[0] ?? "";
+	// Keep the original opening line, including any YAML label. parseDecision validates the header below.
+	const header = originalContent.match(/^\uFEFF?---(?!-)[^\n]*\n[\s\S]*?\r?\n---[^\r\n]*(?:\r?\n|$)/)?.[0] ?? "";
 	const originalBody = originalContent ? originalContent.slice(header.length) : decision.rawContent;
 	const sections = getDecisionSections(originalBody);
 	const updates: Partial<Record<(typeof DECISION_SECTION_KEYS)[number], string>> = {};

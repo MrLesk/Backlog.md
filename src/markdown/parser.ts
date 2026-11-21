@@ -2,7 +2,7 @@ import type { AcceptanceCriterion, Decision, Document, Milestone, ParsedMarkdown
 import { normalizeDueDate } from "../utils/due-date.ts";
 import { normalizePriorityValue } from "../utils/priority-config.ts";
 import { getTaskRevision } from "../utils/task-revision.ts";
-import { parseFrontmatter, preprocessFrontmatter } from "./frontmatter.ts";
+import { normalizeYamlOpeningLine, parseFrontmatter, preprocessFrontmatter } from "./frontmatter.ts";
 import {
 	AcceptanceCriteriaManager,
 	CommentsManager,
@@ -48,18 +48,11 @@ function normalizeDate(value: unknown): string {
 }
 
 export function parseMarkdown(content: string, dateFields: readonly string[] = []): ParsedMarkdown {
-	// Updated regex to handle both Windows (\r\n) and Unix (\n) line endings
-	const fmRegex = /^---\r?\n([\s\S]*?)\r?\n---/;
-	const match = content.match(fmRegex);
-	let toParse = content;
-
-	if (match) {
-		const processed = preprocessFrontmatter(match[1] || "");
-		// Replace with consistent line endings
-		toParse = content.replace(fmRegex, () => `---\n${processed}\n---`);
-	}
-
-	const parsed = parseFrontmatter(toParse, dateFields);
+	const source = normalizeYamlOpeningLine(content).replace(
+		/^---\r?\n([\s\S]*?)\r?\n---/,
+		(_header, fields: string) => `---\n${preprocessFrontmatter(fields)}\n---`,
+	);
+	const parsed = parseFrontmatter(source, dateFields);
 	return {
 		frontmatter: parsed.data,
 		content: parsed.content.trim(),

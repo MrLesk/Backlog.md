@@ -1,6 +1,19 @@
 import { isDeepStrictEqual } from "node:util";
 import matter from "gray-matter";
 
+/** A labeled YAML header and a bare header must take the same path through field preprocessing. */
+export function normalizeYamlOpeningLine(content: string): string {
+	if (content.startsWith("---\n") || content.startsWith("---\r\n")) return content;
+	// gray-matter strips one byte-order mark and treats four or more dashes as an ordinary Markdown rule.
+	return content.replace(/^\uFEFF?---(?!-)([^\n]*?)(\r?\n|$)/, (_line, label: string, newline: string) => {
+		const language = label.trim().toLowerCase();
+		if (language && language !== "yaml" && language !== "yml") {
+			throw new Error("Markdown frontmatter must use YAML. Use a plain --- opening line and YAML fields.");
+		}
+		return `---${newline}`;
+	});
+}
+
 /**
  * The only place in the codebase that talks to gray-matter.
  *
@@ -10,13 +23,17 @@ import matter from "gray-matter";
  * parse. Passing an options object skips the cache entirely (gray-matter 4.x only reads and writes
  * the cache when `options` is falsy), so every call here passes one.
  */
+function readYamlMatter<Options extends matter.GrayMatterOption<string, Options>>(content: string, options: Options) {
+	return matter(normalizeYamlOpeningLine(content), options);
+}
+
 export function parseFrontmatter(
 	content: string,
 	dateFields: readonly string[] = [],
 ): { data: Record<string, unknown>; content: string } {
 	const starts: number[] = [];
 	const dateScalars = new Map<Date, string>();
-	const file = matter(content, {
+	const file = readYamlMatter(content, {
 		language: "yaml",
 		...(dateFields.length > 0 && {
 			listener(event: string, state: { position: number; input: string; kind: string; result: unknown }) {
@@ -60,11 +77,11 @@ export class FrontmatterReferenceError extends Error {
  * source text. Undefined owned fields are omitted, rather than recovered as unknown metadata.
  */
 export function stringifyFrontmatter(content: string, data: Record<string, unknown>, originalContent?: string): string {
-	if (originalContent === undefined) return matter.stringify(content, data, {});
 	const ownedData = Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined));
-	const unknown = preserveUnknownFrontmatter(originalContent, new Set(Object.keys(data)));
 	// Passing a body object prevents gray-matter from interpreting a leading --- block as metadata.
 	const serialized = matter.stringify({ content }, ownedData, {});
+	if (!originalContent) return serialized;
+	const unknown = preserveUnknownFrontmatter(originalContent, new Set(Object.keys(data)));
 	if (!unknown.text && !unknown.prefix) return serialized;
 	// A clear-only update can have no owned values; still provide a header for preserved entries.
 	const withHeader = Object.keys(ownedData).length > 0 ? serialized : `---\n\n---\n${serialized}`;
@@ -106,7 +123,7 @@ function preserveUnknownFrontmatter(
 	ownedKeys: Set<string>,
 ): { text: string; indent: string; prefix: string } {
 	// Extract without parsing first: existing Markdown accepts @assignee values after preprocessing.
-	const raw = matter(content, { engines: { yaml: () => ({}) } }).matter;
+	const raw = readYamlMatter(content, { engines: { yaml: () => ({}) } }).matter;
 	if (!raw) return { text: "", indent: "", prefix: "" };
 	const lines = raw.split(/(?<=\n)/);
 	const starts: number[] = [];
@@ -120,7 +137,7 @@ function preserveUnknownFrontmatter(
 	const mappings: Node[] = [];
 	// The existing YAML engine reports node boundaries. Locate its actual root mapping by object
 	// identity, since a flow mapping has an extra parser wrapper. Keep source, never parsed values.
-	const parsed = matter(`---${preprocessFrontmatter(raw)}\n---`, {
+	const parsed = readYamlMatter(`---${preprocessFrontmatter(raw)}\n---`, {
 		language: "yaml",
 		listener(
 			event: string,
