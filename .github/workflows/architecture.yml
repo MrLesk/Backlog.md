@@ -1,49 +1,36 @@
 name: Groma architecture
 
-# Publishes Backlog.md's groma.md architecture map to GitHub Pages, with a before/after comparison for
-# every open pull request, and keeps one comment on each pull request linking to its comparison.
-# The same setup as the groma.md repository's own architecture workflow, on the released Action.
-#
+# Keep the main map and individual PR previews on the same Pages site.
 #   /architecture/auto/          the current map of main
-#   /comparison/pr-<n>/auto/     what pull request <n> changes in the architecture
-#
-# Needs Settings -> Pages -> Source: GitHub Actions.
+#   /comparison/pr-<n>/auto/     the stored comparison for one pull request
 
 on:
   push:
     branches: [main]
-  # Runs main's copy of this workflow. Pull request code is only read, never executed.
+  # The trusted default-branch workflow treats PR commits as Git data.
   pull_request_target:
-    types: [opened, synchronize, reopened, closed]
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
     inputs:
       pull-request:
-        description: Reviewed PR number to include (0 compares same-repository PRs only)
+        description: Reviewed PR number to publish (0 publishes the main map)
         type: number
         default: 0
 
-permissions:
-  contents: read
-  pages: read
+permissions: {}
 
 env:
   NODE_OPTIONS: --use-openssl-ca
   NODE_USE_SYSTEM_CA: '0'
   GROMA_THEME: auto
 
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
-  # Each deploy replaces the site, so every run rebuilds the map and all open comparisons.
-  # Fork comparisons need a reviewed PR number for this run.
-  pulls:
+  map:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.pull-request == 0)
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: read
-    outputs:
-      open: ${{ steps.open.outputs.pulls }}
+      contents: read
     steps:
       - &secure-tls
         name: Exclude compromised certificate trust before networking
@@ -107,163 +94,127 @@ jobs:
           }
           console.log(`Prepared ${certificates.size} trusted CAs with eMudhra incident keys excluded`);
           NODE
-      - name: List open pull requests
-        id: open
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REVIEWED_PR: ${{ inputs.pull-request || 0 }}
-        run: |
-          pulls=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls?state=open" \
-            | jq --arg repo "$GITHUB_REPOSITORY" --argjson reviewed "$REVIEWED_PR" \
-              '[.[] | select(.head.repo.full_name == $repo or .number == $reviewed) |
-                {number, head: .head.sha, base: .base.sha}]' | jq -cs 'add // []')
-          echo "pulls=$pulls" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: MrLesk/groma.md-action@v1.3.0
+        id: map
+        with:
+          revision: ${{ github.sha }}
+          theme: ${{ env.GROMA_THEME }}
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: groma-map
+          path: ${{ steps.map.outputs.output }}
+          retention-days: 1
 
   compare:
-    name: 'Compare PR #${{ matrix.pull.number }}'
-    needs: pulls
-    if: needs.pulls.outputs.open != '[]'
-    continue-on-error: true
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.pull-request > 0) ||
+      (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        pull: ${{ fromJSON(needs.pulls.outputs.open) }}
+      pull-requests: read
+    outputs:
+      number: ${{ steps.pull.outputs.number }}
+      base: ${{ steps.pull.outputs.base }}
     steps:
       - *secure-tls
+      - name: Select the pull request
+        id: pull
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ inputs.pull-request || github.event.pull_request.number }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER" \
+            --jq '"number=\(.number)\nbase=\(.base.sha)\nhead=\(.head.sha)"' >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ matrix.pull.base }}
+          ref: ${{ steps.pull.outputs.base }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Find the merge base
         id: commits
         env:
-          BASE: ${{ matrix.pull.base }}
-          HEAD: ${{ matrix.pull.head }}
-        # Keep the trusted base checked out; export reads the PR commit from Git.
+          BASE: ${{ steps.pull.outputs.base }}
+          HEAD: ${{ steps.pull.outputs.head }}
         run: |
           git fetch --no-tags origin "$HEAD"
           echo "from=$(git merge-base "$BASE" "$HEAD")" >> "$GITHUB_OUTPUT"
 
-      - uses: MrLesk/groma.md-action@v1.2.4
-        id: map
+      - uses: MrLesk/groma.md-action@v1.3.0
+        id: comparison
         with:
-          groma-version: '0.7.8'
-          output: groma-comparison
           theme: ${{ env.GROMA_THEME }}
           from: ${{ steps.commits.outputs.from }}
-          revision: ${{ matrix.pull.head }}
-
-      - name: Place the comparison at /comparison/pr-<n>/
-        env:
-          NUMBER: ${{ matrix.pull.number }}
-          MAP: ${{ steps.map.outputs.directory }}
-        run: |
-          mkdir -p "preview/comparison/pr-$NUMBER"
-          mv "$MAP" "preview/comparison/pr-$NUMBER/$GROMA_THEME"
+          revision: ${{ steps.pull.outputs.head }}
 
       - uses: actions/upload-artifact@v7.0.2
         with:
-          name: groma-comparison-${{ matrix.pull.number }}
-          path: preview
+          name: groma-comparison
+          path: ${{ steps.comparison.outputs.output }}
           retention-days: 1
 
-  build:
-    needs: [pulls, compare]
-    # A failed comparison leaves out that pull request; the map still publishes.
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    steps:
-      - *secure-tls
-      - uses: actions/checkout@v7.0.1
-
-      - parallel:
-          - name: Build the current architecture map
-            uses: MrLesk/groma.md-action@v1.2.4
-            with:
-              groma-version: '0.7.8'
-              output: ${{ runner.temp }}/groma-site
-              theme: ${{ env.GROMA_THEME }}
-
-          - name: Add the pull request comparisons
-            if: needs.compare.result == 'success' || needs.compare.result == 'failure'
-            uses: actions/download-artifact@v8.0.2
-            with:
-              pattern: groma-comparison-*
-              merge-multiple: true
-              path: ${{ runner.temp }}/groma-site
-
-      - uses: actions/upload-pages-artifact@v5.0.0
-        with:
-          path: ${{ runner.temp }}/groma-site
-
-  deploy:
-    needs: build
-    if: ${{ !cancelled() && needs.build.result == 'success' }}
+  publish-map:
+    needs: map
     runs-on: ubuntu-latest
     permissions:
+      contents: write
       pages: write
       id-token: write
-    outputs:
-      page_url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      queue: max
     environment:
       name: github-pages
-      url: ${{ steps.map-url.outputs.url }}
-    steps:
-      - *secure-tls
-      - name: Publish architecture website
-        id: deployment
-        uses: actions/deploy-pages@v5.0.1
-
-      - name: Link to the architecture map
-        id: map-url
-        env:
-          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
-        run: echo "url=${PAGE_URL%/}/architecture/$GROMA_THEME/" >> "$GITHUB_OUTPUT"
-
-  # One comment per pull request, in the same format as the groma.md Action's own comment.
-  comment:
-    needs: [compare, deploy]
-    if: ${{ !cancelled() && needs.deploy.result == 'success' && needs.compare.result != 'skipped' }}
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
+      url: ${{ steps.publication.outputs.url }}
     steps:
       - *secure-tls
       - uses: actions/download-artifact@v8.0.2
         with:
-          pattern: groma-comparison-*
-          merge-multiple: true
-          path: previews
+          name: groma-map
+          path: map
 
-      - name: Update each pull request comment
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PAGE_URL: ${{ needs.deploy.outputs.page_url }}
-        run: |
-          shopt -s nullglob
-          marker='<!-- groma-comparison -->'
-          for summary in previews/comparison/pr-*/"$GROMA_THEME"/comparison.json; do
-            number=${summary#previews/comparison/pr-}
-            number=${number%%/*}
-            body=$(jq -r --arg marker "$marker" --arg repo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
-              --arg url "${PAGE_URL%/}/comparison/pr-$number/$GROMA_THEME/" '
-              def row($name; $count): "| \($name) | \($count.added) | \($count.modified) | \($count.removed) |";
-              [$marker, "### Groma architecture comparison", "",
-                "| Changes | Added | Modified | Removed |", "| --- | ---: | ---: | ---: |",
-                row("Components"; .components), row("Relationships"; .relationships), "",
-                "[Open before / after comparison](\($url)?revision=\(.revision)&from=\(.from))", "",
-                "Compared [\(.from[0:7])](\($repo)/commit/\(.from)) (merge base) → [\(.revision[0:7])](\($repo)/commit/\(.revision))."]
-              | join("\n")' "$summary")
-            id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$number/comments" \
-              --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" | head -n 1)
-            if [ -z "$id" ]; then
-              gh api "repos/$GITHUB_REPOSITORY/issues/$number/comments" -f body="$body" > /dev/null
-            elif [ "$(gh api "repos/$GITHUB_REPOSITORY/issues/comments/$id" --jq .body)" != "$body" ]; then
-              gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" > /dev/null
-            fi
-          done
+      - uses: MrLesk/groma.md-action/publish@v1.3.0
+        id: publication
+        with:
+          directory: map
+          revision: ${{ github.sha }}
+          theme: ${{ env.GROMA_THEME }}
+          token: ${{ github.token }}
+
+  publish-comparison:
+    needs: compare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+      pull-requests: write
+    concurrency:
+      group: pages
+      queue: max
+    environment:
+      name: github-pages
+      url: ${{ steps.publication.outputs.url }}
+    steps:
+      - *secure-tls
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: groma-comparison
+          path: comparison
+
+      - uses: MrLesk/groma.md-action/publish@v1.3.0
+        id: publication
+        with:
+          directory: comparison
+          pull-request: ${{ needs.compare.outputs.number }}
+          base: ${{ needs.compare.outputs.base }}
+          theme: ${{ env.GROMA_THEME }}
+          preview-layout: comparison
+          token: ${{ github.token }}
