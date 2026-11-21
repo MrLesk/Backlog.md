@@ -206,7 +206,7 @@ jobs:
           name: groma-map
           path: map
 
-      - uses: MrLesk/groma.md-action/publish@v1.3.0
+      - uses: MrLesk/groma.md-action/publish@dc9a6982c24256622b619a68566573af875d2c69 # Wait for the Pages artifact listing
         id: publication
         with:
           directory: map
@@ -236,7 +236,7 @@ jobs:
           name: groma-comparison
           path: comparison
 
-      - uses: MrLesk/groma.md-action/publish@v1.3.0
+      - uses: MrLesk/groma.md-action/publish@dc9a6982c24256622b619a68566573af875d2c69 # Wait for the Pages artifact listing
         id: publication
         with:
           directory: comparison
