@@ -683,7 +683,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 									{/* Table */}
 									<div className="rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
 										{/* Table header */}
-										<div className="grid grid-cols-[auto_auto_1fr_auto_auto] gap-3 px-3 py-2 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+										<div className="hidden md:grid md:grid-cols-[auto_auto_minmax(0,1fr)_auto_auto] gap-3 px-3 py-2 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
 											<div className="w-6" /> {/* Drag handle column */}
 											<div className="w-24">ID</div>
 											<div>Title</div>

@@ -98,7 +98,6 @@ const Board: React.FC<BoardProps> = ({
   const [showCleanupModal, setShowCleanupModal] = useState(false);
   const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
   const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({});
-  const [mobileStatus, setMobileStatus] = useState('');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const terminalStatus = getTerminalStatus(statuses);
   const resolveStatus = useMemo(() => createStatusResolver(statuses), [statuses]);
@@ -518,18 +517,12 @@ const Board: React.FC<BoardProps> = ({
     return lanes.filter(l => laneTaskCount(l.key) > 0);
   }, [laneMode, lanes, laneMetadataTasksByLane]);
 
-  const populatedStatuses = useMemo(() => {
+  const visibleStatuses = useMemo(() => {
+    // Empty columns are still drop targets while dragging.
+    if (!hideEmptyColumns || hiddenColumnsRevealed) return statuses;
     const groups = Array.from(displayTasksByLane.values());
     return statuses.filter((status) => groups.some((group) => group.get(status)?.length));
-  }, [statuses, displayTasksByLane]);
-
-  // Keep every column available as a drop target while dragging.
-  const visibleStatuses = hideEmptyColumns && !hiddenColumnsRevealed ? populatedStatuses : statuses;
-  const selectedMobileStatus = visibleStatuses.includes(mobileStatus)
-    ? mobileStatus
-    : populatedStatuses[0] ?? visibleStatuses[0];
-  const mobileColumnVisibility = (status: string) =>
-    canWrite || status === selectedMobileStatus ? '' : 'hidden md:block';
+  }, [hideEmptyColumns, hiddenColumnsRevealed, statuses, displayTasksByLane]);
 
   const cancelHiddenColumnsReveal = () => {
     if (revealHiddenColumnsTimer.current !== null) clearTimeout(revealHiddenColumnsTimer.current);
@@ -637,21 +630,26 @@ const Board: React.FC<BoardProps> = ({
   } : undefined;
   const openCleanup = canWrite ? () => setShowCleanupModal(true) : undefined;
 
-  const renderColumn = (status: string, laneKey: string, targetMilestone?: string | null) => (
-    <TaskColumn
-      title={status}
-      isTerminal={status === terminalStatus}
-      tasks={getTasksForLane(laneKey, status)}
-      onEditTask={onEditTask}
-      laneId={laneKey}
-      targetMilestone={targetMilestone}
-      priorityOrder={availablePriorities}
-      availableTypes={typeOptions}
-      availableProjects={projectOptions}
-      dateFormat={dateFormat}
-      onCleanup={status === terminalStatus ? openCleanup : undefined}
-      {...columnActions}
-    />
+  const renderColumns = (laneKey: string, targetMilestone?: string | null) => (
+    <div className="grid grid-flow-col auto-cols-[minmax(11.5rem,1fr)] gap-3 overflow-x-auto pb-2 sm:auto-cols-[minmax(14rem,1fr)] lg:auto-cols-[minmax(16rem,1fr)] lg:gap-4">
+      {visibleStatuses.map((status) => (
+        <TaskColumn
+          key={status}
+          title={status}
+          isTerminal={status === terminalStatus}
+          tasks={getTasksForLane(laneKey, status)}
+          onEditTask={onEditTask}
+          laneId={laneKey}
+          targetMilestone={targetMilestone}
+          priorityOrder={availablePriorities}
+          availableTypes={typeOptions}
+          availableProjects={projectOptions}
+          dateFormat={dateFormat}
+          onCleanup={status === terminalStatus ? openCleanup : undefined}
+          {...columnActions}
+        />
+      ))}
+    </div>
   );
 
   return (
@@ -667,7 +665,7 @@ const Board: React.FC<BoardProps> = ({
           {updateError}
         </div>
       )}
-      <div className="mb-6 space-y-3">
+      <div className="mb-4 space-y-3 md:mb-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 transition-colors duration-200">Kanban Board</h2>
           {canWrite && (
@@ -833,23 +831,6 @@ const Board: React.FC<BoardProps> = ({
               </div>
             )}
         </div>
-        {!canWrite && selectedMobileStatus && (
-          <label className="flex min-w-0 items-center gap-3 text-sm font-medium text-gray-700 dark:text-gray-200 md:hidden">
-            Status
-            <select
-              className={`${BOARD_FILTER_SELECT_CLASS} flex-1`}
-              value={selectedMobileStatus}
-              onChange={(event) => {
-                setMobileStatus(event.target.value);
-                clearSelection();
-              }}
-            >
-              {visibleStatuses.map((status) => (
-                <option key={status} value={status}>{status}</option>
-              ))}
-            </select>
-          </label>
-        )}
       </div>
 
       {loadError ? (
@@ -918,37 +899,15 @@ const Board: React.FC<BoardProps> = ({
 
                 {/* Lane content - columns */}
                 {!isCollapsed && (
-                  <div className="p-4">
-                    <div className={`grid gap-4 ${canWrite ? 'grid-flow-col auto-cols-fr' : 'md:grid-flow-col md:auto-cols-fr'}`}>
-                      {visibleStatuses.map((status) => (
-                        <div
-                          key={`${lane.key}-${status}`}
-                          className={`min-w-0 ${mobileColumnVisibility(status)}`}
-                        >
-                          {renderColumn(status, lane.key, lane.milestone ?? null)}
-                        </div>
-                      ))}
-                    </div>
+                  <div className="p-2 sm:p-4">
+                    {renderColumns(lane.key, lane.milestone ?? null)}
                   </div>
                 )}
               </div>
             );
           })}
         </div>
-      ) : (
-        <div className="overflow-x-auto pb-2">
-          <div className="flex flex-row flex-nowrap gap-4 w-full">
-            {visibleStatuses.map((status) => (
-              <div
-                key={status}
-                className={`flex-1 ${canWrite ? 'min-w-[16rem]' : 'min-w-0 md:min-w-[16rem]'} ${mobileColumnVisibility(status)}`}
-              >
-                {renderColumn(status, DEFAULT_LANE_KEY)}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      ) : renderColumns(DEFAULT_LANE_KEY)}
 
       {canWrite && (
         <CleanupModal

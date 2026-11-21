@@ -1407,9 +1407,7 @@ describe("task detail routes", () => {
 		const container = await renderApp("/milestones");
 		// Milestones has no task route, so it opens the modal directly. It must still read the detail,
 		// or the modal would show the compact list record with no dependency graph.
-		const row = Array.from(container.querySelectorAll("div[draggable]")).find((element) =>
-			element.textContent?.includes("BACK-101"),
-		);
+		const row = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("BACK-101"));
 		expect(row).toBeTruthy();
 		await click(row as HTMLElement, [expectFetch("milestone task detail", "/api/task/BACK-101")]);
 		assertState(

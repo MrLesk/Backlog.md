@@ -164,6 +164,7 @@ const TaskList: React.FC<TaskListProps> = ({
 	const [displayTasks, setDisplayTasks] = useState<Task[]>(() => sortTasksByIdDescending(tasks));
 	const [error, setError] = useState<string | null>(null);
 	const [showCleanupModal, setShowCleanupModal] = useState(false);
+	const [mobileOptionsOpen, setMobileOptionsOpen] = useState(false);
 	const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
 	const [sortColumn, setSortColumn] = useState<TaskSortColumn>("id");
 	const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
@@ -595,11 +596,11 @@ const TaskList: React.FC<TaskListProps> = ({
 	};
 
 	const renderSortableHeader = (label: string, column: TaskSortColumn) => (
-		<th className="px-3 py-2" aria-sort={getSortAriaValue(column)}>
+		<th className="px-3 py-2 max-md:p-0" aria-sort={getSortAriaValue(column)}>
 			<button
 				type="button"
 				onClick={() => handleSortChange(column)}
-				className="inline-flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-100"
+				className="inline-flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-100 max-md:min-h-11 max-md:px-3"
 			>
 				{label}
 				{renderSortIcon(column)}
@@ -723,9 +724,18 @@ const TaskList: React.FC<TaskListProps> = ({
 
 	return (
 		<div className="page-shell transition-colors duration-200">
-			<div className="flex flex-col gap-4 mb-6">
+			<div className="mb-4 flex flex-col gap-2 md:mb-6 md:gap-4">
 				<div className="flex items-center justify-between gap-3">
-						<h1 className="text-2xl font-bold text-gray-900 dark:text-white">All Tasks</h1>
+					<h1 className="text-2xl font-bold text-gray-900 dark:text-white">All Tasks</h1>
+					<button
+						type="button"
+						aria-expanded={mobileOptionsOpen}
+						aria-controls={currentCount > 0 ? "task-list-filters task-list-sort" : "task-list-filters"}
+						onClick={() => setMobileOptionsOpen((open) => !open)}
+						className="ml-auto min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-medium text-gray-700 dark:border-gray-600 dark:text-gray-200 md:hidden"
+					>
+						Filter &amp; sort
+					</button>
 					{canWrite && (
 						<button
 							className="inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 dark:focus:ring-offset-gray-900 transition-colors duration-200"
@@ -737,32 +747,36 @@ const TaskList: React.FC<TaskListProps> = ({
 				</div>
 
 				<div className="flex flex-wrap items-center gap-3 justify-between">
-						<div className="flex flex-wrap items-center gap-3 flex-1 min-w-0 max-md:basis-full max-md:[&>div]:w-full">
-							<LabelFilterDropdown
-								availableLabels={statusOptions}
-								selectedLabels={statusFilter}
-								onChange={handleStatusChange}
-								menuId="task-list-status-menu"
-								label="Status"
-								emptyLabel="All"
-								noOptionsLabel="No statuses"
-								clearLabel="Clear status filter"
-								className="min-w-[180px] max-md:w-full max-md:[overflow-wrap:anywhere]"
-							/>
+					<div
+						id="task-list-filters"
+						className={`${mobileOptionsOpen ? "flex" : "hidden"} min-w-0 flex-1 flex-wrap items-center gap-3 max-md:basis-full max-md:[&>div]:w-full md:flex`}
+					>
+						<LabelFilterDropdown
+							availableLabels={statusOptions}
+							selectedLabels={statusFilter}
+							onChange={handleStatusChange}
+							menuId="task-list-status-menu"
+							label="Status"
+							emptyLabel="All"
+							noOptionsLabel="No statuses"
+							clearLabel="Clear status filter"
+							className="min-w-[180px] max-md:w-full max-md:[overflow-wrap:anywhere]"
+						/>
 
-							<LabelFilterDropdown
-								availableLabels={statusOptions}
-								selectedLabels={excludedStatusFilter}
-								onChange={handleExcludeStatusChange}
-								menuId="task-list-exclude-status-menu"
-								label="Exclude status"
-								emptyLabel="None"
+						<LabelFilterDropdown
+							availableLabels={statusOptions}
+							selectedLabels={excludedStatusFilter}
+							onChange={handleExcludeStatusChange}
+							menuId="task-list-exclude-status-menu"
+							label="Exclude status"
+							emptyLabel="None"
 							noOptionsLabel="No statuses"
 							clearLabel="Clear excluded statuses"
 							className="min-w-[210px] max-md:w-full max-md:[overflow-wrap:anywhere]"
 						/>
 
 						<select
+							aria-label="Filter tasks by priority"
 							value={priorityFilter}
 							onChange={(event) => handlePriorityChange(event.target.value)}
 							className="min-w-[120px] max-w-full max-md:flex-1 h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
@@ -775,6 +789,7 @@ const TaskList: React.FC<TaskListProps> = ({
 						</select>
 
 						<select
+							aria-label="Filter tasks by milestone"
 							value={milestoneFilter}
 							onChange={(event) => handleMilestoneChange(event.target.value)}
 							className="min-w-[160px] max-w-full max-md:flex-1 h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
@@ -795,36 +810,35 @@ const TaskList: React.FC<TaskListProps> = ({
 							menuId="task-list-labels-menu"
 							className="min-w-[200px] max-md:w-full max-md:[overflow-wrap:anywhere]"
 						/>
-
 					</div>
 
 					<div className="flex items-center gap-3 flex-shrink-0 max-md:flex-wrap max-md:shrink">
 						{canWrite && isFilteringTerminalStatus && currentCount > 0 && (
-								<button
-									type="button"
-									onClick={() => setShowCleanupModal(true)}
-									className="py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 flex items-center gap-2 whitespace-nowrap"
-									title="Clean up old completed tasks"
-								>
-									<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+							<button
+								type="button"
+								onClick={() => setShowCleanupModal(true)}
+								className="py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 flex items-center gap-2 whitespace-nowrap"
+								title="Clean up old completed tasks"
+							>
+								<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
 								</svg>
 								Clean Up
 							</button>
 						)}
 
-							{hasActiveFilters && (
-								<button
-									type="button"
-									onClick={handleClearFilters}
-									className="py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg whitespace-nowrap transition-colors duration-200 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
-								>
-									Clear filters
-								</button>
-							)}
+						{hasActiveFilters && (
+							<button
+								type="button"
+								onClick={handleClearFilters}
+								className="py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg whitespace-nowrap transition-colors duration-200 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700"
+							>
+								Clear filters
+							</button>
+						)}
 
 						<div className="text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap md:text-right md:min-w-[170px]">
-							Showing {currentCount} of {totalTasks} tasks
+							{hasActiveFilters ? `${currentCount} of ${totalTasks}` : totalTasks} {totalTasks === 1 ? "task" : "tasks"}
 						</div>
 					</div>
 				</div>
@@ -854,7 +868,7 @@ const TaskList: React.FC<TaskListProps> = ({
 				</div>
 			) : (
 				<div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-					<div className="sticky top-0 z-10 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/90 supports-[backdrop-filter]:dark:bg-gray-700/85">
+					<div id="task-list-sort" className={`${mobileOptionsOpen ? "block" : "hidden"} sticky top-0 z-10 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/90 supports-[backdrop-filter]:dark:bg-gray-700/85 md:block`}>
 						<div ref={tableHeaderScrollRef} className="overflow-x-auto" style={{ overflowY: "hidden" }}>
 							<table className="w-full table-fixed border-collapse max-md:block max-md:min-w-0!" style={{ minWidth: `${TASK_TABLE_MIN_WIDTH_REM}rem` }}>
 								{renderColumnGroup()}

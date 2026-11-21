@@ -213,6 +213,27 @@ const HierarchyStatusBadge: React.FC<{ status: string; statuses: string[] }> = (
   );
 };
 
+function PublishedTaskSummary({ task, statuses, dateFormat }: { task: Task; statuses: string[]; dateFormat?: string }) {
+  return (
+    <dl aria-label="Task summary" className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-gray-700 dark:text-gray-200">
+      <div className="min-w-0 wrap-anywhere">
+        <dt className="sr-only">Status</dt>
+        <dd><HierarchyStatusBadge status={task.status} statuses={statuses} /></dd>
+      </div>
+      <div className="flex min-w-0 gap-1.5">
+        <dt className="text-gray-500 dark:text-gray-400">Assignee</dt>
+        <dd className="wrap-anywhere">{task.assignee.join(", ") || "Unassigned"}</dd>
+      </div>
+      {task.dueDate && (
+        <div className="flex gap-1.5">
+          <dt className="text-gray-500 dark:text-gray-400">Due</dt>
+          <dd><StoredDate value={task.dueDate} dateFormat={dateFormat} /></dd>
+        </div>
+      )}
+    </dl>
+  );
+}
+
 const HierarchyChevron: React.FC = () => (
   <svg
     className="h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200 group-hover:translate-x-0.5 dark:text-gray-500"
@@ -1298,7 +1319,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
         </div>
       )}
       disableEscapeClose={mode === "edit" || mode === "create" || demoting}
-      actions={
+      actions={(canEditPreview || mode !== "preview") && (
 		<div className="flex flex-nowrap items-center justify-end gap-2">
 		          {canDemote && (
 		            <button
@@ -1355,7 +1376,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
             </div>
           ) : null}
         </div>
-      }
+      )}
     >
       {error && (
         <div role="alert" className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</div>
@@ -1379,6 +1400,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
         </div>
       )}
 
+      {!canWrite && task && <PublishedTaskSummary task={task} statuses={availableStatuses} dateFormat={dateFormat} />}
       {parentTask && task && (
         <nav
           aria-label="Task hierarchy"
@@ -1417,9 +1439,9 @@ export const TaskDetailsModal: React.FC<Props> = ({
         </nav>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6" onClickCapture={confirmNavigationAwayFromEdits}>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6" onClickCapture={confirmNavigationAwayFromEdits}>
         {/* Main content */}
-        <div className="md:col-span-2 space-y-6">
+        <div className="min-w-0 space-y-4 md:col-span-2 md:space-y-6">
           {/* Title field for create mode */}
           {isCreateMode && (
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
@@ -1509,7 +1531,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
           )}
 
           {/* References */}
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+          <div hidden={!canWrite && references.length === 0} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
             <SectionHeader title="References" />
             <div className="space-y-3">
               {references.length > 0 ? (
@@ -1583,7 +1605,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
           </div>
 
           {/* Modified files */}
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+          <div hidden={!canWrite && modifiedFiles.length === 0} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
             <SectionHeader title={`Modified files${modifiedFiles.length ? ` (${modifiedFiles.length})` : ""}`} />
             <div className="space-y-3">
               {modifiedFiles.length > 0 ? (
@@ -1885,7 +1907,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
 	              {task.updatedDate && (
 	                <div><span className="font-semibold text-gray-800 dark:text-gray-100">Updated:</span> <StoredDate value={task.updatedDate} dateFormat={dateFormat} className="text-gray-700 dark:text-gray-200" /></div>
 	              )}
-	              {task.dueDate && mode === "preview" && (
+	              {canWrite && task.dueDate && mode === "preview" && (
 	                <div><span className="font-semibold text-gray-800 dark:text-gray-100">Due:</span> <StoredDate value={task.dueDate} dateFormat={dateFormat} className="text-gray-700 dark:text-gray-200" /></div>
 	              )}
 	            </div>
@@ -1902,7 +1924,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
             </div>
           )}
           {/* Title (editable for existing tasks) */}
-          {task && (
+          {canWrite && task && (
             <TaskMetadataField title="Title" value={title}>
               <input
                 type="text"
@@ -1927,14 +1949,16 @@ export const TaskDetailsModal: React.FC<Props> = ({
           )}
 
           {/* Status */}
-          <TaskMetadataField title="Status" value={status}>
-            <StatusSelect
-              current={status}
-              statuses={availableStatuses}
-              onChange={(val) => handleInlineMetaUpdate({ status: val })}
-              disabled={isReadOnly || isOpenDraft}
-            />
-          </TaskMetadataField>
+          {canWrite && (
+            <TaskMetadataField title="Status" value={status}>
+              <StatusSelect
+                current={status}
+                statuses={availableStatuses}
+                onChange={(val) => handleInlineMetaUpdate({ status: val })}
+                disabled={isReadOnly || isOpenDraft}
+              />
+            </TaskMetadataField>
+          )}
 
           {/* Type */}
           <TaskMetadataField title="Type" value={typeSelectionValue} emptyValue="No type">
@@ -1965,16 +1989,18 @@ export const TaskDetailsModal: React.FC<Props> = ({
           </TaskMetadataField>
 
           {/* Assignee */}
-          <TaskMetadataField title="Assignee" value={assignee.join(", ")} emptyValue="Unassigned">
-            <ChipInput
-              name="assignee"
-              label=""
-              value={assignee}
-              onChange={(value) => handleInlineMetaUpdate({ assignee: value })}
-              placeholder="Type name and press Enter"
-              disabled={isReadOnly}
-            />
-          </TaskMetadataField>
+          {canWrite && (
+            <TaskMetadataField title="Assignee" value={assignee.join(", ")} emptyValue="Unassigned">
+              <ChipInput
+                name="assignee"
+                label=""
+                value={assignee}
+                onChange={(value) => handleInlineMetaUpdate({ assignee: value })}
+                placeholder="Type name and press Enter"
+                disabled={isReadOnly}
+              />
+            </TaskMetadataField>
+          )}
 
           {/* Labels */}
           <TaskMetadataField title="Labels" value={labels.join(", ")} emptyValue="No labels">
