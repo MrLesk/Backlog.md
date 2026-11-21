@@ -2,6 +2,7 @@ import type { Task } from "../types/index.ts";
 import { buildDependencyGraph, type DependencyGraph } from "../utils/dependency-graph.ts";
 import { createReadinessGraph, getTaskReadiness, type TaskReadiness } from "../utils/readiness.ts";
 import { canonicalTaskId } from "../utils/task-id.ts";
+import type { TaskDependencyRecord } from "../utils/task-record-index.ts";
 import type { Core } from "./backlog.ts";
 
 /**
@@ -11,7 +12,7 @@ import type { Core } from "./backlog.ts";
  */
 export interface TaskCorpus {
 	tasks: Task[];
-	archivedTasks: Task[];
+	archivedTasks: TaskDependencyRecord[];
 	statuses: readonly string[] | undefined;
 	/**
 	 * Identities the store knows more than one file claims. Reads fail closed on these whatever the

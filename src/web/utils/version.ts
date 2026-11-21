@@ -1,5 +1,7 @@
-// Version utility for web UI
+import { browserSnapshot } from "../lib/browser-snapshot.ts";
+
 export async function getWebVersion(): Promise<string> {
+	if (browserSnapshot) return browserSnapshot.version;
 	try {
 		const response = await fetch("/api/version");
 		const data = await response.json();

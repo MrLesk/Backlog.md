@@ -262,6 +262,26 @@ backlog browser --no-open
 
 To keep the Web UI running as an auto-starting local service, see [Running Backlog.md as a Service](backlog/docs/doc-003%20-%20Running-Backlog-Browser-as-a-Service.md).
 
+### Publish a read-only snapshot
+
+```bash
+backlog browser export public/backlog
+backlog browser export public/backlog --tasks --docs
+backlog browser export public/backlog --tasks --decisions
+backlog browser export public/backlog --decisions
+```
+
+Publish the generated directory with a static host such as GitHub Pages or GitLab Pages. With no flags, the export includes
+tasks, documents, decisions, and milestones from the current checkout. Pass any combination of `--tasks`, `--docs`,
+`--decisions`, and `--milestones` to publish only those sections. The board, task list, and statistics are part of
+`--tasks`. Sections you leave out are absent from the saved data, sidebar, and search.
+
+The export includes project assets linked from the published records. It skips drafts and archived records. When a
+published task depends on an archived task, the export keeps that dependency’s ID and status.
+
+Anyone with access to the site can read the published records, including task plans, notes, and comments.
+Check the output before sharing it. To update the snapshot, run the command again and publish the new files.
+
 ---
 
 ## 🔧 MCP Integration (Model Context Protocol)

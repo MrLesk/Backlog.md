@@ -58,7 +58,7 @@ const setupDom = (): HTMLElement => {
 const renderCard = (task: Task): HTMLElement => {
 	const container = setupDom();
 	act(() => {
-		activeRoot?.render(<TaskCard task={task} onUpdate={() => {}} onEdit={() => {}} />);
+		activeRoot?.render(<TaskCard task={task} onEdit={() => {}} />);
 	});
 	return container;
 };
@@ -325,7 +325,6 @@ describe("browser task acceptance criteria progress", () => {
 			activeRoot?.render(
 				<TaskCard
 					task={createTask({ acceptanceCriteriaItems: createCriteria(4, 5) })}
-					onUpdate={() => {}}
 					onEdit={() => {}}
 				/>,
 			);

@@ -1,6 +1,6 @@
 import type { Task } from "../types/index.ts";
 import { canonicalTaskId } from "./task-id.ts";
-import { createTaskRecordIndex } from "./task-record-index.ts";
+import { createTaskRecordIndex, type TaskDependencyRecord } from "./task-record-index.ts";
 import { compareTaskIds } from "./task-sorting.ts";
 import { isTerminalStatus } from "./terminal-status.ts";
 
@@ -82,7 +82,7 @@ export function buildDependencyGraph(
 	root: Task,
 	options: {
 		tasks: Task[];
-		archivedTasks?: Task[];
+		archivedTasks?: TaskDependencyRecord[];
 		statuses?: readonly string[];
 		ambiguousIds?: ReadonlySet<string>;
 	},
@@ -119,7 +119,7 @@ export function buildDependencyGraph(
 		} else {
 			node = {
 				id: record.task.id,
-				title: record.task.title,
+				title: record.task.title ?? null,
 				status: record.task.status,
 				state: "resolved",
 				completed: index.isFinished(record),

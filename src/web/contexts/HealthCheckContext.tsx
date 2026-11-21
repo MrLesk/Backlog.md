@@ -10,8 +10,8 @@ interface HealthCheckContextType {
 
 const HealthCheckContext = createContext<HealthCheckContextType | undefined>(undefined);
 
-export function HealthCheckProvider({ children }: { children: ReactNode }) {
-	const healthCheck = useHealthCheck();
+export function HealthCheckProvider({ children, enabled }: { children: ReactNode; enabled?: boolean }) {
+	const healthCheck = useHealthCheck(enabled);
 	
 	return (
 		<HealthCheckContext.Provider value={healthCheck}>

@@ -21,6 +21,43 @@ describe("CLI Integration", () => {
 		await safeCleanup(TEST_DIR);
 	});
 
+	it("removes document data and attachments when re-exporting with only --tasks", async () => {
+		await $`git init -b main`.cwd(TEST_DIR).quiet();
+		const core = new Core(TEST_DIR);
+		await initializeTestProject(core, "Published Backlog");
+		await $`bun ${CLI_PATH} task create "Publish this task" -d ${"[Task attachment](/assets/task.txt)"} --plain`
+			.cwd(TEST_DIR)
+			.quiet();
+		await core.createDocument(
+			{
+				id: "doc-1",
+				title: "Publishing guide",
+				type: "guide",
+				createdDate: "2026-01-01",
+				rawContent: "[Guide attachment][file]\n\n[Task attachment](/assets/TASK.txt)\n\n[file]: /assets/guide.txt",
+			},
+			false,
+		);
+		const assets = join(core.filesystem.docsDir, "..", "assets");
+		const output = join(TEST_DIR, "public", "backlog");
+		await Bun.write(join(assets, "task.txt"), "task attachment");
+		await Bun.write(join(assets, "guide.txt"), "guide attachment");
+		await Bun.write(join(output, "assets", "site.txt"), "site attachment");
+
+		const index = Bun.file(join(output, "index.html"));
+		await $`bun ${CLI_PATH} browser export ${output} --tasks --docs`.cwd(TEST_DIR).quiet();
+		expect(await index.text()).toContain("Publishing guide");
+		expect(await Bun.file(join(output, "assets", "guide.txt")).text()).toBe("guide attachment");
+
+		await $`bun ${CLI_PATH} browser export ${output} --tasks`.cwd(TEST_DIR).quiet();
+		const taskExport = await index.text();
+		expect(taskExport).toContain("Publish this task");
+		expect(taskExport).not.toContain("Publishing guide");
+		expect(await Bun.file(join(output, "assets", "guide.txt")).exists()).toBe(false);
+		expect(await Bun.file(join(output, "assets", "task.txt")).text()).toBe("task attachment");
+		expect(await Bun.file(join(output, "assets", "site.txt")).text()).toBe("site attachment");
+	});
+
 	describe("doc and decision commands", () => {
 		beforeEach(async () => {
 			await $`git init -b main`.cwd(TEST_DIR).quiet();

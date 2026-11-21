@@ -121,13 +121,12 @@ describe("Web task project UI", () => {
 		const webHtml = renderToString(
 			<TaskCard
 				task={createTask({ project: "Web" })}
-				onUpdate={() => {}}
 				onEdit={() => {}}
 				availableProjects={["Web"]}
 			/>,
 		);
 		const untaggedHtml = renderToString(
-			<TaskCard task={createTask()} onUpdate={() => {}} onEdit={() => {}} availableProjects={["Web"]} />,
+			<TaskCard task={createTask()} onEdit={() => {}} availableProjects={["Web"]} />,
 		);
 
 		expect(webHtml).toContain('data-task-project="Web"');
@@ -136,7 +135,7 @@ describe("Web task project UI", () => {
 
 	it("hides the project badge when no projects are configured, even if the task has one", () => {
 		const html = renderToString(
-			<TaskCard task={createTask({ project: "Web" })} onUpdate={() => {}} onEdit={() => {}} />,
+			<TaskCard task={createTask({ project: "Web" })} onEdit={() => {}} />,
 		);
 
 		expect(html).not.toContain("data-task-project");

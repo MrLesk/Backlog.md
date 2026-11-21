@@ -3,9 +3,12 @@ import type { Task } from "../types/index.ts";
 import { canonicalTaskId } from "./task-id.ts";
 import { isTerminalStatus } from "./terminal-status.ts";
 
+export type TaskDependencyRecord = Pick<Task, "id" | "status"> &
+	Partial<Pick<Task, "title" | "dependencies" | "filePath">>;
+
 /** A record found in the corpus a read is allowed to see. */
 export interface TaskRecord {
-	task: Task;
+	task: TaskDependencyRecord;
 	/** The record lives in the archive, off the board. */
 	archived: boolean;
 }
@@ -39,7 +42,7 @@ export interface TaskRecordIndex {
  */
 export function createTaskRecordIndex(options: {
 	tasks: Task[];
-	archivedTasks?: Task[];
+	archivedTasks?: TaskDependencyRecord[];
 	statuses?: readonly string[];
 	ambiguousIds?: ReadonlySet<string>;
 }): TaskRecordIndex {
@@ -51,7 +54,7 @@ export function createTaskRecordIndex(options: {
 	// failing closed on the collision its source saw rather than on the records that reached us.
 	for (const id of options.ambiguousIds ?? []) byIdentity.set(canonicalTaskId(id), "ambiguous");
 
-	const add = (task: Task, archived: boolean) => {
+	const add = (task: TaskDependencyRecord, archived: boolean) => {
 		const key = canonicalTaskId(task.id);
 		const existing = byIdentity.get(key);
 

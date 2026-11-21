@@ -1,5 +1,5 @@
 import type { Task } from "../types/index.ts";
-import { createTaskRecordIndex } from "./task-record-index.ts";
+import { createTaskRecordIndex, type TaskDependencyRecord } from "./task-record-index.ts";
 import { isTerminalStatus } from "./terminal-status.ts";
 
 export interface TaskReadiness {
@@ -42,7 +42,7 @@ export interface ReadinessGraph {
  */
 export function createReadinessGraph(options: {
 	tasks: Task[];
-	archivedTasks?: Task[];
+	archivedTasks?: TaskDependencyRecord[];
 	statuses?: readonly string[];
 	ambiguousIds?: ReadonlySet<string>;
 }): ReadinessGraph {

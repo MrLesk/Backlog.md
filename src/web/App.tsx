@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useMatch, useNavigate } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation, useMatch, useNavigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import BoardPage from './components/BoardPage';
 import DocumentationDetail from './components/DocumentationDetail';
@@ -13,6 +13,8 @@ import TaskDetailsModal from './components/TaskDetailsModal';
 import InitializationScreen from './components/InitializationScreen';
 import LoadingSpinner from './components/LoadingSpinner';
 import { SuccessToast } from './components/SuccessToast';
+import { BrowserAccessProvider, useBrowserAccess } from './contexts/BrowserAccessContext';
+import { browserSnapshot } from './lib/browser-snapshot';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { TaskIdIndexProvider } from './contexts/TaskIdIndexContext';
 import {
@@ -209,6 +211,11 @@ type TaskModalState =
     };
 
 function AppContent() {
+  const { canWrite, sections } = useBrowserAccess();
+  const landingPath = (sections.tasks && '/board')
+    || (sections.docs && '/documentation')
+    || (sections.decisions && '/decisions')
+    || '/milestones';
   const [modal, setModal] = useState<TaskModalState>({ kind: 'closed' });
   // Each entry into the modal takes the next session number, so a response can name the modal it
   // was read for.
@@ -262,7 +269,7 @@ function AppContent() {
   const dependencyCleanupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Initialization state
-  const [isInitialized, setIsInitialized] = useState<boolean | null>(null);
+  const [isInitialized, setIsInitialized] = useState<boolean | null>(canWrite ? null : true);
   
   // Centralized data state
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -322,6 +329,7 @@ function AppContent() {
 
   // Check initialization status on mount
   React.useEffect(() => {
+    if (!canWrite) return;
     const checkInitStatus = async () => {
       try {
         const status = await apiClient.checkStatus();
@@ -333,7 +341,7 @@ function AppContent() {
       }
     };
     checkInitStatus();
-  }, []);
+  }, [canWrite]);
 
   const handleInitialized = useCallback(() => {
     setIsInitialized(true);
@@ -458,11 +466,13 @@ function AppContent() {
           (milestone) => !archivedKeys.has(milestoneKey(milestone)),
         ),
       );
-      void apiClient.fetchDuplicateTaskRepairPlan().then((duplicatePlan) => {
-        if (loadAllDataRequestRef.current === requestId) applyDuplicateRepairPlan(duplicatePlan);
-      }).catch(() => {
-        if (loadAllDataRequestRef.current === requestId) applyDuplicateRepairPlan(null);
-      });
+      if (canWrite) {
+        void apiClient.fetchDuplicateTaskRepairPlan().then((duplicatePlan) => {
+          if (loadAllDataRequestRef.current === requestId) applyDuplicateRepairPlan(duplicatePlan);
+        }).catch(() => {
+          if (loadAllDataRequestRef.current === requestId) applyDuplicateRepairPlan(null);
+        });
+      }
     } catch (error) {
       if (loadAllDataRequestRef.current === requestId) {
         console.error('Failed to load data:', error);
@@ -475,7 +485,7 @@ function AppContent() {
         setLoadingMessage(null);
       }
     }
-  }, [applySearchResults, applyMilestoneIds, applyLoadError, applyDuplicateRepairPlan]);
+  }, [applySearchResults, applyMilestoneIds, applyLoadError, applyDuplicateRepairPlan, canWrite]);
 
   React.useEffect(() => {
     // Only load data when initialized
@@ -551,7 +561,7 @@ function AppContent() {
     setModal({ kind: 'closed' });
   }, []);
 
-  const handleEditTask = useCallback((task: Task) => {
+  const handleOpenTask = useCallback((task: Task) => {
     const basePath =
       location.pathname.startsWith('/board')
         ? '/board'
@@ -601,7 +611,7 @@ function AppContent() {
   // one: from this moment the modal names a different session.
   useEffect(() => {
     const current = modalRef.current;
-    if (!routeTaskId || !routeBasePath || isInitialized !== true) {
+    if (!sections.tasks || !routeTaskId || !routeBasePath || isInitialized !== true) {
       if (!routeTaskId && current.kind === 'detail' && current.fromRoute) {
         clearTaskModal();
       }
@@ -623,7 +633,7 @@ function AppContent() {
       return;
     }
     openDetailModal(routeTaskId, { fromRoute: true });
-  }, [clearTaskModal, isInitialized, location.search, navigate, openDetailModal, routeBasePath, routeTaskId]);
+  }, [clearTaskModal, isInitialized, location.search, navigate, openDetailModal, routeBasePath, routeTaskId, sections.tasks]);
 
   useEffect(() => {
     if (taskRouteError) {
@@ -697,7 +707,7 @@ function AppContent() {
       // refreshing until the corpus is clean again.
       const plan = duplicateRepairPlanRef.current;
       const planUnsettled = plan === null || plan.groups.length > 0 || plan.crossBranchFindings.length > 0;
-      if (planUnsettled || idSignature(tasksList) !== previousIdSignature) {
+      if (canWrite && (planUnsettled || idSignature(tasksList) !== previousIdSignature)) {
         void apiClient.fetchDuplicateTaskRepairPlan().then((duplicatePlan) => {
           if (loadAllDataRequestRef.current === requestId) applyDuplicateRepairPlan(duplicatePlan);
         }).catch(() => {});
@@ -712,7 +722,7 @@ function AppContent() {
         pendingDataRequestRef.current = null;
       }
     }
-  }, [applySearchResults, applyMilestoneIds, applyDuplicateRepairPlan, loadAllData]);
+  }, [applySearchResults, applyMilestoneIds, applyDuplicateRepairPlan, canWrite, loadAllData]);
 
   const refreshData = useCallback(async () => {
     await refreshTasksData(false);
@@ -813,6 +823,7 @@ function AppContent() {
   }, [detailSession, detailId, dataVersion]);
 
   useEffect(() => {
+    if (!canWrite) return;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(`${protocol}//${window.location.host}`);
 	let disposed = false;
@@ -857,27 +868,13 @@ function AppContent() {
 		disposed = true;
 		ws.close();
 	};
-  }, [refreshData, refreshMilestoneData, fullRefreshData, loadAllData, applyLoadError]);
+  }, [refreshData, refreshMilestoneData, fullRefreshData, loadAllData, applyLoadError, canWrite]);
 
-  const handleSubmitTask = async (taskData: Partial<Task>) => {
-    // Don't catch errors here - let TaskDetailsModal handle them
-    if (editingTask) {
-      await apiClient.updateTask(editingTask.id, taskData);
-    } else {
-      // Set status to 'Draft' if in draft mode
-      const finalTaskData = isDraftMode
-        ? { ...taskData, status: 'Draft' }
-        : taskData;
-      const createdTask = await apiClient.createTask(finalTaskData as Omit<Task, "id" | "createdDate">);
-
-      // Show task creation confirmation
-      setTaskConfirmation({ task: createdTask, isDraft: isDraftMode });
-
-      // Auto-dismiss after 4 seconds
-      setTimeout(() => {
-        setTaskConfirmation(null);
-      }, 4000);
-    }
+  const handleCreateTask = async (taskData: Partial<Task>) => {
+    const finalTaskData = isDraftMode ? { ...taskData, status: 'Draft' } : taskData;
+    const createdTask = await apiClient.createTask(finalTaskData as Omit<Task, "id" | "createdDate">);
+    setTaskConfirmation({ task: createdTask, isDraft: isDraftMode });
+    setTimeout(() => setTaskConfirmation(null), 4000);
     handleCloseModal();
     await refreshData();
   };
@@ -946,7 +943,7 @@ function AppContent() {
 
   const boardPage = (
     <BoardPage
-      onEditTask={handleEditTask}
+      onEditTask={handleOpenTask}
       onNewTask={handleNewTask}
       tasks={kanbanTasks}
       onRefreshData={refreshData}
@@ -968,7 +965,7 @@ function AppContent() {
 
   const taskListPage = (
     <TaskList
-      onEditTask={handleEditTask}
+      onEditTask={handleOpenTask}
       onNewTask={handleNewTask}
       tasks={tasks}
       availableStatuses={statuses}
@@ -983,11 +980,76 @@ function AppContent() {
     />
   );
 
+  const taskRoutes = sections.tasks && (
+    <>
+      <Route path="board" element={boardPage} />
+      <Route path="board/:id" element={boardPage} />
+      <Route path="board/:id/:title" element={boardPage} />
+      <Route
+        path="board/*"
+        element={
+          <Navigate
+            to={{ pathname: '/board', search: location.search }}
+            replace
+            state={{ taskRouteError: 'That task link is not valid.' } satisfies TaskRouteNavigationState}
+          />
+        }
+      />
+      <Route path="tasks" element={taskListPage} />
+      <Route path="tasks/:id" element={taskListPage} />
+      <Route path="tasks/:id/:title" element={taskListPage} />
+      <Route
+        path="tasks/*"
+        element={
+          <Navigate
+            to={{ pathname: '/tasks', search: location.search }}
+            replace
+            state={{ taskRouteError: 'That task link is not valid.' } satisfies TaskRouteNavigationState}
+          />
+        }
+      />
+      <Route path="statistics" element={<Statistics statuses={statuses} tasks={tasks} isLoading={isLoading} onEditTask={handleOpenTask} projectName={projectName} dateFormat={config?.dateFormat} />} />
+    </>
+  );
+
+  const projectRecordRoutes = (
+    <>
+      {sections.milestones && (
+        <Route
+          path="milestones"
+          element={
+            <MilestonesPage
+              tasks={tasks}
+              statuses={statuses}
+              milestoneEntities={milestoneEntities}
+              archivedMilestones={archivedMilestones}
+              onEditTask={handleOpenTask}
+              onRefreshData={refreshMilestoneData}
+              dateFormat={config?.dateFormat}
+            />
+          }
+        />
+      )}
+      {sections.docs && (
+        <Route
+          path="documentation/:id?/:title?"
+          element={<DocumentationDetail docs={docs} onRefreshData={refreshData} dateFormat={config?.dateFormat} />}
+        />
+      )}
+      {sections.decisions && (
+        <Route
+          path="decisions/:id?/:title?"
+          element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} dateFormat={config?.dateFormat} />}
+        />
+      )}
+    </>
+  );
+
   return (
     <ThemeProvider>
       <TaskIdIndexProvider tasks={tasks}>
-      <Routes>
-            <Route
+        <Routes>
+          <Route
             path="/"
             element={
               <Layout
@@ -1007,59 +1069,17 @@ function AppContent() {
           >
             <Route
               index
-              element={<Navigate to={{ pathname: '/board', search: location.search }} replace state={location.state} />}
+              element={<Navigate to={{ pathname: landingPath, search: location.search }} replace state={location.state} />}
             />
-            <Route path="board" element={boardPage} />
-            <Route path="board/:id" element={boardPage} />
-            <Route path="board/:id/:title" element={boardPage} />
-            <Route
-              path="board/*"
-              element={
-                <Navigate
-                  to={{ pathname: '/board', search: location.search }}
-                  replace
-                  state={{ taskRouteError: 'That task link is not valid.' } satisfies TaskRouteNavigationState}
-                />
-              }
-            />
-            <Route path="tasks" element={taskListPage} />
-            <Route path="tasks/:id" element={taskListPage} />
-            <Route path="tasks/:id/:title" element={taskListPage} />
-            <Route
-              path="tasks/*"
-              element={
-                <Navigate
-                  to={{ pathname: '/tasks', search: location.search }}
-                  replace
-                  state={{ taskRouteError: 'That task link is not valid.' } satisfies TaskRouteNavigationState}
-                />
-              }
-            />
-            <Route
-              path="milestones"
-              element={
-              <MilestonesPage
-                tasks={tasks}
-                statuses={statuses}
-                milestoneEntities={milestoneEntities}
-                archivedMilestones={archivedMilestones}
-                onEditTask={handleEditTask}
-                onRefreshData={refreshMilestoneData}
-                dateFormat={config?.dateFormat}
-              />
-            }
-          />
-            <Route path="drafts" element={<DraftsList onEditTask={openDraftModal} onNewDraft={handleNewDraft} dateFormat={config?.dateFormat} />} />
-            <Route path="documentation" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} dateFormat={config?.dateFormat} />} />
-            <Route path="documentation/:id" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} dateFormat={config?.dateFormat} />} />
-            <Route path="documentation/:id/:title" element={<DocumentationDetail docs={docs} onRefreshData={refreshData} dateFormat={config?.dateFormat} />} />
-            <Route path="decisions" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} dateFormat={config?.dateFormat} />} />
-            <Route path="decisions/:id" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} dateFormat={config?.dateFormat} />} />
-            <Route path="decisions/:id/:title" element={<DecisionDetail decisions={decisions} onRefreshData={refreshData} dateFormat={config?.dateFormat} />} />
-            <Route path="statistics" element={<Statistics statuses={statuses} tasks={tasks} isLoading={isLoading} onEditTask={handleEditTask} projectName={projectName} dateFormat={config?.dateFormat} />} />
+            {taskRoutes}
+            {canWrite && (
+              <Route path="drafts" element={<DraftsList onEditTask={openDraftModal} onNewDraft={handleNewDraft} dateFormat={config?.dateFormat} />} />
+            )}
+            {projectRecordRoutes}
             <Route path="settings" element={<Settings />} />
+            {!canWrite && <Route path="*" element={<Navigate to={landingPath} replace />} />}
           </Route>
-      </Routes>
+        </Routes>
 
       {taskRouteError && (
         <div
@@ -1079,30 +1099,31 @@ function AppContent() {
         </div>
       )}
 
-      <TaskDetailsModal
-        task={editingTask || undefined}
-        isOpen={showModal}
-        onClose={handleCloseModal}
-        onSaved={refreshData}
-        onTaskUpdated={acknowledgeTaskUpdate}
-        onSubmit={handleSubmitTask}
-        onArchive={editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
-        onDependencyCleanup={reportDependencyCleanup}
-        availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
-        availableLabels={availableLabels}
-        availableTasks={tasks}
-        onNavigateToTask={handleEditTask}
-        availableMilestones={milestones}
-        availablePriorities={config?.priorities}
-        availableTypes={availableTypes}
-        availableProjects={availableProjects}
-        milestoneEntities={milestoneEntities}
-        archivedMilestoneEntities={archivedMilestones}
-        isDraftMode={isDraftMode}
-        definitionOfDoneDefaults={config?.definitionOfDone ?? []}
-        defaultAssignee={config?.defaultAssignee}
-        dateFormat={config?.dateFormat}
-      />
+      {sections.tasks && (
+        <TaskDetailsModal
+          task={editingTask || undefined}
+          isOpen={showModal}
+          onClose={handleCloseModal}
+          onSaved={refreshData}
+          onTaskUpdated={acknowledgeTaskUpdate}
+          onSubmit={canWrite ? handleCreateTask : undefined}
+          onArchive={canWrite && editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
+          onDependencyCleanup={reportDependencyCleanup}
+          availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
+          availableLabels={availableLabels}
+          availableTasks={tasks}
+          onNavigateToTask={handleOpenTask}
+          availablePriorities={config?.priorities}
+          availableTypes={availableTypes}
+          availableProjects={availableProjects}
+          milestoneEntities={milestoneEntities}
+          archivedMilestoneEntities={archivedMilestones}
+          isDraftMode={isDraftMode}
+          definitionOfDoneDefaults={config?.definitionOfDone ?? []}
+          defaultAssignee={config?.defaultAssignee}
+          dateFormat={config?.dateFormat}
+        />
+      )}
 
       {dependencyCleanupNotice && (
         <SuccessToast
@@ -1129,10 +1150,13 @@ function AppContent() {
 }
 
 function App() {
+  const Router = browserSnapshot ? HashRouter : BrowserRouter;
   return (
-    <BrowserRouter>
-      <AppContent />
-    </BrowserRouter>
+    <BrowserAccessProvider snapshot={browserSnapshot}>
+      <Router>
+        <AppContent />
+      </Router>
+    </BrowserAccessProvider>
   );
 }
 

@@ -47,195 +47,85 @@ interface DecisionSearchEntity extends BaseSearchEntity {
 
 type SearchEntity = TaskSearchEntity | DocumentSearchEntity | DecisionSearchEntity;
 
-export class SearchService {
-	private initialized = false;
-	private initializing: Promise<void> | null = null;
-	private unsubscribe?: () => void;
-	private fuse: Fuse<SearchEntity> | null = null;
-	private tasks: TaskSearchEntity[] = [];
-	private documents: DocumentSearchEntity[] = [];
-	private decisions: DecisionSearchEntity[] = [];
-	private collection: SearchEntity[] = [];
-	private version = 0;
+interface SearchContent {
+	tasks: readonly Task[];
+	documents: readonly Document[];
+	decisions: readonly Decision[];
+}
 
-	constructor(private readonly store: ContentStore) {}
+type SearchHit = Pick<FuseResult<SearchEntity>, "item" | "score" | "matches">;
 
-	async ensureInitialized(): Promise<void> {
-		if (this.initialized) {
-			return;
-		}
+export class SearchIndex {
+	private readonly entities: SearchEntity[];
+	private readonly fuse: Fuse<SearchEntity>;
 
-		if (!this.initializing) {
-			this.initializing = this.initialize().catch((error) => {
-				this.initializing = null;
-				throw error;
-			});
-		}
+	constructor({ tasks, documents, decisions }: SearchContent) {
+		this.entities = [
+			...tasks.map(
+				(task): TaskSearchEntity => ({
+					...buildTaskSearchFields(task),
+					type: "task",
+					task,
+				}),
+			),
+			...documents.map(
+				(document): DocumentSearchEntity => ({
+					...EMPTY_TASK_SEARCH_FIELDS,
+					id: document.id,
+					type: "document",
+					title: document.title,
+					bodyText: document.rawContent ?? "",
+					document,
+				}),
+			),
+			...decisions.map(
+				(decision): DecisionSearchEntity => ({
+					...EMPTY_TASK_SEARCH_FIELDS,
+					id: decision.id,
+					type: "decision",
+					title: decision.title,
+					bodyText: decision.rawContent ?? "",
+					decision,
+				}),
+			),
+		];
 
-		await this.initializing;
+		// Use the shared task-search weights and return match ranges for the browser.
+		this.fuse = new Fuse(this.entities, { ...TASK_SEARCH_FUSE_OPTIONS, includeMatches: true });
 	}
 
-	dispose(): void {
-		if (this.unsubscribe) {
-			this.unsubscribe();
-			this.unsubscribe = undefined;
-		}
-		this.fuse = null;
-		this.collection = [];
-		this.tasks = [];
-		this.documents = [];
-		this.decisions = [];
-		this.initialized = false;
-		this.initializing = null;
-	}
-
-	search(options: SearchOptions = {}): SearchResult[] {
-		if (!this.initialized) {
-			throw new Error("SearchService not initialized. Call ensureInitialized() first.");
-		}
-
-		const { query = "", limit, types, filters } = options;
-
-		const trimmedQuery = query.trim();
+	search({ query = "", limit, types, filters }: SearchOptions = {}): SearchResult[] {
 		const allowedTypes = new Set<SearchResultType>(
 			types && types.length > 0 ? types : ["task", "document", "decision"],
 		);
 		const matchesTaskFilters = createTaskFilterMatcher(filters ?? {});
-
-		if (trimmedQuery === "") {
-			return this.collectWithoutQuery(allowedTypes, matchesTaskFilters, limit);
-		}
-
-		const fuse = this.fuse;
-		if (!fuse) {
-			return [];
-		}
-
-		const fuseResults = fuse.search(trimmedQuery);
 		const results: SearchResult[] = [];
 
-		for (const result of fuseResults) {
-			const entity = result.item;
-			if (!allowedTypes.has(entity.type)) {
-				continue;
-			}
+		for (const hit of this.getHits(query.trim())) {
+			const entity = hit.item;
+			if (!allowedTypes.has(entity.type)) continue;
+			if (entity.type === "task" && !matchesTaskFilters(entity.task)) continue;
 
-			if (entity.type === "task" && !matchesTaskFilters(entity.task)) {
-				continue;
-			}
-
-			results.push(this.mapEntityToResult(entity, result));
-			if (limit && results.length >= limit) {
-				break;
-			}
+			results.push(this.mapEntityToResult(entity, hit));
+			if (limit && results.length >= limit) break;
 		}
 
 		return results;
 	}
 
-	private async initialize(): Promise<void> {
-		const snapshot = await this.store.ensureInitialized();
-		this.applySnapshot(snapshot.tasks, snapshot.documents, snapshot.decisions);
-
-		if (!this.unsubscribe) {
-			this.unsubscribe = this.store.subscribe((event) => {
-				this.handleStoreEvent(event);
-			});
-		}
-
-		this.initialized = true;
-		this.initializing = null;
-	}
-
-	private handleStoreEvent(event: ContentStoreEvent): void {
-		if (event.version <= this.version) {
+	private *getHits(query: string): Iterable<SearchHit> {
+		if (query) {
+			yield* this.fuse.search(query);
 			return;
 		}
-		this.version = event.version;
-		this.applySnapshot(event.snapshot.tasks, event.snapshot.documents, event.snapshot.decisions);
+		for (const item of this.entities) {
+			yield { item };
+		}
 	}
 
-	private applySnapshot(tasks: Task[], documents: Document[], decisions: Decision[]): void {
-		this.tasks = tasks.map((task) => ({
-			...buildTaskSearchFields(task),
-			type: "task",
-			task,
-		}));
-
-		this.documents = documents.map((document) => ({
-			...EMPTY_TASK_SEARCH_FIELDS,
-			id: document.id,
-			type: "document",
-			title: document.title,
-			bodyText: document.rawContent ?? "",
-			document,
-		}));
-
-		this.decisions = decisions.map((decision) => ({
-			...EMPTY_TASK_SEARCH_FIELDS,
-			id: decision.id,
-			type: "decision",
-			title: decision.title,
-			bodyText: decision.rawContent ?? "",
-			decision,
-		}));
-
-		this.collection = [...this.tasks, ...this.documents, ...this.decisions];
-		this.rebuildFuse();
-	}
-
-	private rebuildFuse(): void {
-		if (this.collection.length === 0) {
-			this.fuse = null;
-			return;
-		}
-
-		// Same keys, weights, and threshold as every other task search; only the highlight ranges
-		// this surface reports back to callers are extra.
-		this.fuse = new Fuse(this.collection, { ...TASK_SEARCH_FUSE_OPTIONS, includeMatches: true });
-	}
-
-	private collectWithoutQuery(
-		allowedTypes: Set<SearchResultType>,
-		matchesTaskFilters: (task: Task) => boolean,
-		limit?: number,
-	): SearchResult[] {
-		const results: SearchResult[] = [];
-
-		if (allowedTypes.has("task")) {
-			const tasks = this.tasks.filter((entity) => matchesTaskFilters(entity.task));
-			for (const entity of tasks) {
-				results.push(this.mapEntityToResult(entity));
-				if (limit && results.length >= limit) {
-					return results;
-				}
-			}
-		}
-
-		if (allowedTypes.has("document")) {
-			for (const entity of this.documents) {
-				results.push(this.mapEntityToResult(entity));
-				if (limit && results.length >= limit) {
-					return results;
-				}
-			}
-		}
-
-		if (allowedTypes.has("decision")) {
-			for (const entity of this.decisions) {
-				results.push(this.mapEntityToResult(entity));
-				if (limit && results.length >= limit) {
-					return results;
-				}
-			}
-		}
-
-		return results;
-	}
-
-	private mapEntityToResult(entity: SearchEntity, result?: FuseResult<SearchEntity>): SearchResult {
-		const score = result?.score ?? null;
-		const matches = this.mapMatches(result?.matches);
+	private mapEntityToResult(entity: SearchEntity, result: SearchHit): SearchResult {
+		const score = result.score ?? null;
+		const matches = this.mapMatches(result.matches);
 
 		if (entity.type === "task") {
 			return {
@@ -273,5 +163,49 @@ export class SearchService {
 			indices: match.indices.map(([start, end]) => [start, end] as [number, number]),
 			value: match.value,
 		}));
+	}
+}
+
+export class SearchService {
+	private index: SearchIndex | null = null;
+	private initializing: Promise<void> | null = null;
+	private unsubscribe?: () => void;
+	private version = 0;
+
+	constructor(private readonly store: ContentStore) {}
+
+	async ensureInitialized(): Promise<void> {
+		if (this.index) return;
+
+		this.initializing ??= this.initialize().finally(() => {
+			this.initializing = null;
+		});
+		await this.initializing;
+	}
+
+	dispose(): void {
+		this.unsubscribe?.();
+		this.unsubscribe = undefined;
+		this.index = null;
+		this.initializing = null;
+	}
+
+	search(options: SearchOptions = {}): SearchResult[] {
+		if (!this.index) {
+			throw new Error("SearchService not initialized. Call ensureInitialized() first.");
+		}
+		return this.index.search(options);
+	}
+
+	private async initialize(): Promise<void> {
+		const snapshot = await this.store.ensureInitialized();
+		this.unsubscribe ??= this.store.subscribe((event) => this.handleStoreEvent(event));
+		this.index ??= new SearchIndex(snapshot);
+	}
+
+	private handleStoreEvent({ snapshot, version }: ContentStoreEvent): void {
+		if (version <= this.version) return;
+		this.version = version;
+		this.index = new SearchIndex(snapshot);
 	}
 }

@@ -1,5 +1,6 @@
 import { DEFAULT_STATUSES } from "../constants/index.ts";
 import { type Core, createRuntimeCore } from "../core/backlog.ts";
+import { resolveConfiguredStatuses } from "./status-filter.ts";
 
 type StatusConfigReader = Pick<Core, "filesystem">;
 
@@ -47,42 +48,7 @@ export async function getCanonicalStatuses(
 	options: { extraStatuses?: readonly string[] } = {},
 ): Promise<{ values: string[]; invalid: string[]; validStatuses: string[] }> {
 	const configuredStatuses = await getValidStatuses(core);
-	const statuses: string[] = [];
-	const seenValidStatuses = new Set<string>();
-	for (const status of [...(options.extraStatuses ?? []), ...configuredStatuses]) {
-		const key = status.toLowerCase().replace(/\s+/g, "");
-		if (seenValidStatuses.has(key)) {
-			continue;
-		}
-		seenValidStatuses.add(key);
-		statuses.push(status);
-	}
-	const canonicalByNormalized = new Map(
-		statuses.map((status) => [status.toLowerCase().replace(/\s+/g, ""), status] as const),
-	);
-	const values: string[] = [];
-	const invalid: string[] = [];
-	const seen = new Set<string>();
-
-	for (const input of inputs) {
-		const raw = String(input ?? "").trim();
-		if (!raw) {
-			continue;
-		}
-		const canonical = canonicalByNormalized.get(raw.toLowerCase().replace(/\s+/g, ""));
-		if (!canonical) {
-			invalid.push(raw);
-			continue;
-		}
-		const key = canonical.toLowerCase();
-		if (seen.has(key)) {
-			continue;
-		}
-		seen.add(key);
-		values.push(canonical);
-	}
-
-	return { values, invalid, validStatuses: statuses };
+	return resolveConfiguredStatuses(inputs, [...(options.extraStatuses ?? []), ...configuredStatuses]);
 }
 
 /**

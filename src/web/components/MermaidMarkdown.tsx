@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef } from "react";
+import { type MouseEvent, useEffect, useMemo, useRef } from "react";
 import MDEditor from "@uiw/react-md-editor";
+import { useBrowserAccess } from "../contexts/BrowserAccessContext";
 import { useTaskIdIndex } from "../contexts/TaskIdIndexContext";
 import { renderMermaidIn } from "../utils/mermaid";
 import { createTaskIdLinkPlugin } from "../utils/task-id-links";
@@ -35,8 +36,25 @@ function keepHashLinksInCurrentRoute(url: string, key: string): string {
 	return `${window.location.pathname}${window.location.search}${url}`;
 }
 
+function publishedLinkUrl(url: string, key: string): string {
+	if (url.startsWith("/assets/")) return `.${url}`;
+	if (key === "href" && /^\/(?:tasks|board|documentation|decisions|milestones|statistics)(?:[/?#]|$)/.test(url)) {
+		return `#${url}`;
+	}
+	return url;
+}
+
+// The URL fragment holds the published route. A Markdown heading still scrolls within that route.
+function openPublishedHeading(event: MouseEvent<HTMLDivElement>) {
+	const href = (event.target as Element).closest("a[href]")?.getAttribute("href");
+	if (!href?.startsWith("#") || href.startsWith("#/")) return;
+	event.preventDefault();
+	document.getElementById(href.slice(1))?.scrollIntoView();
+}
+
 export default function MermaidMarkdown({ source }: Props) {
 	const ref = useRef<HTMLDivElement | null>(null);
+	const { canWrite } = useBrowserAccess();
 	const taskIdIndex = useTaskIdIndex();
 	const remarkPlugins = useMemo(() => [treatHtmlAsText, createTaskIdLinkPlugin(taskIdIndex)], [taskIdIndex]);
 
@@ -55,10 +73,10 @@ export default function MermaidMarkdown({ source }: Props) {
 	}, [source]);
 
 	return (
-		<div ref={ref} className="wmde-markdown">
+		<div ref={ref} className="wmde-markdown" onClick={canWrite ? undefined : openPublishedHeading}>
 			<MDEditor.Markdown
 				source={source}
-				urlTransform={keepHashLinksInCurrentRoute}
+				urlTransform={canWrite ? keepHashLinksInCurrentRoute : publishedLinkUrl}
 				remarkPlugins={remarkPlugins}
 			/>
 		</div>

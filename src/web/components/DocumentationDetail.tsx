@@ -1,5 +1,5 @@
 import {useState, useEffect, memo, useCallback} from 'react';
-import {useParams, useNavigate, useSearchParams} from 'react-router-dom';
+import {Navigate, useParams, useNavigate, useSearchParams} from 'react-router-dom';
 import {apiClient, isAmbiguousIdConflict} from '../lib/api';
 import MDEditor from '@uiw/react-md-editor';
 import MermaidMarkdown from './MermaidMarkdown';
@@ -8,6 +8,7 @@ import AmbiguousIdNotice from './AmbiguousIdNotice';
 import ErrorBoundary from '../components/ErrorBoundary';
 import {SuccessToast} from './SuccessToast';
 import { useTheme } from '../contexts/ThemeContext';
+import { useBrowserAccess } from "../contexts/BrowserAccessContext";
 import { sanitizeUrlTitle } from '../utils/urlHelpers';
 import StoredDate from './StoredDate';
 import { documentIdKey } from '../../utils/document-id';
@@ -80,6 +81,8 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
     const {id, title} = useParams<{ id: string; title: string }>();
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
+    const { canWrite } = useBrowserAccess();
+    const isNewDocument = id === "new";
     const [document, setDocument] = useState<Document | null>(null);
     const [content, setContent] = useState<string>('');
     const [originalContent, setOriginalContent] = useState<string>('');
@@ -92,27 +95,27 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
     const [editRequested, setEditRequested] = useState(false);
     const [error, setError] = useState<Error | null>(null);
     const [saveError, setSaveError] = useState<Error | null>(null);
-    const [isNewDocument, setIsNewDocument] = useState(false);
     const [showSaveSuccess, setShowSaveSuccess] = useState(false);
     // An archived document is read-only: it shows the Archived label and neither Edit nor Archive.
-    const routeIdentity = id && id !== 'new' ? documentIdKey(id) : null;
+    const routeIdentity = id && !isNewDocument ? documentIdKey(id) : null;
     const currentDocument = document && routeIdentity && documentIdKey(document.id) === routeIdentity ? document : null;
     const isArchived = currentDocument?.archived === true;
-    // The editor opens on request (the Edit button, `?edit=true` in the URL, the new page), but never
-    // for an archived document: the request can come before or after the record has loaded.
-    const isEditing = editRequested && !isArchived;
+    const canEdit = canWrite && !isArchived;
+    const isEditing = canEdit && editRequested;
+    const showEditAction = canEdit && !isEditing;
+    const archiveRecord = showEditAction && !isLoading ? currentDocument : null;
     const {archive, isArchiving, archiveError, dismissArchiveError} = useRecordArchive(
         'document',
-        currentDocument && !isLoading && !isNewDocument ? {id: currentDocument.id, title: currentDocument.title} : null,
+        archiveRecord,
         routeIdentity,
         onRefreshData,
     );
 
     useEffect(() => {
         let active = true;
-        if (id === 'new') {
+        if (isNewDocument) {
+            if (!canWrite) return;
             // Handle new document creation
-            setIsNewDocument(true);
             setEditRequested(true);
             setIsLoading(false);
             // Creating is unrelated to whatever failed to load before, so clear any load error.
@@ -126,24 +129,23 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
             setContent('');
             setOriginalContent('');
         } else if (id) {
-            setIsNewDocument(false);
             setEditRequested(false); // Ensure we start in preview mode for existing documents
             void loadDocContent(() => active);
         }
         return () => { active = false; };
-    }, [id, docs]);
+    }, [id, docs, isNewDocument, canWrite]);
 
     // Check for edit query parameter to start in edit mode
     useEffect(() => {
         if (searchParams.get('edit') === 'true') {
-            setEditRequested(true);
+            setEditRequested(canWrite);
             // Remove the edit parameter from URL
             setSearchParams(params => {
                 params.delete('edit');
                 return params;
             });
         }
-    }, [searchParams, setSearchParams]);
+    }, [searchParams, setSearchParams, canWrite]);
 
     const loadDocContent = useCallback(async (isCurrent: () => boolean) => {
         try {
@@ -229,7 +231,6 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
                 setTimeout(() => setShowSaveSuccess(false), 4000);
                 // Exit edit mode and navigate to the new document
                 setEditRequested(false);
-                setIsNewDocument(false);
                 setDocTitle(normalizedTitle);
                 setOriginalDocTitle(normalizedTitle);
                 setDocPath(getDocumentDirectory(result.path) || normalizedPath);
@@ -301,7 +302,9 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
 
     const hasChanges = content !== originalContent || docTitle !== originalDocTitle || docPath !== originalDocPath;
 
-    if (!id || (id !== 'new' && !routeIdentity)) {
+    if (isNewDocument && !canWrite) return <Navigate to="/documentation" replace />;
+
+    if (!routeIdentity && !isNewDocument) {
         return (
             <div className="flex-1 flex items-center justify-center p-8">
                 <div className="text-center">
@@ -399,8 +402,7 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
                                 </div>
                             </div>
                             <div className="flex items-center space-x-3">
-                                {isArchived ? null : !isEditing ? (
-                                    <>
+                                {showEditAction && (
                                     <button
                                         onClick={handleEdit}
                                         className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-colors duration-200"
@@ -412,11 +414,9 @@ export default function DocumentationDetail({docs, onRefreshData, dateFormat}: D
                                         </svg>
                                         Edit
                                     </button>
-                                    {currentDocument && !isNewDocument && (
-                                        <ArchiveButton onClick={archive} disabled={isArchiving} />
-                                    )}
-                                    </>
-                                ) : (
+                                )}
+                                {archiveRecord && <ArchiveButton onClick={archive} disabled={isArchiving} />}
+                                {isEditing && (
                                     <div className="flex items-center space-x-2">
 	                                        <button
 	                                            onClick={handleCancelEdit}

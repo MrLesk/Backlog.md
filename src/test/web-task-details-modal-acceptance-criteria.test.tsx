@@ -73,7 +73,7 @@ describe("Web task popup acceptance criteria display", () => {
 			acceptanceCriteriaItems: [{ index: 7, text: "Hidden criterion", checked: false }],
 		};
 
-		const html = renderToString(<TaskCard task={task} onUpdate={() => {}} onEdit={() => {}} />);
+		const html = renderToString(<TaskCard task={task} onEdit={() => {}} />);
 
 		expect(html).toContain("Board card task");
 		expect(html).not.toContain("Hidden criterion");

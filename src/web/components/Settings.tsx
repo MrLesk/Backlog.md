@@ -1,9 +1,40 @@
 import React, { useState, useEffect } from 'react';
+import { useBrowserAccess } from "../contexts/BrowserAccessContext";
 import { apiClient } from '../lib/api';
 import { SuccessToast } from './SuccessToast';
 import type { BacklogConfig } from '../../types';
 
+function PublishedSettings({ config }: { config: BacklogConfig }) {
+	const values = [
+		["Project Name", config.projectName],
+		["Date Format", config.dateFormat],
+		["Default Status", config.defaultStatus],
+		["Definition of Done Defaults", config.definitionOfDone?.join("\n")],
+		["Hide Empty Columns", config.hideEmptyColumns ? "Yes" : "No"],
+		["Max Column Width", config.maxColumnWidth],
+		["Zero-Padded IDs", config.zeroPaddedIds ?? 0],
+		["Task Prefix", (config.prefixes?.task ?? "task").toUpperCase()],
+	] as const;
+
+	return (
+		<div className="page-shell">
+			<div className="max-w-4xl mx-auto">
+				<h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-8">Settings</h1>
+				<dl className="divide-y divide-gray-200 rounded-lg bg-white px-6 shadow dark:divide-gray-700 dark:bg-gray-800">
+					{values.map(([label, value]) => (
+						<div key={label} className="flex flex-wrap items-baseline justify-between gap-2 py-4 text-sm">
+							<dt className="font-medium text-gray-700 dark:text-gray-300">{label}</dt>
+							<dd className="whitespace-pre-line text-gray-900 dark:text-gray-100">{value ?? "—"}</dd>
+						</div>
+					))}
+				</dl>
+			</div>
+		</div>
+	);
+}
+
 const Settings: React.FC = () => {
+	const { canWrite } = useBrowserAccess();
 	const [config, setConfig] = useState<BacklogConfig | null>(null);
 	const [originalConfig, setOriginalConfig] = useState<BacklogConfig | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -15,8 +46,8 @@ const Settings: React.FC = () => {
 
 	useEffect(() => {
 		loadConfig();
-		loadStatuses();
-	}, []);
+		if (canWrite) loadStatuses();
+	}, [canWrite]);
 
 	const loadConfig = async () => {
 		try {
@@ -130,6 +161,8 @@ const Settings: React.FC = () => {
 			</div>
 		);
 	}
+
+	if (!canWrite) return <PublishedSettings config={config} />;
 
 	return (
 		<div className="page-shell transition-colors duration-200">
