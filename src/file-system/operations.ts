@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { lstat, mkdir, readdir, readFile, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -772,7 +773,7 @@ export class FileSystem {
 		if (!filePath) {
 			throw new Error(`Cannot lock task ${task.id} for editing without its file path.`);
 		}
-		return await this.withEntityFileLock("task", task.id, filePath, fn);
+		return await this.withEntityLock("task", task.id, fn, filePath);
 	}
 
 	/**
@@ -784,31 +785,37 @@ export class FileSystem {
 		if (process.env.USE_GLOBAL_TASK_ID_LOCK?.toLowerCase() === "false") {
 			return await fn();
 		}
-		return await this.withEntityFileLock("draft", reference.canonicalId, reference.filePath, fn);
+		return await this.withEntityLock("draft", reference.canonicalId, fn, reference.filePath);
 	}
 
-	/** Updates and archive operations share one lock for each document or decision identity. */
-	async withContentRecordLock<T>(kind: ContentRecordKind, record: ContentRecord, fn: () => Promise<T>): Promise<T> {
+	/** Lock the stable ID before looking up a filename that another edit can change. */
+	async withContentRecordLock<T>(kind: ContentRecordKind, id: string, fn: () => Promise<T>): Promise<T> {
 		if (process.env.USE_GLOBAL_TASK_ID_LOCK?.toLowerCase() === "false") return await fn();
-		const key = kind === "document" ? documentIdKey(record.id) : decisionIdKey(record.id);
-		if (!key || !record.path) throw new Error(`Cannot lock ${kind} ${record.id}: its identity or path is missing.`);
-		return await this.withEntityFileLock(kind, key, this.contentRecordFilePath(kind, record), fn);
+		const key = kind === "document" ? documentIdKey(id) : decisionIdKey(id);
+		// An empty ID cannot match a record. Let the caller return its usual missing-record result.
+		if (!key) return await fn();
+		return await this.withEntityLock(kind, key, fn);
 	}
 
-	private async withEntityFileLock<T>(
+	private async withEntityLock<T>(
 		scope: "task" | "draft" | ContentRecordKind,
 		entityId: string,
-		filePath: string,
 		fn: () => Promise<T>,
+		filePath?: string,
 	): Promise<T> {
 		const lockKey = entityId
 			.trim()
 			.toLowerCase()
 			.replace(/[^a-z0-9._-]+/g, "-")
 			.replace(/^\.+/, "");
+		let lockName = `${scope}-${lockKey || "unknown"}`;
+		// Content IDs come from Markdown. Hash IDs that cannot keep their exact spelling in a portable lock filename.
+		if (filePath === undefined && (lockKey !== entityId || lockName.length > 255 || lockName.endsWith("."))) {
+			lockName = `${scope}-${createHash("sha256").update(entityId).digest("hex")}`;
+		}
 		return await this.withLockTarget(
 			filePath,
-			join(await this.getBacklogDir(), ".locks", `${scope}-${lockKey || "unknown"}`),
+			join(await this.getBacklogDir(), ".locks", lockName),
 			{ staleMs: DEFAULT_CREATE_LOCK_STALE_MS, retries: 0, retryDelayMs: 0 },
 			(error) => this.toTaskLockError(error, entityId),
 			fn,
@@ -851,7 +858,7 @@ export class FileSystem {
 	}
 
 	private async withLockTarget<T>(
-		targetPath: string,
+		existingTarget: string | undefined,
 		lockDir: string,
 		settings: LockAttemptSettings,
 		toError: (error: unknown) => Error,
@@ -861,9 +868,10 @@ export class FileSystem {
 
 		let release: (() => Promise<void>) | undefined;
 		try {
-			release = await lockfile.lock(targetPath, {
+			// Without an existing target, proper-lockfile can use the per-ID lock directory itself as its registry key.
+			release = await lockfile.lock(existingTarget ?? lockDir, {
 				lockfilePath: lockDir,
-				realpath: true,
+				realpath: existingTarget !== undefined,
 				stale: Math.max(settings.staleMs, 2_000),
 				retries: {
 					retries: settings.retries,

@@ -4,7 +4,13 @@ import { dirname, isAbsolute, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import pc from "picocolors";
 import { DEFAULT_STATUSES } from "../constants/index.ts";
-import { CONTENT_RECORD_WORDS, Core, formatCleanupResult, RecordRefusedError } from "../core/backlog.ts";
+import {
+	CONTENT_RECORD_WORDS,
+	Core,
+	DocumentNotFoundError,
+	formatCleanupResult,
+	RecordRefusedError,
+} from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
 import type { SearchService } from "../core/search-service.ts";
@@ -1512,13 +1518,11 @@ export class BacklogServer {
 			if (error instanceof RecordRefusedError) {
 				return Response.json({ error: error.message }, { status: 400 });
 			}
-			if (error instanceof Error) {
-				if (error.message.startsWith("Document not found")) {
-					return Response.json({ error: error.message }, { status: 404 });
-				}
-				if (isDocumentValidationError(error)) {
-					return Response.json({ error: error.message }, { status: 400 });
-				}
+			if (error instanceof DocumentNotFoundError) {
+				return Response.json({ error: error.message }, { status: 404 });
+			}
+			if (error instanceof Error && isDocumentValidationError(error)) {
+				return Response.json({ error: error.message }, { status: 400 });
 			}
 			console.error("Error updating document:", error);
 			return Response.json({ error: "Failed to update document" }, { status: 500 });
