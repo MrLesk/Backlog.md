@@ -111,6 +111,9 @@ incidental wording or inventory documentation.
 
 ## Tests
 
+Use [`cccc`](https://github.com/moznion/cccc) to measure cognitive complexity. Do not write tests for functions or code
+with a cognitive complexity score of 5 or less, unless they contain regular expressions.
+
 Test domain rules, public contracts, and observable behavior. Before adding or extending a test, inspect existing coverage
 and identify the supported rule, the concrete wrong result it would catch, and the smallest missing check. Prefer
 extending relevant coverage over duplicating it across layers. Zero new tests is valid when existing checks prove the
