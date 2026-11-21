@@ -1,4 +1,8 @@
-import { type ContentRecordChangeResult, describeContentRecordChange } from "../../../core/backlog.ts";
+import {
+	type ContentRecordChangeResult,
+	DocumentNotFoundError,
+	describeContentRecordChange,
+} from "../../../core/backlog.ts";
 import type { Document, DocumentSearchResult } from "../../../types/index.ts";
 import { documentNotFoundMessage } from "../../../utils/document-id.ts";
 import { isAmbiguousIdError } from "../../../utils/entity-id.ts";
@@ -66,14 +70,6 @@ export class DocumentHandlers {
 		return ` [score ${invertedScore.toFixed(3)}]`;
 	}
 
-	private async loadDocumentOrThrow(id: string): Promise<Document> {
-		const document = await this.core.getDocument(id);
-		if (!document) {
-			throw new BacklogToolError(documentNotFoundMessage(id), "DOCUMENT_NOT_FOUND");
-		}
-		return document;
-	}
-
 	async listDocuments(args: DocumentListArgs = {}): Promise<CallToolResult> {
 		const search = args.search?.toLowerCase();
 		const documents = await this.core.filesystem.listDocuments();
@@ -113,7 +109,8 @@ export class DocumentHandlers {
 	}
 
 	async viewDocument(args: DocumentViewArgs): Promise<CallToolResult> {
-		const document = await this.loadDocumentOrThrow(args.id);
+		const document = await this.core.getDocument(args.id);
+		if (!document) throw new BacklogToolError(documentNotFoundMessage(args.id), "DOCUMENT_NOT_FOUND");
 		return await formatDocumentCallResult(document);
 	}
 
@@ -127,6 +124,7 @@ export class DocumentHandlers {
 		try {
 			return await runCoreOperation(operation);
 		} catch (error) {
+			if (error instanceof DocumentNotFoundError) throw new BacklogToolError(error.message, "DOCUMENT_NOT_FOUND");
 			if (error instanceof BacklogToolError || isAmbiguousIdError(error)) throw error;
 			throw new BacklogToolError(
 				error instanceof Error ? `${failure}: ${error.message}` : `${failure}.`,
@@ -151,17 +149,8 @@ export class DocumentHandlers {
 	}
 
 	async updateDocument(args: DocumentUpdateArgs): Promise<CallToolResult> {
-		await this.loadDocumentOrThrow(args.id);
-
 		const document = await this.changeDocument("Failed to update document", () =>
-			this.core.updateDocumentFromInput({
-				id: args.id,
-				content: args.content,
-				title: args.title,
-				type: args.type,
-				path: args.path,
-				tags: args.tags,
-			}),
+			this.core.updateDocumentFromInput(args),
 		);
 		return await formatDocumentCallResult(document, {
 			summaryLines: ["Document updated successfully."],

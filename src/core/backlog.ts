@@ -430,6 +430,8 @@ function assertSectionInputsSafe(input: {
  */
 export class RecordRefusedError extends Error {}
 
+export class DocumentNotFoundError extends Error {}
+
 /** Shared field and marker validation for decision creation and partial updates. */
 function assertDecisionInput(input: DecisionCreateInput | DecisionUpdateInput, operation: "create" | "update"): void {
 	if (!input || typeof input !== "object" || Array.isArray(input)) {
@@ -4540,16 +4542,14 @@ export class Core {
 		}
 	}
 
-	/** Apply a partial decision update after resolving its identity again under the record lock. */
+	/** Apply a partial decision update to the record found under the lock. */
 	async updateDecisionFromInput(
 		decisionId: string,
 		input: DecisionUpdateInput,
 		autoCommit?: boolean,
 	): Promise<Decision> {
 		assertDecisionInput(input, "update");
-		const target = await this.getDecision(decisionId);
-		if (!target) throw new Error(`Decision ${decisionId} not found`);
-		return await this.fs.withContentRecordLock("decision", target, async () => {
+		return await this.fs.withContentRecordLock("decision", decisionId, async () => {
 			const existing = await this.getDecision(decisionId);
 			if (!existing) throw new Error(`Decision ${decisionId} not found`);
 			if (existing.archived) throw new ContentRecordArchivedError("decision", existing.id);
@@ -4668,12 +4668,10 @@ export class Core {
 	 * through this method, so they refuse with that one message.
 	 */
 	async updateDocumentFromInput(input: DocumentUpdateInput, autoCommit?: boolean): Promise<Document> {
-		const target = await this.getDocument(input.id);
-		if (!target) throw new Error(documentNotFoundMessage(input.id));
-		return await this.fs.withContentRecordLock("document", target, async () => {
+		return await this.fs.withContentRecordLock("document", input.id, async () => {
 			const existingDoc = await this.getDocument(input.id);
 			if (!existingDoc) {
-				throw new Error(documentNotFoundMessage(input.id));
+				throw new DocumentNotFoundError(documentNotFoundMessage(input.id));
 			}
 			if (existingDoc.archived) {
 				throw new ContentRecordArchivedError("document", existingDoc.id);
@@ -4742,7 +4740,7 @@ export class Core {
 	 * `AmbiguousIdError`. Every refusal is a `RecordRefusedError` with nothing moved: the record is
 	 * already where the move would take it, or a file is already at the destination path.
 	 *
-	 * The record is resolved again under the same lock used by updates, before any move or removal.
+	 * The record is resolved under the same lock used by updates.
 	 */
 	private async moveContentRecord(
 		kind: ContentRecordKind,
@@ -4750,9 +4748,7 @@ export class Core {
 		direction: "archive" | "restore",
 		autoCommit?: boolean,
 	): Promise<ContentRecordChangeResult | null> {
-		const target = await this.loadContentRecordForChange(kind, id, direction);
-		if (!target) return null;
-		return await this.fs.withContentRecordLock(kind, target, async () => {
+		return await this.fs.withContentRecordLock(kind, id, async () => {
 			const record = await this.loadContentRecordForChange(kind, id, direction);
 			if (!record) return null;
 			// Everything that only reads comes before the move: a config or a task file that cannot be
@@ -4814,16 +4810,14 @@ export class Core {
 	 * `AmbiguousIdError`. A record that is not archived is refused with
 	 * `ContentRecordNotArchivedError` and nothing is removed.
 	 *
-	 * The record is resolved again under the same lock used by updates, before any move or removal.
+	 * The record is resolved under the same lock used by updates.
 	 */
 	async deleteContentRecord(
 		kind: ContentRecordKind,
 		id: string,
 		autoCommit?: boolean,
 	): Promise<ContentRecordChangeResult | null> {
-		const target = await this.loadContentRecordForChange(kind, id, "delete");
-		if (!target) return null;
-		return await this.fs.withContentRecordLock(kind, target, async () => {
+		return await this.fs.withContentRecordLock(kind, id, async () => {
 			const record = await this.loadContentRecordForChange(kind, id, "delete");
 			if (!record) return null;
 			// Everything that only reads comes before the removal, as for a move.

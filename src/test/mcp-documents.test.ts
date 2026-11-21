@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
+import { Core } from "../core/backlog.ts";
 import { serializeDocument } from "../markdown/serializer.ts";
 import { McpServer } from "../mcp/server.ts";
 import { registerDocumentTools } from "../mcp/tools/documents/index.ts";
@@ -209,6 +210,33 @@ describe("MCP document tools", () => {
 		expect(noPrefixText).toContain("Document doc-1 - Runbook");
 		expect(uppercaseText).toContain("Document doc-1 - Runbook");
 		expect(zeroPaddedText).toContain("Document doc-1 - Runbook");
+	});
+
+	it("protects the first document_update lookup from a concurrent rename", async () => {
+		expect.assertions(3);
+		await mcpServer.createDocumentFromInput({ title: "Guide", content: "Original" });
+		const other = new Core(TEST_DIR);
+		const rename = () => other.updateDocumentFromInput({ id: "DOC-001", title: "Renamed" });
+		const read = mcpServer.getDocument.bind(mcpServer);
+		spyOn(mcpServer, "getDocument").mockImplementationOnce(async (id) => {
+			const document = await read(id);
+			await expect(rename()).rejects.toThrow("is being modified by another process");
+			return document;
+		});
+
+		const edit = await mcpServer.testInterface.callTool({
+			params: { name: "document_update", arguments: { id: "doc-1", content: "Updated" } },
+		});
+		expect(edit.isError).not.toBe(true);
+		await rename();
+		expect(await other.getDocument("doc-1")).toMatchObject({ title: "Renamed", rawContent: "Updated" });
+	});
+
+	it("returns the missing-document error when updating an unknown ID", async () => {
+		const result = await mcpServer.testInterface.callTool({
+			params: { name: "document_update", arguments: { id: "doc-9", content: "Updated" } },
+		});
+		expect(result.structuredContent?.code).toBe("DOCUMENT_NOT_FOUND");
 	});
 
 	it("updates documents including title changes", async () => {

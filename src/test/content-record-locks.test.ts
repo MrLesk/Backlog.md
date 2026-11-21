@@ -142,16 +142,30 @@ describe("document and decision mutation locks", () => {
 		},
 	);
 
-	it.each(["document", "decision"] as const)("rereads the %s after acquiring the lock", async (kind) => {
+	it("keeps distinct document IDs with punctuation independent", async () => {
+		for (const id of ["doc-team+a", "doc-team-a"]) {
+			await Bun.write(join(core.fs.docsDir, `${id}.md`), `---\nid: ${id}\ntitle: Team\n---\n`);
+		}
+		const edited = await core.fs.withContentRecordLock("document", "doc-team-a", () =>
+			core.updateDocumentFromInput({ id: "doc-team+a", tags: ["saved"] }),
+		);
+		expect(edited.tags).toEqual(["saved"]);
+	});
+
+	it("returns the missing-record result for an ID longer than a filename", async () => {
+		expect(await core.archiveContentRecord("document", "9".repeat(256))).toBeNull();
+	});
+
+	it.each(["document", "decision"] as const)("reads the current %s under the lock", async (kind) => {
 		const originalLock = core.fs.withContentRecordLock.bind(core.fs);
 		const other = new Core(directory);
-		core.fs.withContentRecordLock = async (lockedKind, record, operation) => {
+		core.fs.withContentRecordLock = async (lockedKind, id, operation) => {
 			if (kind === "document") {
 				await other.updateDocumentFromInput({ id: "doc-1", content: "Original", tags: ["saved first"] });
 			} else {
 				await other.updateDecisionFromInput("decision-1", { context: "Saved first" });
 			}
-			return originalLock(lockedKind, record, operation);
+			return originalLock(lockedKind, id, operation);
 		};
 		await update(kind);
 		if (kind === "document") expect((await core.getDocument("doc-1"))?.tags).toEqual(["saved first"]);
@@ -160,9 +174,9 @@ describe("document and decision mutation locks", () => {
 
 	it("keeps a newer document body when a metadata-only edit reaches the lock later", async () => {
 		const originalLock = core.fs.withContentRecordLock.bind(core.fs);
-		core.fs.withContentRecordLock = async (kind, record, operation) => {
+		core.fs.withContentRecordLock = async (kind, id, operation) => {
 			await new Core(directory).updateDocumentFromInput({ id: "doc-1", content: "Saved before the lock" });
-			return originalLock(kind, record, operation);
+			return originalLock(kind, id, operation);
 		};
 		await core.updateDocumentFromInput({ id: "doc-1", title: "Renamed" });
 		expect(await core.getDocument("doc-1")).toMatchObject({ title: "Renamed", rawContent: "Saved before the lock" });
