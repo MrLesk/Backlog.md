@@ -114,6 +114,14 @@ describe("CLI status filtering", () => {
 		expect(ids).not.toContain("TASK-2");
 	});
 
+	it("rejects an unknown status instead of listing no tasks", async () => {
+		const result = await $`bun ${cliPath} task list --status Bogus --plain`.cwd(TEST_DIR).nothrow().quiet();
+		const output = result.stdout.toString() + result.stderr.toString();
+
+		expect(result.exitCode).toBe(1);
+		expect(output).toContain("Invalid status: Bogus. Valid statuses are: To Do, In Progress, Done");
+	});
+
 	it("search keeps every selected status in plain output when the flag is repeated", async () => {
 		const result = await $`bun ${cliPath} search work --type task --status "To Do" --status "Done" --plain`
 			.cwd(TEST_DIR)
