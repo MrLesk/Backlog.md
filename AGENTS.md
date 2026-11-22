@@ -161,7 +161,7 @@ Record evidence for the task's criteria and report what changed, how it was veri
   against the manifesto, public contracts, and current documented behavior before implementing it.
 - Ask Alex about ambiguous product behavior before implementation. PRs should normally link to a scoped issue first;
   a broad feature PR without one needs an issue or discussion before implementation.
-- Every PR needs an associated Backlog task, including documentation PRs. Use the Backlog workflow below to search,
+- Every PR needs an associated Backlog task. Use the Backlog workflow below to search,
   create, assign, plan, and finalize tasks. Assign yourself when picking up work with `-a @your-name`.
 - Use the CLI allocator and lock for task IDs; do not manually pick or reserve IDs.
 - When acting publicly on Alex's behalf, use neutral maintainer language and identify yourself as `Alex's Agent:` when
@@ -169,12 +169,14 @@ Record evidence for the task's criteria and report what changed, how it was veri
 
 ## Git workflow
 
-- Changes confined to `AGENTS.md` need no issue, Backlog task, feature branch, or PR. After review and verification, commit
-  and push them directly to `main` with a descriptive commit subject. This is the exception to the task and PR workflow.
+- When Alex requests a documentation-only change, review and verify it, then commit and push it directly to `main`.
+  Alex's request is sufficient approval without a separate GitHub issue or PR.
+- Changes confined to `AGENTS.md` follow the same direct workflow and need no issue, Backlog task, feature branch, or PR.
+  Use a descriptive commit subject.
 - For other work, use a feature branch for the task, such as `tasks/back-123-feature-name`. Inspect current changes before
   editing shared files. Preserve unrelated changes by Alex or other agents; never revert, reformat, or stage them.
-- When a task is complete, commit and push its changes to its own branch and create or update its PR without asking for
-  approval. Ask Alex before any other commit, push, or merge that places commits on `main`.
+- For a task that needs a PR, once a maintainer has approved the scope, push the completed changes to the task branch
+  and open or update the PR. Ask Alex before any other commit, push, or merge that places commits on `main`.
 - For task work, use the exact task ID and title for both the commit subject and PR title: `BACK-123 - Title of the task`.
 - Use `gh` for GitHub work when available.
 
