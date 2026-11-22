@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { request as httpRequest } from "node:http";
 import { FileSystem } from "../file-system/operations.ts";
-import { BacklogServer } from "../server/index.ts";
+import { BacklogServer, resolveBrowserHost } from "../server/index.ts";
 import { closeServer, createUniqueTestDir, listenOnEphemeralPort, safeCleanup } from "./test-utils.ts";
 
 let TEST_DIR: string;
@@ -221,7 +221,7 @@ describe("BacklogServer loopback binding", () => {
 		const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
 		try {
 			server = new BacklogServer(TEST_DIR);
-			await server.start(await unusedLoopbackPort(), false, "127.0.0.1");
+			await server.start(await unusedLoopbackPort(), false, await resolveBrowserHost("127.0.0.1"));
 			expect(internals(server).server?.hostname).toBe("127.0.0.1");
 			expect(warnSpy).not.toHaveBeenCalled();
 			expect((await filesystem.loadConfig())?.browserHostname).toBe("0.0.0.0");
@@ -242,7 +242,7 @@ describe("BacklogServer loopback binding", () => {
 			internals(server).openBrowser = async (url) => {
 				opened = url;
 			};
-			await server.start(port, true, "::1");
+			await server.start(port, true, await resolveBrowserHost("::1"));
 			expect(opened).toBe(`http://[::1]:${port}`);
 			expect((await fetch(`http://[::1]:${port}/api/status`)).status).toBe(200);
 			expect(warnSpy).not.toHaveBeenCalled();

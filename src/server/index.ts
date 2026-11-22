@@ -237,10 +237,15 @@ export function markHtmlBundleNoStore(bundle: Bun.HTMLBundle): Bun.HTMLBundle {
 
 const spaIndexHtml = markHtmlBundleNoStore(indexHtml);
 const BUNDLE_ASSET_DIR_ENV = "BACKLOG_BUNDLE_ASSET_DIR";
-export async function resolveBrowserListeningAddress(hostname: string): Promise<string> {
-	const normalized = normalizeBrowserHostname(hostname);
-	return net.isIP(normalized) ? normalized : (await lookup(normalized)).address;
+
+type BrowserHost = { hostname: string; address: string };
+
+export async function resolveBrowserHost(value = DEFAULT_BROWSER_HOSTNAME): Promise<BrowserHost> {
+	const hostname = normalizeBrowserHostname(value);
+	const address = net.isIP(hostname) ? hostname : (await lookup(hostname)).address;
+	return { hostname, address };
 }
+
 const MIN_PORT = 1;
 const MAX_PORT = 65535;
 
@@ -406,7 +411,7 @@ export class BacklogServer {
 		}
 	}
 
-	async start(port?: number, openBrowser = true, hostname?: string): Promise<void> {
+	async start(port?: number, openBrowser = true, resolvedHost?: BrowserHost): Promise<void> {
 		// Prevent duplicate starts (e.g., accidental re-entry)
 		if (this.server) {
 			console.log("Server already running");
@@ -418,22 +423,15 @@ export class BacklogServer {
 
 		// Use config default port if no port specified
 		const finalPort = port ?? config?.defaultPort ?? 6420;
-		const selectedHostname = hostname ?? config?.browserHostname ?? DEFAULT_BROWSER_HOSTNAME;
-		const finalHostname = await resolveBrowserListeningAddress(selectedHostname);
+		const { hostname, address } = resolvedHost ?? (await resolveBrowserHost(config?.browserHostname));
 		// A browser sends the name it used to reach this server in the Host header. Another website
 		// can point its own name at this machine, so only these names are trusted: the selected host,
 		// the address it resolved to, and the loopback names. The port is not compared, so a
 		// forwarded port keeps working.
-		const allowedHostnames = new Set([
-			normalizeBrowserHostname(selectedHostname),
-			finalHostname,
-			"localhost",
-			"127.0.0.1",
-			"::1",
-		]);
+		const allowedHostnames = new Set([hostname, address, "localhost", "127.0.0.1", "::1"]);
 		// A listener on every address is reached through any of this machine's IP addresses. An IP
 		// address always leads to the machine it names, so that listener accepts every IP address.
-		const wildcardListener = finalHostname === "0.0.0.0" || finalHostname === "::";
+		const wildcardListener = address === "0.0.0.0" || address === "::";
 		const rejectUntrustedBrowserRequest = (req: Request): Response | undefined => {
 			const host = req.headers.get("host");
 			if (!host || /[\s/?#@\\]/.test(host)) return new Response("Forbidden", { status: 403 });
@@ -459,18 +457,18 @@ export class BacklogServer {
 		const shouldOpenBrowser = openBrowser && (config?.autoOpenBrowser ?? true);
 
 		try {
-			if (!isLoopbackBrowserHostname(finalHostname)) {
+			if (!isLoopbackBrowserHostname(address)) {
 				console.warn(
 					pc.bold(
 						pc.red(
-							`\n${"=".repeat(72)}\n${REMOTE_ACCESS_WARNING}\nListening address: ${finalHostname}, port ${finalPort}\n${"=".repeat(72)}\n`,
+							`\n${"=".repeat(72)}\n${REMOTE_ACCESS_WARNING}\nListening address: ${address}, port ${finalPort}\n${"=".repeat(72)}\n`,
 						),
 					),
 				);
 			}
 			const serveOptions = {
 				port: finalPort,
-				hostname: finalHostname,
+				hostname: address,
 				development: process.env.NODE_ENV === "development",
 				routes: {
 					"/": spaIndexHtml,
@@ -653,7 +651,7 @@ export class BacklogServer {
 				this.restoreRuntimeWorkingDirectory();
 				throw error;
 			}
-			const url = browserUrl(finalHostname, finalPort);
+			const url = browserUrl(address, finalPort);
 			console.log(`🚀 Backlog.md browser interface running at ${url}`);
 			console.log(`📊 Project: ${this.projectName}`);
 			const stopKey = process.platform === "darwin" ? "Cmd+C" : "Ctrl+C";

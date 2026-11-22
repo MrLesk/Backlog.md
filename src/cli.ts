@@ -83,7 +83,7 @@ import { viewTaskEnhanced } from "./ui/task-viewer-with-search.ts";
 import { scrollableViewer } from "./ui/tui.ts";
 import { type AgentSelectionValue, processAgentSelection } from "./utils/agent-selection.ts";
 import { normalizeProjectBacklogDirectory } from "./utils/backlog-directory.ts";
-import { DEFAULT_BROWSER_HOSTNAME, REMOTE_ACCESS_WARNING } from "./utils/browser-host.ts";
+import { REMOTE_ACCESS_WARNING } from "./utils/browser-host.ts";
 import { launchBrowser } from "./utils/browser-launch.ts";
 import { CLEANUP_AGE_OPTIONS } from "./utils/cleanup-age.ts";
 import { formatDependencyCleanupMessage } from "./utils/dependency-graph.ts";
@@ -6161,18 +6161,15 @@ const browserCmd = program
 	.action(async (options) => {
 		try {
 			const cwd = await requireProjectRoot();
-			const { BacklogServer, findNextAvailablePort, isPortAvailable, resolveBrowserListeningAddress } = await import(
+			const { BacklogServer, findNextAvailablePort, isPortAvailable, resolveBrowserHost } = await import(
 				"./server/index.ts"
 			);
 			const server = new BacklogServer(cwd);
 
-			// Load config to get default port
 			const core = new Core(cwd);
 			const config = await core.filesystem.loadConfig();
 			const defaultPort = config?.defaultPort ?? 6420;
-			const hostname = await resolveBrowserListeningAddress(
-				options.host ?? config?.browserHostname ?? DEFAULT_BROWSER_HOSTNAME,
-			);
+			const host = await resolveBrowserHost(options.host ?? config?.browserHostname);
 
 			let port = Number.parseInt(options.port || defaultPort.toString(), 10);
 			if (Number.isNaN(port) || port < 1 || port > 65535) {
@@ -6181,8 +6178,8 @@ const browserCmd = program
 			}
 
 			// Pre-check port availability and offer interactive retry
-			if (!(await isPortAvailable(port, hostname))) {
-				const nextPort = await findNextAvailablePort(port + 1, 65535, hostname);
+			if (!(await isPortAvailable(port, host.address))) {
+				const nextPort = await findNextAvailablePort(port + 1, 65535, host.address);
 				if (nextPort === null) {
 					console.error(`No available port found after ${port}. Use --port to specify an available port.`);
 					process.exit(1);
@@ -6211,7 +6208,7 @@ const browserCmd = program
 				}
 			}
 
-			await server.start(port, options.open !== false, hostname);
+			await server.start(port, options.open !== false, host);
 
 			// Graceful shutdown on common termination signals.
 			let shuttingDown = false;
