@@ -1,21 +1,26 @@
+## Maintainer approval
+
+Before opening a PR, wait for a project maintainer's approval in a GitHub issue.
+Paste a link to the comment where the maintainer agreed to a PR for this specific change.
+If the maintainer requested the PR in the issue description, link the issue itself.
+
 ## Summary
+
 Briefly explain the purpose of this pull request.
 
-## Related Issue or Task
-Link the issue or task this PR closes, e.g. `closes #123` or `closes task-29`.
+## Related Backlog task
 
-> **📋 Important:** Please discuss the change in an issue before opening a PR.
-> - If no issue exists, open one first so maintainers and contributors can agree that the proposal fits the current project scope before implementation.
-> - All PRs must have an associated task in the backlog.
-> - If no task exists, create one first using: `backlog task create "Your task title"`
-> - Follow the [task guidelines](../src/guidelines/agent-guidelines.md) when creating tasks
-> - Tasks should be atomic, testable, and well-defined with clear acceptance criteria
+Link the associated Backlog task (for example, `BACK-123`). If this PR closes the approved issue, include `Closes #123`.
+If you need to create a task, use `backlog task create "Your task title"` and follow the [task guidelines](../src/guidelines/agent-guidelines.md).
+Keep the task small and give it clear, testable acceptance criteria.
 
 ## Task Checklist
-- [ ] I have created a corresponding task in `backlog/tasks/`
+
+- [ ] This PR has a corresponding task in `backlog/tasks/`
 - [ ] The task has clear acceptance criteria
 - [ ] I have added an implementation plan to the task
 - [ ] All acceptance criteria in the task are marked as completed
 
 ## Testing
+
 Describe how you tested your changes.

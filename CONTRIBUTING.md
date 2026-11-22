@@ -14,6 +14,6 @@ Thank you for your interest in contributing to Backlog.md. This project is manag
 2. Make your changes and commit them with the task ID in the message.
 3. Run tests with `bun run test` and ensure they pass. It applies the same test timeout CI uses.
 4. Format and lint the code using `npx biome check .`.
-5. Open a pull request referencing the issue or task it addresses.
+5. Open the PR after a project maintainer agrees to it in the GitHub issue. Link their approval and the Backlog task in the [pull request template](.github/PULL_REQUEST_TEMPLATE.md).
 
 Please read [AGENTS.md](AGENTS.md) for detailed rules that apply to contributors and AI agents.
