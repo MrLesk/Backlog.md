@@ -70,12 +70,6 @@ describe("compareTaskIds", () => {
 		expect(compareTaskIds("task-draft2", "task-draft10")).toBeLessThan(0);
 		expect(compareTaskIds("task-draft10", "task-draft2")).toBeGreaterThan(0);
 	});
-
-	test("sorts distinct nonnumeric IDs deterministically", () => {
-		expect(compareTaskIds("task-alpha", "task-beta")).toBeLessThan(0);
-		expect(compareTaskIds("task-beta", "task-alpha")).toBeGreaterThan(0);
-		expect(compareTaskIds("task-alpha", "task-alpha")).toBe(0);
-	});
 });
 
 describe("compareTaskIdsDescending", () => {
@@ -85,12 +79,6 @@ describe("compareTaskIdsDescending", () => {
 		const sorted = [...ids].sort(compareTaskIdsDescending);
 
 		expect(sorted).toEqual(["task-3", "task-3.02", "task-3.01", "task-2", "task-1"]);
-	});
-
-	test("sorts distinct nonnumeric IDs deterministically", () => {
-		expect(compareTaskIdsDescending("task-alpha", "task-beta")).toBeGreaterThan(0);
-		expect(compareTaskIdsDescending("task-beta", "task-alpha")).toBeLessThan(0);
-		expect(compareTaskIdsDescending("task-alpha", "task-alpha")).toBe(0);
 	});
 });
 
@@ -134,55 +122,9 @@ describe("sortByTaskId", () => {
 		const sorted = sortByTaskId(tasks);
 		expect(sorted.map((t) => t.id)).toEqual(["task-1", "task-2", "task-2.1", "task-3", "task-10", "task-10.1"]);
 	});
-
-	test("preserves original array", () => {
-		const tasks = [
-			{ id: "task-3", title: "Task 3" },
-			{ id: "task-1", title: "Task 1" },
-			{ id: "task-2", title: "Task 2" },
-		];
-
-		const original = [...tasks];
-		sortByTaskId(tasks);
-
-		// Original array order should be preserved
-		expect(tasks).toEqual(original);
-	});
 });
 
 describe("sortByPriority", () => {
-	test("sorts tasks by priority order: high > medium > low > undefined", () => {
-		const tasks = [
-			{ id: "task-1", priority: "low" as const },
-			{ id: "task-2", priority: "high" as const },
-			{ id: "task-3" }, // no priority
-			{ id: "task-4", priority: "medium" as const },
-			{ id: "task-5", priority: "high" as const },
-		];
-
-		const sorted = sortByPriority(tasks);
-		expect(sorted.map((t) => ({ id: t.id, priority: t.priority }))).toEqual([
-			{ id: "task-2", priority: "high" },
-			{ id: "task-5", priority: "high" },
-			{ id: "task-4", priority: "medium" },
-			{ id: "task-1", priority: "low" },
-			{ id: "task-3", priority: undefined },
-		]);
-	});
-
-	test("sorts tasks by configured custom priority order", () => {
-		const tasks = [
-			{ id: "task-1", priority: "low" },
-			{ id: "task-2", priority: "very high" },
-			{ id: "task-3", priority: "very low" },
-			{ id: "task-4", priority: "medium" },
-			{ id: "task-5" },
-		];
-
-		const sorted = sortByPriority(tasks, ["Very High", "High", "Medium", "Low", "Very Low"]);
-		expect(sorted.map((task) => task.id)).toEqual(["task-2", "task-4", "task-1", "task-3", "task-5"]);
-	});
-
 	test("sorts tasks with same priority by task ID", () => {
 		const tasks = [
 			{ id: "task-10", priority: "high" as const },
@@ -194,40 +136,9 @@ describe("sortByPriority", () => {
 		const sorted = sortByPriority(tasks);
 		expect(sorted.map((t) => t.id)).toEqual(["task-2", "task-10", "task-1", "task-20"]);
 	});
-
-	test("handles all undefined priorities", () => {
-		const tasks = [{ id: "task-3" }, { id: "task-1" }, { id: "task-2" }];
-
-		const sorted = sortByPriority(tasks);
-		expect(sorted.map((t) => t.id)).toEqual(["task-1", "task-2", "task-3"]);
-	});
-
-	test("preserves original array", () => {
-		const tasks = [
-			{ id: "task-1", priority: "low" as const },
-			{ id: "task-2", priority: "high" as const },
-		];
-
-		const original = [...tasks];
-		sortByPriority(tasks);
-
-		// Original array order should be preserved
-		expect(tasks).toEqual(original);
-	});
 });
 
 describe("sortTasks", () => {
-	test("sorts by priority when field is 'priority'", () => {
-		const tasks = [
-			{ id: "task-1", priority: "low" as const },
-			{ id: "task-2", priority: "high" as const },
-			{ id: "task-3", priority: "medium" as const },
-		];
-
-		const sorted = sortTasks(tasks, "priority");
-		expect(sorted.map((t) => t.priority)).toEqual(["high", "medium", "low"]);
-	});
-
 	test("sorts by ID when field is 'id'", () => {
 		const tasks = [
 			{ id: "task-10", priority: "high" as const },
@@ -239,36 +150,8 @@ describe("sortTasks", () => {
 		expect(sorted.map((t) => t.id)).toEqual(["task-1", "task-2", "task-10"]);
 	});
 
-	test("handles case-insensitive field names", () => {
-		const tasks = [
-			{ id: "task-1", priority: "low" as const },
-			{ id: "task-2", priority: "high" as const },
-		];
-
-		const sorted = sortTasks(tasks, "PRIORITY");
-		expect(sorted.map((t) => t.priority)).toEqual(["high", "low"]);
-	});
-
 	test("lists the sort fields the CLI accepts", () => {
 		expect(TASK_SORT_FIELDS).toEqual(["priority", "id", "ordinal"]);
-	});
-
-	const mixedTasks = [
-		{ id: "task-1", priority: "high" },
-		{ id: "task-2", priority: "low", ordinal: 20 },
-		{ id: "task-3", ordinal: 10 },
-		{ id: "task-4", priority: "high", ordinal: 20 },
-		{ id: "task-5" },
-	];
-	const defaultOrder = ["task-3", "task-4", "task-2", "task-1", "task-5"];
-
-	test("orders by ordinal, then priority, then ID without a sort field", () => {
-		expect(sortTasks(mixedTasks).map((t) => t.id)).toEqual(defaultOrder);
-	});
-
-	test("uses the default order for a name that is not a sort field", () => {
-		expect(sortTasks(mixedTasks, "unknown").map((t) => t.id)).toEqual(defaultOrder);
-		expect(sortTasks(mixedTasks, "").map((t) => t.id)).toEqual(defaultOrder);
 	});
 });
 

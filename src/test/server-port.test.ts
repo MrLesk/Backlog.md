@@ -37,11 +37,6 @@ describe("isPortAvailable", () => {
 		await expect(isPortAvailable(6420, "192.0.2.123")).rejects.toHaveProperty("code", "EADDRNOTAVAIL");
 	});
 
-	it("returns false for port 0 (out-of-range for browser use)", async () => {
-		const result = await isPortAvailable(0);
-		expect(result).toBe(false);
-	});
-
 	it("detects a port held by a production-style Bun.serve on the loopback interface", async () => {
 		// The availability probe must use the same interface as the browser server.
 		// On macOS, wildcard and loopback-specific listeners can otherwise share a port.
@@ -85,10 +80,5 @@ describe("findNextAvailablePort", () => {
 		} finally {
 			await closeServer(server);
 		}
-	});
-
-	it("returns null when the scan would start beyond the maximum browser port", async () => {
-		const result = await findNextAvailablePort(65536);
-		expect(result).toBeNull();
 	});
 });

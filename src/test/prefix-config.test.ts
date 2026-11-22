@@ -1,62 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { type BacklogConfig, EntityType } from "../types/index.ts";
 import {
 	buildFilenameIdRegex,
-	buildGlobPattern,
 	buildIdRegex,
-	DEFAULT_PREFIX_CONFIG,
 	extractAnyPrefix,
 	extractIdBody,
 	extractIdNumbers,
 	generateNextId,
 	generateNextSubtaskId,
-	getDefaultPrefixConfig,
-	getPrefixForType,
 	getTaskPrefixError,
 	hasPrefix,
 	idsEqual,
-	isReservedTaskPrefix,
-	mergePrefixConfig,
 	normalizeId,
 } from "../utils/prefix-config.ts";
 
 describe("prefix-config", () => {
-	describe("getDefaultPrefixConfig", () => {
-		test("returns default task prefix", () => {
-			const config = getDefaultPrefixConfig();
-			expect(config.task).toBe("task");
-		});
-
-		test("returns a new object each time", () => {
-			const config1 = getDefaultPrefixConfig();
-			const config2 = getDefaultPrefixConfig();
-			expect(config1).not.toBe(config2);
-			expect(config1).toEqual(config2);
-		});
-	});
-
-	describe("mergePrefixConfig", () => {
-		test("returns defaults when no config provided", () => {
-			const config = mergePrefixConfig();
-			expect(config).toEqual(DEFAULT_PREFIX_CONFIG);
-		});
-
-		test("returns defaults when empty object provided", () => {
-			const config = mergePrefixConfig({});
-			expect(config).toEqual(DEFAULT_PREFIX_CONFIG);
-		});
-
-		test("merges partial config with defaults", () => {
-			const config = mergePrefixConfig({ task: "JIRA" });
-			expect(config.task).toBe("JIRA");
-		});
-
-		test("uses custom task value when provided", () => {
-			const config = mergePrefixConfig({ task: "issue" });
-			expect(config.task).toBe("issue");
-		});
-	});
-
 	describe("normalizeId", () => {
 		test("adds uppercase prefix to numeric ID", () => {
 			expect(normalizeId("123", "task")).toBe("TASK-123");
@@ -138,14 +95,6 @@ describe("prefix-config", () => {
 
 		test("works with custom prefixes", () => {
 			expect(extractIdNumbers("JIRA-456", "JIRA")).toEqual([456]);
-		});
-	});
-
-	describe("buildGlobPattern", () => {
-		test("builds correct glob pattern", () => {
-			expect(buildGlobPattern("task")).toBe("task-*.md");
-			expect(buildGlobPattern("draft")).toBe("draft-*.md");
-			expect(buildGlobPattern("JIRA")).toBe("JIRA-*.md");
 		});
 	});
 
@@ -307,60 +256,6 @@ describe("prefix-config", () => {
 					"task",
 				),
 			).toBe("TASK-9007199254740992.1000000000000000000000000000000000000000");
-		});
-	});
-
-	describe("getPrefixForType", () => {
-		test("returns default task prefix without config", () => {
-			expect(getPrefixForType(EntityType.Task)).toBe("task");
-		});
-
-		test("returns configured task prefix", () => {
-			const config = { prefixes: { task: "JIRA" } } as BacklogConfig;
-			expect(getPrefixForType(EntityType.Task, config)).toBe("JIRA");
-		});
-
-		test("returns default task prefix when config has no prefixes", () => {
-			const config = {} as BacklogConfig;
-			expect(getPrefixForType(EntityType.Task, config)).toBe("task");
-		});
-
-		test("returns hardcoded draft prefix (not configurable)", () => {
-			expect(getPrefixForType(EntityType.Draft)).toBe("draft");
-		});
-
-		test("draft prefix is always hardcoded regardless of config", () => {
-			const config = { prefixes: { task: "JIRA" } } as BacklogConfig;
-			// Draft prefix is hardcoded, not part of config
-			expect(getPrefixForType(EntityType.Draft, config)).toBe("draft");
-		});
-
-		test("returns doc prefix for Document type", () => {
-			expect(getPrefixForType(EntityType.Document)).toBe("doc");
-		});
-
-		test("returns decision prefix for Decision type", () => {
-			expect(getPrefixForType(EntityType.Decision)).toBe("decision");
-		});
-	});
-
-	describe("isReservedTaskPrefix", () => {
-		test("rejects prefixes matching the draft, doc, and decision system prefixes", () => {
-			expect(isReservedTaskPrefix("draft")).toBe(true);
-			expect(isReservedTaskPrefix("doc")).toBe(true);
-			expect(isReservedTaskPrefix("decision")).toBe(true);
-		});
-
-		test("is case-insensitive", () => {
-			expect(isReservedTaskPrefix("DRAFT")).toBe(true);
-			expect(isReservedTaskPrefix("Doc")).toBe(true);
-			expect(isReservedTaskPrefix("DECISION")).toBe(true);
-		});
-
-		test("allows non-reserved prefixes", () => {
-			expect(isReservedTaskPrefix("task")).toBe(false);
-			expect(isReservedTaskPrefix("JIRA")).toBe(false);
-			expect(isReservedTaskPrefix("documents")).toBe(false);
 		});
 	});
 

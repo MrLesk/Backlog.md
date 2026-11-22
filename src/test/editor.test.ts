@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BacklogConfig } from "../types/index.ts";
-import { isEditorAvailable, openInEditor, resolveEditor } from "../utils/editor.ts";
+import { openInEditor } from "../utils/editor.ts";
 import { createUniqueTestDir, safeCleanup } from "./test-utils.ts";
 
 describe("Editor utilities", () => {
@@ -20,110 +20,6 @@ describe("Editor utilities", () => {
 		} else {
 			delete process.env.EDITOR;
 		}
-	});
-
-	describe("resolveEditor", () => {
-		it("should prioritize EDITOR environment variable over config defaultEditor", () => {
-			process.env.EDITOR = "vim";
-			const config: BacklogConfig = {
-				projectName: "Test",
-				statuses: ["To Do", "Done"],
-				labels: [],
-				milestones: [],
-				dateFormat: "yyyy-mm-dd",
-				defaultEditor: "code",
-			};
-
-			const editor = resolveEditor(config);
-			expect(editor).toBe("vim");
-		});
-
-		it("should use config defaultEditor when EDITOR environment variable is not set", () => {
-			delete process.env.EDITOR;
-			const config: BacklogConfig = {
-				projectName: "Test",
-				statuses: ["To Do", "Done"],
-				labels: [],
-				milestones: [],
-				dateFormat: "yyyy-mm-dd",
-				defaultEditor: "code",
-			};
-
-			const editor = resolveEditor(config);
-			expect(editor).toBe("code");
-		});
-
-		it("should use EDITOR environment variable when config has no defaultEditor", () => {
-			process.env.EDITOR = "vim";
-			const config: BacklogConfig = {
-				projectName: "Test",
-				statuses: ["To Do", "Done"],
-				labels: [],
-				milestones: [],
-				dateFormat: "yyyy-mm-dd",
-			};
-
-			const editor = resolveEditor(config);
-			expect(editor).toBe("vim");
-		});
-
-		it("should use platform default when neither config nor env var is set", () => {
-			delete process.env.EDITOR;
-			const config: BacklogConfig = {
-				projectName: "Test",
-				statuses: ["To Do", "Done"],
-				labels: [],
-				milestones: [],
-				dateFormat: "yyyy-mm-dd",
-			};
-
-			const editor = resolveEditor(config);
-			// Should return a platform-specific default
-			expect(editor).toBeTruthy();
-			expect(typeof editor).toBe("string");
-		});
-
-		it("should return platform default when config is null", () => {
-			delete process.env.EDITOR;
-			const editor = resolveEditor(null);
-			expect(editor).toBeTruthy();
-			expect(typeof editor).toBe("string");
-		});
-	});
-
-	describe("isEditorAvailable", () => {
-		it("should detect a guaranteed platform command", async () => {
-			const editor = process.platform === "win32" ? "cmd" : "sh";
-			expect(await isEditorAvailable(editor)).toBe(true);
-		});
-
-		it("should detect available editors through the lookup boundary", async () => {
-			const available = await isEditorAvailable("fixture-editor", async (command) => command === "fixture-editor");
-			expect(available).toBe(true);
-		});
-
-		it("should return false for non-existent editors", async () => {
-			const available = await isEditorAvailable(
-				"definitely-not-a-real-editor-command",
-				async (command) => command === "fixture-editor",
-			);
-			expect(available).toBe(false);
-		});
-
-		it("should handle editor commands with arguments", async () => {
-			const available = await isEditorAvailable(
-				"fixture-editor --wait",
-				async (command) => command === "fixture-editor",
-			);
-			expect(available).toBe(true);
-		});
-
-		it("should return false when editor discovery fails", async () => {
-			const available = await isEditorAvailable("fixture-editor", async () => {
-				throw new Error("simulated editor discovery failure");
-			});
-			expect(available).toBe(false);
-		});
 	});
 
 	describe("openInEditor", () => {

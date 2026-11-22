@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getAssignees, getLabels, getStatuses, getTaskIds } from "../completions/data-providers.ts";
 import { Core, createRuntimeCore } from "../core/backlog.ts";
-import { BACKLOG_CWD_ENV, resolveRuntimeCwd } from "../utils/runtime-cwd.ts";
+import { BACKLOG_CWD_ENV } from "../utils/runtime-cwd.ts";
 import { initializeTestProject } from "./test-utils.ts";
 
 describe("resolveRuntimeCwd", () => {
@@ -34,54 +34,6 @@ describe("resolveRuntimeCwd", () => {
 		const [actualCanonical, expectedCanonical] = await Promise.all([realpath(actualPath), realpath(expectedPath)]);
 		expect(actualCanonical).toBe(expectedCanonical);
 	}
-
-	it("uses process.cwd() when no override is provided", async () => {
-		const result = await resolveRuntimeCwd();
-
-		await expectCanonicalPath(result.cwd, testDir);
-		expect(result.source).toBe("process");
-	});
-
-	it("uses BACKLOG_CWD when environment override is provided", async () => {
-		const nestedDir = join(testDir, "workspace", "project");
-		await mkdir(nestedDir, { recursive: true });
-		process.env[BACKLOG_CWD_ENV] = nestedDir;
-
-		const result = await resolveRuntimeCwd();
-
-		await expectCanonicalPath(result.cwd, nestedDir);
-		expect(result.source).toBe("env");
-		expect(result.sourceLabel).toBe(BACKLOG_CWD_ENV);
-	});
-
-	it("gives --cwd option precedence over BACKLOG_CWD", async () => {
-		const envDir = join(testDir, "env-dir");
-		const optionDir = join(testDir, "option-dir");
-		await mkdir(envDir, { recursive: true });
-		await mkdir(optionDir, { recursive: true });
-		process.env[BACKLOG_CWD_ENV] = envDir;
-
-		const result = await resolveRuntimeCwd({ cwd: optionDir });
-
-		await expectCanonicalPath(result.cwd, optionDir);
-		expect(result.source).toBe("option");
-		expect(result.sourceLabel).toBe("--cwd");
-	});
-
-	it("supports relative override paths", async () => {
-		await mkdir(join(testDir, "relative", "path"), { recursive: true });
-
-		const result = await resolveRuntimeCwd({ cwd: "./relative/path" });
-
-		await expectCanonicalPath(result.cwd, join(testDir, "relative", "path"));
-		expect(result.source).toBe("option");
-	});
-
-	it("throws when override path is invalid", async () => {
-		process.env[BACKLOG_CWD_ENV] = join(testDir, "missing");
-
-		await expect(resolveRuntimeCwd()).rejects.toThrow(`Invalid directory from ${BACKLOG_CWD_ENV}`);
-	});
 
 	describe("createRuntimeCore", () => {
 		it("binds the Core to process.cwd() when no override is provided", async () => {

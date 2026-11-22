@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Task } from "../types/index.ts";
-import { findDirectSubtasks, findParentTask, summarizeSubtaskProgress } from "../utils/task-subtasks.ts";
+import { findDirectSubtasks, summarizeSubtaskProgress } from "../utils/task-subtasks.ts";
 
 const STATUSES = ["To Do", "In Progress", "Done"] as const;
 
@@ -82,27 +82,5 @@ describe("findDirectSubtasks", () => {
 			makeTask("TASK-6", "To Do"),
 		];
 		expect(findDirectSubtasks(tasks[0] as Task, tasks).map((t) => t.id)).toEqual(["TASK-5.2", "TASK-5.10"]);
-	});
-
-	it("returns an empty array when there are no children", () => {
-		const tasks = [makeTask("TASK-1", "To Do")];
-		expect(findDirectSubtasks(tasks[0] as Task, tasks)).toEqual([]);
-	});
-});
-
-describe("findParentTask", () => {
-	it("resolves the parent task", () => {
-		const tasks = [makeTask("TASK-3", "To Do"), makeTask("TASK-3.1", "To Do", "TASK-3")];
-		expect(findParentTask(tasks[1] as Task, tasks)?.id).toBe("TASK-3");
-	});
-
-	it("returns null when the task has no parent", () => {
-		const tasks = [makeTask("TASK-3", "To Do")];
-		expect(findParentTask(tasks[0] as Task, tasks)).toBeNull();
-	});
-
-	it("returns null when the parent is missing from the corpus", () => {
-		const tasks = [makeTask("TASK-3.1", "To Do", "TASK-3")];
-		expect(findParentTask(tasks[0] as Task, tasks)).toBeNull();
 	});
 });

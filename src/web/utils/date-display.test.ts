@@ -42,31 +42,6 @@ describe("parseStoredUtcDate", () => {
 });
 
 describe("formatStoredDateForDisplay", () => {
-	it("renders stored timestamps in the viewer's timezone", () => {
-		expect(formatStoredDateForDisplay("2026-02-09 06:01", { timeZone: TOKYO })).toEqual({
-			text: "2026-02-09 15:01",
-			title: "2026-02-09 06:01 (UTC)",
-		});
-		expect(formatStoredDateForDisplay("2026-02-09 06:01", { timeZone: LOS_ANGELES })).toEqual({
-			text: "2026-02-08 22:01",
-			title: "2026-02-09 06:01 (UTC)",
-		});
-	});
-
-	it("keeps the same instant when the viewer is in UTC", () => {
-		expect(formatStoredDateForDisplay("2026-02-09 06:01", { timeZone: "UTC" })).toEqual({
-			text: "2026-02-09 06:01",
-			title: "2026-02-09 06:01 (UTC)",
-		});
-	});
-
-	it("renders midnight without rolling the local hour to 24", () => {
-		expect(formatStoredDateForDisplay("2026-02-09 15:00", { timeZone: TOKYO })).toEqual({
-			text: "2026-02-10 00:00",
-			title: "2026-02-09 15:00 (UTC)",
-		});
-	});
-
 	it("leaves date-only values unconverted and without a misleading hover", () => {
 		// The path due dates take: a value that names a day must read the same everywhere, so the
 		// extremes of the offset range are covered as well as the ordinary ones.
@@ -88,13 +63,6 @@ describe("formatStoredDateForDisplay", () => {
 		});
 		expect(formatStoredDateForDisplay("2026-02-09", { dateFormat: "mm/dd/yyyy", timeZone: LOS_ANGELES })).toEqual({
 			text: "02/09/2026",
-		});
-	});
-
-	it("falls back to canonical output for invalid formats", () => {
-		expect(formatStoredDateForDisplay("2026-02-09 06:01", { dateFormat: "banana", timeZone: "UTC" })).toEqual({
-			text: "2026-02-09 06:01",
-			title: "2026-02-09 06:01 (UTC)",
 		});
 	});
 

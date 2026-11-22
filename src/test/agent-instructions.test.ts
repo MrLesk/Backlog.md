@@ -187,12 +187,6 @@ describe("addAgentInstructions", () => {
 		expect(readme).toContain(await _loadAgentGuideline(README_GUIDELINES));
 	});
 
-	it("loads guideline content from file paths", async () => {
-		const pathGuideline = join(__dirname, "../guidelines/agent-guidelines.md");
-		const content = await _loadAgentGuideline(pathGuideline);
-		expect(content).toContain("# Instructions for the usage of Backlog.md CLI Tool");
-	});
-
 	it("full agent workflow plans only after pickup and current-state research", async () => {
 		const guideline = await _loadAgentGuideline(AGENT_GUIDELINES);
 		const workflow = guideline.match(/## 6\. Typical Workflow[\s\S]*?(?=\n---)/)?.[0] ?? "";

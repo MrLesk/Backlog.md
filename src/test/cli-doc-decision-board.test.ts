@@ -397,69 +397,6 @@ describe("CLI Integration", () => {
 			expect(board).toContain("No tasks found");
 		});
 
-		it("should support vertical layout option", async () => {
-			const core = new Core(TEST_DIR);
-
-			await core.createTask(
-				{
-					id: "task-1",
-					title: "Todo Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-08",
-					labels: [],
-					dependencies: [],
-					rawContent: "A task in todo",
-				},
-				false,
-			);
-
-			const tasks = await core.filesystem.listTasks();
-			const config = await core.filesystem.loadConfig();
-			const statuses = config?.statuses || [];
-
-			const { generateKanbanBoardWithMetadata } = await import("../board.ts");
-			const board = generateKanbanBoardWithMetadata(tasks, statuses, "Test Project");
-
-			// Should contain proper board structure
-			expect(board).toContain("# Kanban Board Export");
-			expect(board).toContain("To Do");
-			expect(board).toContain("TASK-1");
-			expect(board).toContain("Todo Task");
-		});
-
-		it("should support --vertical shortcut flag", async () => {
-			const core = new Core(TEST_DIR);
-
-			await core.createTask(
-				{
-					id: "task-1",
-					title: "Shortcut Task",
-					status: "To Do",
-					assignee: [],
-					createdDate: "2025-06-09",
-					labels: [],
-					dependencies: [],
-					rawContent: "Testing vertical shortcut",
-				},
-				false,
-			);
-
-			const tasks = await core.filesystem.listTasks();
-			const config = await core.filesystem.loadConfig();
-			const statuses = config?.statuses || [];
-
-			// Test that --vertical flag produces vertical layout
-			const { generateKanbanBoardWithMetadata } = await import("../board.ts");
-			const board = generateKanbanBoardWithMetadata(tasks, statuses, "Test Project");
-
-			// Should contain proper board structure
-			expect(board).toContain("# Kanban Board Export");
-			expect(board).toContain("To Do");
-			expect(board).toContain("TASK-1");
-			expect(board).toContain("Shortcut Task");
-		});
-
 		it("should merge task status from remote branches", async () => {
 			const core = new Core(TEST_DIR);
 

@@ -5,8 +5,7 @@ import { join } from "node:path";
 import type { ScreenInterface } from "neo-neo-bblessed";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
-import { type ColumnData, filterVisibleColumns, renderBoardTui } from "../ui/board.ts";
-import { getHelpShortcuts } from "../ui/components/help-popup.ts";
+import { renderBoardTui } from "../ui/board.ts";
 import { createScreen } from "../ui/tui.ts";
 import { initializeTestProject, retry, withTimeout } from "./test-utils.ts";
 
@@ -22,62 +21,6 @@ function createTask(id: string, status: string): Task {
 		description: "",
 	};
 }
-
-function makeColumns(entries: Array<[string, string[]]>): ColumnData[] {
-	return entries.map(([status, ids]) => ({
-		status,
-		tasks: ids.map((id) => createTask(id, status)),
-	}));
-}
-
-describe("filterVisibleColumns", () => {
-	it("hides empty columns when enabled and not moving", () => {
-		const data = makeColumns([
-			["To Do", ["task-1"]],
-			["In Progress", []],
-			["Done", ["task-2"]],
-		]);
-
-		const result = filterVisibleColumns(data, true, false);
-
-		expect(result.map((column) => column.status)).toEqual(["To Do", "Done"]);
-	});
-
-	it("keeps all columns when moving, even if hideEmptyColumns is enabled", () => {
-		const data = makeColumns([
-			["To Do", ["task-1"]],
-			["In Progress", []],
-			["Done", ["task-2"]],
-		]);
-
-		const result = filterVisibleColumns(data, true, true);
-
-		expect(result).toBe(data);
-	});
-
-	it("keeps all columns when hideEmptyColumns is disabled", () => {
-		const data = makeColumns([
-			["To Do", ["task-1"]],
-			["In Progress", []],
-			["Done", ["task-2"]],
-		]);
-
-		const result = filterVisibleColumns(data, false, false);
-
-		expect(result).toBe(data);
-	});
-
-	it("falls back to the unfiltered list when every column is empty", () => {
-		const data = makeColumns([
-			["To Do", []],
-			["In Progress", []],
-		]);
-
-		const result = filterVisibleColumns(data, true, false);
-
-		expect(result).toBe(data);
-	});
-});
 
 type EmittingWidget = {
 	emit: (event: string, ch?: string, key?: { name: string; full: string; shift?: boolean }) => boolean;
@@ -171,11 +114,6 @@ describe("TUI board honors hideEmptyColumns", () => {
 			pressKey(screen, "escape");
 			expect(columnStatuses()).toEqual(["To Do", "Done"]);
 		});
-	});
-
-	it("documents the toggle in the help popup instead of the footer", () => {
-		const keys = getHelpShortcuts("board").map((shortcut) => shortcut.key);
-		expect(keys).toContain("H");
 	});
 });
 

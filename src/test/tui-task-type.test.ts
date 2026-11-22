@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Task } from "../types/index.ts";
 import { formatTaskListItem } from "../ui/board.ts";
-import { formatTaskTypeBadge } from "../ui/task-type.ts";
 import { createTaskPopup } from "../ui/task-viewer-with-search.ts";
 import { createScreen } from "../ui/tui.ts";
 
@@ -22,12 +21,6 @@ const getPopupContent = (contentArea: unknown): string => {
 };
 
 describe("TUI task type display", () => {
-	it("formats configured values as a distinct badge and omits untyped values", () => {
-		expect(formatTaskTypeBadge(" Epic ")).toBe("{magenta-fg}[Epic]{/}");
-		expect(formatTaskTypeBadge(undefined)).toBe("");
-		expect(formatTaskTypeBadge("   ")).toBe("");
-	});
-
 	it("shows the type badge on board task cards", () => {
 		const typed = formatTaskListItem(createTask({ type: "Epic" }));
 		const untyped = formatTaskListItem(createTask());

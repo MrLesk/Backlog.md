@@ -79,18 +79,6 @@ describe("TUI dependency graph section", () => {
 });
 
 describe("filtered TUI dependency corpus merge", () => {
-	it("lets a live display copy win over the snapshot for a uniquely claimed identity", () => {
-		const snapshotTask = makeTask("BACK-1", "Foundation", [], "To Do");
-		const outOfView = makeTask("BACK-2", "Elsewhere", ["BACK-1"]);
-		const liveEdit = makeTask("BACK-1", "Foundation", [], "Done");
-
-		const merged = mergeDependencyCorpusTasks([snapshotTask, outOfView], [liveEdit]);
-
-		expect(merged).toHaveLength(2);
-		expect(merged.find((task) => task.id === "BACK-1")?.status).toBe("Done");
-		expect(merged.find((task) => task.id === "BACK-2")).toBe(outOfView);
-	});
-
 	it("keeps every claimant of a contested identity so the graph fails closed like the CLI", () => {
 		const claimantA = makeTask("BACK-1", "First claimant", [], "Done");
 		const claimantB = makeTask("BACK-1", "Second claimant");

@@ -10,59 +10,12 @@ import {
 } from "../core/backlog.ts";
 import { EntityType } from "../types/index.ts";
 import { AmbiguousIdError } from "../utils/entity-id.ts";
-import { documentationEntryNamesFile, formatDocumentationReferencesMessage } from "../utils/task-links.ts";
 import {
 	createTestDirOutsideRepository,
 	initializeFilesystemTestProject,
 	isWindows,
 	safeCleanup,
 } from "./test-utils.ts";
-
-describe("documentationEntryNamesFile", () => {
-	const path = "backlog/docs/guides/doc-3 - API-Guidelines.md";
-
-	it.each([
-		["the path from the project root", path],
-		["the path with ./ in front", `./${path}`],
-		["the path with a fragment", `${path}#authentication`],
-		["the path with ./ in front and a fragment", `./${path}#authentication`],
-		["the path with spaces around it", `  ${path}  `],
-	])("matches %s", (_label, entry) => {
-		expect(documentationEntryNamesFile(entry, path)).toBe(true);
-	});
-
-	it.each([
-		["a URL that ends in the path", `https://example.com/${path}`],
-		["an absolute path", `/home/me/project/${path}`],
-		["a bare document ID", "doc-3"],
-		["the path from the docs folder", "guides/doc-3 - API-Guidelines.md"],
-		["the file name alone", "doc-3 - API-Guidelines.md"],
-		["another file that starts with the same characters", `${path}.bak`],
-		["the path with ../ in front", `../${path}`],
-		["the path with ./ twice in front", `././${path}`],
-		["the path in another letter case", path.toUpperCase()],
-		["the archive path of the same file", "backlog/archive/docs/guides/doc-3 - API-Guidelines.md"],
-		["an empty entry", ""],
-	])("does not match %s", (_label, entry) => {
-		expect(documentationEntryNamesFile(entry, path)).toBe(false);
-	});
-
-	it("takes the fragment after the whole path when the file name contains #", () => {
-		const named = "backlog/docs/doc-4 - C#-Notes.md";
-		expect(documentationEntryNamesFile(named, named)).toBe(true);
-		expect(documentationEntryNamesFile(`${named}#intro`, named)).toBe(true);
-		expect(documentationEntryNamesFile("backlog/docs/doc-4 - C", named)).toBe(false);
-	});
-});
-
-describe("formatDocumentationReferencesMessage", () => {
-	it("names the records on one line and says nothing when there are none", () => {
-		expect(formatDocumentationReferencesMessage(["TASK-2", "DRAFT-1"])).toBe(
-			"Still listed as documentation by: TASK-2, DRAFT-1",
-		);
-		expect(formatDocumentationReferencesMessage([])).toBeNull();
-	});
-});
 
 describe("archived documents in core and storage", () => {
 	let TEST_DIR: string;

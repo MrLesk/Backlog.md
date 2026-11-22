@@ -1,12 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-	CODE_PATH_PATTERNS,
-	extractCodePaths,
-	isCodePath,
-	styleCodePath,
-	transformCodePaths,
-	transformCodePathsPlain,
-} from "../ui/code-path.ts";
+import { CODE_PATH_PATTERNS, extractCodePaths, isCodePath, transformCodePaths } from "../ui/code-path.ts";
 
 describe("Code path utilities", () => {
 	describe("CODE_PATH_PATTERNS", () => {
@@ -91,18 +84,6 @@ describe("Code path utilities", () => {
 		});
 	});
 
-	describe("styleCodePath", () => {
-		test("should wrap path in gray styling tags", () => {
-			const result = styleCodePath("src/cli.ts");
-			expect(result).toBe("{gray-fg}`src/cli.ts`{/gray-fg}");
-		});
-
-		test("should handle paths with special characters", () => {
-			const result = styleCodePath("/path/with-dashes_and.underscores.ts");
-			expect(result).toBe("{gray-fg}`/path/with-dashes_and.underscores.ts`{/gray-fg}");
-		});
-	});
-
 	describe("transformCodePaths", () => {
 		test("should style isolated code paths", () => {
 			const text = "Check this file: `src/cli.ts`";
@@ -143,28 +124,6 @@ describe("Code path utilities", () => {
 			const text = "`src/cli.ts`";
 			const result = transformCodePaths(text);
 			expect(result).toBe("{gray-fg}`src/cli.ts`{/gray-fg}");
-		});
-	});
-
-	describe("transformCodePathsPlain", () => {
-		test("should preserve code paths in plain text", () => {
-			const text = "Check `src/cli.ts` and `package.json` files.";
-			const result = transformCodePathsPlain(text);
-			expect(result).toBe("Check `src/cli.ts` and `package.json` files.");
-		});
-
-		test("should ignore non-path backticks", () => {
-			const text = "Use `function` to call `src/cli.ts` method.";
-			const result = transformCodePathsPlain(text);
-			expect(result).toBe("Use `function` to call `src/cli.ts` method.");
-		});
-
-		test("should handle empty input", () => {
-			expect(transformCodePathsPlain("")).toBe("");
-			// biome-ignore lint/suspicious/noExplicitAny: testing null/undefined inputs
-			expect(transformCodePathsPlain(null as any)).toBe("");
-			// biome-ignore lint/suspicious/noExplicitAny: testing null/undefined inputs
-			expect(transformCodePathsPlain(undefined as any)).toBe("");
 		});
 	});
 

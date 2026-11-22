@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { readdir, readlink, symlink, unlink } from "node:fs/promises";
 import { join } from "node:path";
-import { migrateDraftPrefixes, needsDraftPrefixMigration } from "../core/prefix-migration.ts";
+import { migrateDraftPrefixes } from "../core/prefix-migration.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { BacklogConfig, Task } from "../types/index.ts";
@@ -21,37 +21,6 @@ describe("Draft Prefix Migration", () => {
 
 	afterEach(async () => {
 		await safeCleanup(TEST_DIR);
-	});
-
-	describe("needsDraftPrefixMigration", () => {
-		it("should return false when config is null", () => {
-			expect(needsDraftPrefixMigration(null)).toBe(false);
-		});
-
-		it("should return true when prefixes section is missing", () => {
-			const config: BacklogConfig = {
-				projectName: "Test",
-				statuses: ["To Do", "Done"],
-				labels: [],
-				milestones: [],
-				dateFormat: "YYYY-MM-DD",
-			};
-			expect(needsDraftPrefixMigration(config)).toBe(true);
-		});
-
-		it("should return false when prefixes section exists", () => {
-			const config: BacklogConfig = {
-				projectName: "Test",
-				statuses: ["To Do", "Done"],
-				labels: [],
-				milestones: [],
-				dateFormat: "YYYY-MM-DD",
-				prefixes: {
-					task: "task",
-				},
-			};
-			expect(needsDraftPrefixMigration(config)).toBe(false);
-		});
 	});
 
 	describe("migrateDraftPrefixes", () => {

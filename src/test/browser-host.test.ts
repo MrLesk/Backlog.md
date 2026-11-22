@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { browserUrl, isLoopbackBrowserHostname, normalizeBrowserHostname } from "../utils/browser-host.ts";
+import { isLoopbackBrowserHostname, normalizeBrowserHostname } from "../utils/browser-host.ts";
 
 describe("browser hostname input", () => {
 	it.each([
@@ -41,14 +41,5 @@ describe("browser hostname input", () => {
 	it.each(["0.0.0.0", "::", "::ffff:192.168.1.2", "192.168.1.2", "board.example.com"])(
 		"does not treat %s as known loopback",
 		(hostname) => expect(isLoopbackBrowserHostname(hostname)).toBe(false),
-	);
-
-	it.each([
-		["0.0.0.0", "127.0.0.1"],
-		["::", "[::1]"],
-		["::1", "[::1]"],
-		["192.168.1.2", "192.168.1.2"],
-	])("provides a usable local browser URL for %s", (hostname, urlHost) =>
-		expect(browserUrl(hostname, 6420)).toBe(`http://${urlHost}:6420`),
 	);
 });

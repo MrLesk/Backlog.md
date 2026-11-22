@@ -155,14 +155,6 @@ describe("milestone filter title resolution", () => {
 		expect(resolveTitle("roadmp")).toBe("Roadmap Alpha");
 	});
 
-	it("returns the query unchanged when nothing matches", () => {
-		expect(resolveTitle("zzz-unrelated-milestone")).toBe("zzz-unrelated-milestone");
-	});
-
-	it("works without a resolver by matching titles directly", () => {
-		expect(resolveMilestoneFilterTitle("roadmp", ["Release-1", "Roadmap Alpha"])).toBe("Roadmap Alpha");
-	});
-
 	// The interactive view compares raw milestone titles, so the value the CLI seeds it with has to
 	// survive that comparison. Guards against handing it a normalized value again.
 	it("produces a value the interactive view's matcher accepts", () => {

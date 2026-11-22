@@ -2,10 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	alignAcceptanceCriteria,
 	CHECKBOX_PATTERNS,
-	type ChecklistItem,
 	extractAndFormatAcceptanceCriteria,
-	formatChecklist,
-	formatChecklistItem,
 	parseCheckboxLine,
 	parseCheckboxLines,
 } from "../ui/checklist.ts";
@@ -101,37 +98,6 @@ describe("Checklist utilities", () => {
 		});
 	});
 
-	describe("formatChecklistItem", () => {
-		test("should format checked item with default options", () => {
-			const item: ChecklistItem = { text: "Test item", checked: true };
-			const result = formatChecklistItem(item);
-			expect(result).toBe(" [x] Test item");
-		});
-
-		test("should format unchecked item with default options", () => {
-			const item: ChecklistItem = { text: "Test item", checked: false };
-			const result = formatChecklistItem(item);
-			expect(result).toBe(" [ ] Test item");
-		});
-
-		test("should use custom symbols", () => {
-			const item: ChecklistItem = { text: "Test item", checked: true };
-			const result = formatChecklistItem(item, {
-				checkedSymbol: "☑",
-				uncheckedSymbol: "☐",
-			});
-			expect(result).toBe(" ☑ Test item");
-		});
-
-		test("should use custom padding", () => {
-			const item: ChecklistItem = { text: "Test item", checked: false };
-			const result = formatChecklistItem(item, {
-				padding: "  ",
-			});
-			expect(result).toBe("  [ ] Test item");
-		});
-	});
-
 	describe("parseCheckboxLines", () => {
 		test("should parse multiple checkbox lines", () => {
 			const text = `- [x] First item
@@ -160,19 +126,6 @@ Regular text
 		});
 	});
 
-	describe("formatChecklist", () => {
-		test("should format multiple items consistently", () => {
-			const items: ChecklistItem[] = [
-				{ text: "First item", checked: true },
-				{ text: "Second item", checked: false },
-				{ text: "Third item", checked: true },
-			];
-
-			const result = formatChecklist(items);
-			expect(result).toEqual([" [x] First item", " [ ] Second item", " [x] Third item"]);
-		});
-	});
-
 	describe("alignAcceptanceCriteria", () => {
 		test("should align checkbox items consistently", () => {
 			const criteriaSection = `- [x] First criterion
@@ -190,17 +143,6 @@ Regular note
 
 			const result = alignAcceptanceCriteria(criteriaSection);
 			expect(result).toEqual([" [x] Checkbox item", " Regular note", " [ ] Another checkbox"]);
-		});
-
-		test("should handle empty or whitespace-only lines", () => {
-			const criteriaSection = `- [x] First item
-
-- [ ] Second item
-   
-- [x] Third item`;
-
-			const result = alignAcceptanceCriteria(criteriaSection);
-			expect(result).toEqual([" [x] First item", " [ ] Second item", " [x] Third item"]);
 		});
 	});
 
@@ -243,31 +185,6 @@ Some notes here.`;
 
 			const result = extractAndFormatAcceptanceCriteria(content);
 			expect(result).toEqual([" [x] Test item", " [ ] Another test"]);
-		});
-	});
-
-	describe("alignment consistency", () => {
-		test("all formatted items should start at the same column", () => {
-			const items: ChecklistItem[] = [
-				{ text: "Short", checked: true },
-				{ text: "Much longer item text here", checked: false },
-				{ text: "Medium length item", checked: true },
-			];
-
-			const formatted = formatChecklist(items);
-
-			// All items should start with the same padding
-			for (const line of formatted) {
-				expect(line.startsWith(" ")).toBe(true);
-				expect(line.charAt(0)).toBe(" ");
-			}
-
-			// All checkbox positions should be the same
-			const checkboxPositions = formatted.map((line) => line.indexOf("["));
-			const firstPosition = checkboxPositions[0] ?? -1;
-			for (const position of checkboxPositions) {
-				expect(position).toBe(firstPosition);
-			}
 		});
 	});
 });

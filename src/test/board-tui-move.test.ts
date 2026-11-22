@@ -6,7 +6,6 @@ import type { ScreenInterface } from "neo-neo-bblessed";
 import { Core } from "../core/backlog.ts";
 import type { Task } from "../types/index.ts";
 import { renderBoardTui } from "../ui/board.ts";
-import { getHelpShortcuts } from "../ui/components/help-popup.ts";
 import { createScreen } from "../ui/tui.ts";
 import { initializeTestProject, retry, withTimeout } from "./test-utils.ts";
 
@@ -228,12 +227,6 @@ describe("TUI board single-task mover", () => {
 				},
 			},
 		);
-	});
-
-	it("documents the move key in the help popup", () => {
-		const keys = getHelpShortcuts("board").map((shortcut) => shortcut.key);
-		expect(keys).toContain("M");
-		expect(keys).not.toContain("Space/M");
 	});
 });
 

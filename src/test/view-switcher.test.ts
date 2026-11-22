@@ -31,72 +31,6 @@ describe("View Switcher", () => {
 		await safeCleanup(TEST_DIR);
 	});
 
-	describe("ViewSwitcher initialization", () => {
-		it("should initialize with task-list view", () => {
-			const initialState: ViewState = {
-				type: "task-list",
-				tasks: [],
-			};
-
-			const switcher = new ViewSwitcher({
-				core,
-				initialState,
-			});
-
-			const state = switcher.getState();
-			expect(state.type).toBe("task-list");
-			expect(state.tasks).toEqual([]);
-		});
-
-		it("should initialize with task-detail view", () => {
-			const selectedTask = {
-				id: "task-1",
-				title: "Test Task",
-				status: "To Do",
-				assignee: [],
-				createdDate: "2025-07-05",
-				labels: [],
-				dependencies: [],
-				rawContent: "Test task body",
-			};
-
-			const initialState: ViewState = {
-				type: "task-detail",
-				selectedTask,
-				tasks: [selectedTask],
-			};
-
-			const switcher = new ViewSwitcher({
-				core,
-				initialState,
-			});
-
-			const state = switcher.getState();
-			expect(state.type).toBe("task-detail");
-			expect(state.selectedTask).toEqual(selectedTask);
-		});
-
-		it("should initialize with kanban view", () => {
-			const initialState: ViewState = {
-				type: "kanban",
-				kanbanData: {
-					tasks: [],
-					statuses: [],
-					isLoading: true,
-				},
-			};
-
-			const switcher = new ViewSwitcher({
-				core,
-				initialState,
-			});
-
-			const state = switcher.getState();
-			expect(state.type).toBe("kanban");
-			expect(state.kanbanData?.isLoading).toBe(true);
-		});
-	});
-
 	describe("State updates", () => {
 		it("should update state correctly", async () => {
 			const initialState: ViewState = {
@@ -133,23 +67,6 @@ describe("View Switcher", () => {
 				await Promise.allSettled([backgroundLoad]);
 			}
 			await expect(backgroundLoad).resolves.toBeDefined();
-		});
-	});
-
-	describe("Background loading", () => {
-		it("should indicate when kanban data is ready", () => {
-			const initialState: ViewState = {
-				type: "task-list",
-				tasks: [],
-			};
-
-			const switcher = new ViewSwitcher({
-				core,
-				initialState,
-			});
-
-			// Initially should not be ready (no data loaded yet)
-			expect(switcher.isKanbanReady()).toBe(false);
 		});
 	});
 

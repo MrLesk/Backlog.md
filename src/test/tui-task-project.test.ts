@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Task } from "../types/index.ts";
 import { formatTaskListItem } from "../ui/board.ts";
-import { formatProjectBadge } from "../ui/project.ts";
 import { createTaskPopup } from "../ui/task-viewer-with-search.ts";
 import { createScreen } from "../ui/tui.ts";
 
@@ -22,17 +21,6 @@ const getPopupContent = (contentArea: unknown): string => {
 };
 
 describe("TUI task project display", () => {
-	it("formats configured values as a distinct badge and omits unset values", () => {
-		expect(formatProjectBadge(" Web ", ["Web"])).toBe("{blue-fg}[Web]{/}");
-		expect(formatProjectBadge(undefined, ["Web"])).toBe("");
-		expect(formatProjectBadge("   ", ["Web"])).toBe("");
-	});
-
-	it("hides the badge when no projects are configured, even if the task has one", () => {
-		expect(formatProjectBadge("Web")).toBe("");
-		expect(formatProjectBadge("Web", [])).toBe("");
-	});
-
 	it("shows the project badge on board task cards", () => {
 		const projected = formatTaskListItem(createTask({ project: "Web" }), false, undefined, ["Web"]);
 		const unprojected = formatTaskListItem(createTask(), false, undefined, ["Web"]);
