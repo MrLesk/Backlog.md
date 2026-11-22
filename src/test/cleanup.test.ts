@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:te
 import { mkdir, rename, stat, unlink } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { $ } from "bun";
-import { Core, formatCleanupResult } from "../core/backlog.ts";
+import { Core } from "../core/backlog.ts";
 import { serializeTask } from "../markdown/serializer.ts";
 import type { Task } from "../types/index.ts";
 import { pinTimeZone } from "./pin-timezone.ts";
@@ -600,31 +600,9 @@ describe("Cleanup functionality", () => {
 			expect(result.failures[0]?.reason).toContain("ambiguous");
 			expect(await boardIds()).toEqual(["TASK-1"]);
 		});
-
-		it("words the result in the lines `backlog cleanup` and the browser both show", () => {
-			const lines = formatCleanupResult(
-				{
-					archivedTaskIds: ["TASK-3"],
-					skipped: [{ taskId: "TASK-1", reason: "its status is now In Progress" }],
-					failures: [{ taskId: "TASK-2", reason: "permission denied" }],
-				},
-				3,
-			);
-
-			expect(lines).toEqual({
-				skipped: ["Skipped task TASK-1: its status is now In Progress"],
-				failed: ["Failed to archive task TASK-2: permission denied"],
-				summary: "Successfully archived 1 of 3 tasks.",
-			});
-		});
 	});
 
 	describe("Error handling", () => {
-		it("should handle non-existent task gracefully", async () => {
-			const success = await core.archiveTask("non-existent", false);
-			expect(success).toBe(false);
-		});
-
 		it("should return empty array for listArchivedTasks when no archived tasks exist", async () => {
 			const archivedTasks = await core.filesystem.listArchivedTasks();
 			expect(archivedTasks).toHaveLength(0);

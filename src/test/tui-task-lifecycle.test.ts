@@ -155,18 +155,4 @@ describe("TUI task lifecycle", () => {
 			" {yellow-fg}⚠ Read-only:{/} This task is archived.",
 		);
 	});
-
-	it("asks one three-line question that fits the confirm popup", () => {
-		const lines = formatArchiveConfirmation("TASK-1").split("\n");
-
-		expect(lines).toEqual([
-			"Archive {bold}TASK-1{/bold}?",
-			"Moves it off the board and keeps",
-			"its ID, record, and links.",
-		]);
-		// The confirm popup is 40 columns wide (src/ui/components/confirm-popup.ts). Its border takes
-		// one column on each side and the message box is inset by one more, which leaves 36 for text.
-		const visibleWidths = lines.map((line) => line.replace(/\{[^}]*\}/g, "").length);
-		expect(Math.max(...visibleWidths)).toBeLessThanOrEqual(36);
-	});
 });

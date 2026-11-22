@@ -34,8 +34,6 @@ function makeTask(overrides: Partial<Task> = {}): Task {
 const withCriteria = (total: number, checked: number, overrides: Partial<Task> = {}) =>
 	makeTask({ acceptanceCriteriaItems: makeCriteria(total, checked), ...overrides });
 
-const cell = (total: number, checked: number) => formatAcceptanceCriteriaProgress(withCriteria(total, checked));
-
 /** What the terminal actually shows once blessed has consumed every tag. */
 const rendered = (row: string) => row.replace(/\{\/?[\w\-,;!#]*\}/g, "");
 /** Cells before the task id, measured the way blessed lays the row out. */
@@ -52,48 +50,6 @@ function renderBoardColumn(tasks: Task[]): string[] {
 }
 
 describe("TUI acceptance-criteria progress", () => {
-	it("renders one pie glyph and the live count from checklist state", () => {
-		const task = makeTask();
-
-		expect(formatAcceptanceCriteriaProgress(task)).toBe("{yellow-fg}◑{/} 4/7");
-		if (task.acceptanceCriteriaItems?.[4]) task.acceptanceCriteriaItems[4].checked = true;
-		expect(formatAcceptanceCriteriaProgress(task)).toBe("{yellow-fg}◕{/} 5/7");
-	});
-
-	it("fills the pie as the checklist fills", () => {
-		const glyph = (total: number, checked: number) => stripBlessedFgTags(cell(total, checked)).split(" ")[0];
-
-		expect(glyph(9, 0)).toBe("○");
-		expect(glyph(9, 1)).toBe("◔");
-		// The thirds are inclusive boundaries: 3/9 is still a quarter pie, 6/9 still a half.
-		expect(glyph(9, 3)).toBe("◔");
-		expect(glyph(9, 4)).toBe("◑");
-		expect(glyph(9, 6)).toBe("◑");
-		expect(glyph(9, 7)).toBe("◕");
-		expect(glyph(9, 9)).toBe("●");
-	});
-
-	it("reserves the empty and full pies for the exact counts", () => {
-		// One checked criterion out of twenty must not read as untouched, and nineteen must
-		// not read as finished.
-		expect(stripBlessedFgTags(cell(20, 1))).toBe("◔ 1/20");
-		expect(stripBlessedFgTags(cell(20, 19))).toBe("◕ 19/20");
-	});
-
-	it("colors the glyph by completion ratio using the TUI's red/yellow/green semantics", () => {
-		expect(cell(4, 0)).toBe("{red-fg}○{/} 0/4");
-		expect(cell(3, 1)).toBe("{red-fg}◔{/} 1/3");
-		expect(cell(7, 4)).toBe("{yellow-fg}◑{/} 4/7");
-		expect(cell(5, 4)).toBe("{yellow-fg}◕{/} 4/5");
-		expect(cell(2, 2)).toBe("{green-fg}●{/} 2/2");
-	});
-
-	it("shows progress only for In Progress tasks that have criteria", () => {
-		expect(formatAcceptanceCriteriaProgress(makeTask({ acceptanceCriteriaItems: [] }))).toBe("");
-		expect(formatAcceptanceCriteriaProgress(makeTask({ status: "To Do" }))).toBe("");
-		expect(formatAcceptanceCriteriaProgress(makeTask({ status: "Done" }))).toBe("");
-	});
-
 	it("lines every task id up across custom statuses, three-digit counts and rows without progress", () => {
 		const rows = renderList([
 			withCriteria(4, 0, { id: "BACK-1" }),

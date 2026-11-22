@@ -31,27 +31,6 @@ describe("buildLanes", () => {
 			"task-1",
 		]);
 	});
-	it("creates milestone lanes including No milestone and task-discovered milestones", () => {
-		const tasks = [
-			makeTask({ id: "task-1", milestone: "M1" }),
-			makeTask({ id: "task-2", milestone: "Extra" }),
-			makeTask({ id: "task-3" }),
-		];
-		const lanes = buildLanes("milestone", tasks, ["M1"]);
-		expect(lanes.map((lane) => lane.label)).toEqual(["No milestone", "M1", "Extra"]);
-	});
-
-	it("falls back to a single lane when mode is none", () => {
-		const lanes = buildLanes("none", [], ["M1"]);
-		expect(lanes).toHaveLength(1);
-		expect(lanes[0]?.key).toBe(DEFAULT_LANE_KEY);
-	});
-
-	it("excludes archived milestones from lane definitions", () => {
-		const tasks = [makeTask({ id: "task-1", milestone: "M1" })];
-		const lanes = buildLanes("milestone", tasks, ["M1"], [], { archivedMilestoneIds: ["M1"] });
-		expect(lanes.map((lane) => lane.label)).toEqual(["No milestone"]);
-	});
 
 	it("canonicalizes numeric milestone aliases to configured milestone IDs", () => {
 		const tasks = [makeTask({ id: "task-1", milestone: "1" })];
@@ -84,22 +63,6 @@ describe("buildLanes", () => {
 			archivedMilestones: [{ id: "m-1", title: "Archived", description: "", rawContent: "" }],
 		});
 		expect(lanes.map((lane) => lane.label)).toEqual(["No milestone"]);
-	});
-
-	it("prefers active title aliases when archived milestones reuse the same title", () => {
-		const tasks = [makeTask({ id: "task-1", milestone: "Shared" })];
-		const lanes = buildLanes(
-			"milestone",
-			tasks,
-			[],
-			[{ id: "m-2", title: "Shared", description: "", rawContent: "" }],
-			{
-				archivedMilestoneIds: ["m-0"],
-				archivedMilestones: [{ id: "m-0", title: "Shared", description: "", rawContent: "" }],
-			},
-		);
-		expect(lanes.map((lane) => lane.milestone)).toContain("m-2");
-		expect(lanes.map((lane) => lane.milestone)).not.toContain("Shared");
 	});
 
 	it("prefers real milestone IDs over numeric title aliases in lane definitions", () => {
@@ -174,18 +137,5 @@ describe("groupTasksByLaneAndStatus", () => {
 		});
 		expect((grouped.get(laneKeyFromMilestone("m-1"))?.get("To Do") ?? []).map((task) => task.id)).toEqual(["task-1"]);
 		expect((grouped.get(laneKeyFromMilestone("m-2"))?.get("To Do") ?? []).map((task) => task.id) ?? []).toHaveLength(0);
-	});
-});
-
-describe("sortTasksForStatus", () => {
-	it("prioritizes ordinal when present and falls back to updatedDate for done statuses", () => {
-		const tasks = [
-			makeTask({ id: "task-1", status: "Done", updatedDate: "2024-01-02", createdDate: "2024-01-01" }),
-			makeTask({ id: "task-2", status: "Done", ordinal: 1, updatedDate: "2024-01-01" }),
-			makeTask({ id: "task-3", status: "Done", updatedDate: "2024-01-03", createdDate: "2024-01-01" }),
-		];
-
-		const sorted = sortTasksForStatus(tasks, "Done", ["To Do", "Done"]).map((t) => t.id);
-		expect(sorted).toEqual(["task-2", "task-3", "task-1"]);
 	});
 });

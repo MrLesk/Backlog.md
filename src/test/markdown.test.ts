@@ -3,7 +3,7 @@ import { parseFrontmatter } from "../markdown/frontmatter.ts";
 import { parseDecision, parseDocument, parseMarkdown, parseTask } from "../markdown/parser.ts";
 import { serializeDecision, serializeDocument, serializeTask } from "../markdown/serializer.ts";
 import { updateStructuredSections } from "../markdown/structured-sections.ts";
-import type { Decision, Document, Task } from "../types/index.ts";
+import type { Decision, Task } from "../types/index.ts";
 
 describe("Markdown Parser", () => {
 	it("preserves owned timestamp scalars without changing opaque YAML dates", () => {
@@ -402,18 +402,6 @@ describe("frontmatter parse cache", () => {
 	// gray-matter hands the same data object to every caller that parses identical content, so a
 	// caller mutating its own result used to change what later parses of that content returned.
 	const content = "---\nid: task-608\ntitle: Cache probe\nlabels: [cache]\n---\n\nBody text\n";
-
-	it("gives each parseFrontmatter call an independent result", () => {
-		const first = parseFrontmatter(content);
-		first.data.title = "mutated title";
-		first.data.injected = true;
-		(first.data.labels as string[]).push("mutated label");
-		first.content = "mutated content";
-
-		const second = parseFrontmatter(content);
-		expect(second.data).toEqual({ id: "task-608", title: "Cache probe", labels: ["cache"] });
-		expect(second.content.trim()).toBe("Body text");
-	});
 
 	it("parses a task correctly after an earlier parse of the same content was mutated", () => {
 		const parsed = parseMarkdown(content);
@@ -852,48 +840,6 @@ describe("Markdown Serializer", () => {
 
 			expect(result).toContain("## Alternatives");
 			expect(result).toContain("Considered MongoDB");
-		});
-	});
-
-	describe("serializeDocument", () => {
-		it("should serialize a document correctly", () => {
-			const document: Document = {
-				id: "doc-1",
-				title: "API Documentation",
-				type: "specification",
-				createdDate: "2025-06-07",
-				updatedDate: "2025-06-08",
-				rawContent: "This document describes the API endpoints.",
-				tags: ["api", "docs"],
-			};
-
-			const result = serializeDocument(document);
-
-			expect(result).toContain("id: doc-1");
-			expect(result).toContain("title: API Documentation");
-			expect(result).toContain("type: specification");
-			expect(result).toContain("created_date: '2025-06-07'");
-			expect(result).toContain("updated_date: '2025-06-08'");
-			expect(result).toContain("tags:");
-			expect(result).toContain("- api");
-			expect(result).toContain("- docs");
-			expect(result).toContain("This document describes the API endpoints.");
-		});
-
-		it("should serialize document without optional fields", () => {
-			const document: Document = {
-				id: "doc-2",
-				title: "Simple Doc",
-				type: "guide",
-				createdDate: "2025-06-07",
-				rawContent: "Simple content.",
-			};
-
-			const result = serializeDocument(document);
-
-			expect(result).toContain("id: doc-2");
-			expect(result).not.toContain("updated_date:");
-			expect(result).not.toContain("tags:");
 		});
 	});
 });

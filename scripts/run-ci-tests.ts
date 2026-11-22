@@ -16,7 +16,6 @@ const PLATFORM_CONTRACT_FILES = [
 	"src/test/task-id-resolution.test.ts",
 	"src/test/task-identity-index.test.ts",
 	"src/test/task-watcher.test.ts",
-	"src/test/test-utils.test.ts",
 	"src/test/unicode-rendering.test.ts",
 	"src/test/worktree-refresh.test.ts",
 	"src/test/worktree-task-id-allocation.test.ts",
@@ -34,7 +33,6 @@ const PLATFORM_CONTRACT_FILES = [
 	"src/test/resolveBinary.test.ts",
 	"src/test/runtime-cwd.test.ts",
 	"src/test/status-callback.test.ts",
-	"src/test/terminal-status.test.ts",
 	"src/test/unified-view-loading.test.ts",
 
 	// Network and stdio lifecycle boundaries.

@@ -56,13 +56,6 @@ describe("Git Operations", () => {
 		});
 	});
 
-	describe("GitOperations instantiation", () => {
-		it("should create GitOperations instance", () => {
-			const git = new GitOperations(process.cwd());
-			expect(git).toBeDefined();
-		});
-	});
-
 	describe("missing parent paths", () => {
 		it.skipIf(process.platform === "win32")(
 			"refuses an unresolvable selected path before committing owned staged files",

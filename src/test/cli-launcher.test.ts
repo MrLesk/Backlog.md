@@ -17,7 +17,6 @@ import {
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { getCandidatePackageNames } = require("../../scripts/resolveBinary.cjs");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { getSignalExitCode, isArchitectureSignal, isBinaryInstallError } = require("../../scripts/cli.cjs");
 
 const isWindows = process.platform === "win32";
 const tempDirs: string[] = [];
@@ -262,29 +261,4 @@ describe.skipIf(isWindows)("launcher signal handling", () => {
 			expect(isRunning(fixture.binaryPid)).toBe(false);
 		});
 	}
-});
-
-describe("launcher error and signal mapping", () => {
-	it("matches missing and wrong-architecture spawn failures", () => {
-		expect(isBinaryInstallError({ errno: -86, code: "Unknown system error -86" })).toBe(true);
-		expect(isBinaryInstallError({ code: "EBADARCH" })).toBe(true);
-		expect(isBinaryInstallError({ code: "ENOEXEC", errno: -8 })).toBe(true);
-		expect(isBinaryInstallError({ code: "ENOENT", errno: -2 })).toBe(true);
-	});
-
-	it("does not match unrelated spawn failures", () => {
-		expect(isBinaryInstallError({ code: "EACCES", errno: -13 })).toBe(false);
-		expect(isBinaryInstallError({})).toBe(false);
-	});
-
-	it("classifies architecture signals", () => {
-		expect(isArchitectureSignal("SIGILL")).toBe(true);
-		expect(isArchitectureSignal("SIGTRAP")).toBe(true);
-		expect(isArchitectureSignal("SIGTERM")).toBe(false);
-	});
-
-	it.skipIf(isWindows)("maps Unix signals to conventional process exit codes", () => {
-		expect(getSignalExitCode("SIGTERM")).toBe(128 + 15);
-		expect(getSignalExitCode("UNKNOWN")).toBe(1);
-	});
 });

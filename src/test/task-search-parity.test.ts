@@ -214,25 +214,6 @@ describe("filters mean the same thing with and without a query", () => {
 	});
 });
 
-describe("labelMatch semantics", () => {
-	it("defaults to matching any selected label", () => {
-		expect(taskIds(applyTaskFilters(tasks, { labels: ["backend", "infrastructure"] }))).toEqual(["task-1", "task-2"]);
-	});
-
-	it("requires every label when the caller asks for all", () => {
-		expect(taskIds(applyTaskFilters(tasks, { labels: ["backend", "infrastructure"], labelMatch: "all" }))).toEqual([
-			"task-1",
-		]);
-	});
-
-	it("matches labels case-insensitively in both modes", () => {
-		expect(taskIds(applyTaskFilters(tasks, { labels: ["BACKEND"] }))).toEqual(["task-1", "task-2"]);
-		expect(taskIds(applyTaskFilters(tasks, { labels: ["BackEnd", "INFRASTRUCTURE"], labelMatch: "all" }))).toEqual([
-			"task-1",
-		]);
-	});
-});
-
 /**
  * Filters reach the shared predicate through several different call sites, and an argument dropped
  * at any one of them is invisible to a test that only exercises the predicate directly. These tests

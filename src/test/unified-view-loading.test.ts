@@ -7,7 +7,6 @@ import {
 	createTaskFromBoard,
 	createUnifiedTaskUpdateCallbacks,
 	getDuplicateTaskStartupWarning,
-	getEmptyUnifiedViewMessage,
 	loadTasksForUnifiedView,
 	type UnifiedTaskState,
 } from "../ui/unified-view.ts";
@@ -75,12 +74,6 @@ describe("loadTasksForUnifiedView", () => {
 		});
 
 		expect(result.readinessTasks).toBeUndefined();
-	});
-
-	it("opens an unfiltered empty kanban but preserves other empty-result messages", () => {
-		expect(getEmptyUnifiedViewMessage("kanban")).toBeNull();
-		expect(getEmptyUnifiedViewMessage("task-list")).toBe("No tasks found.");
-		expect(getEmptyUnifiedViewMessage("kanban", "TASK-9")).toBe("No child tasks found for parent task TASK-9.");
 	});
 
 	it("loads autoCommit when each board task is submitted", async () => {

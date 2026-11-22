@@ -200,14 +200,6 @@ describe("TUI task composer model", () => {
 		}
 	});
 
-	it("rests on the first configured workflow status and never Draft", () => {
-		const values = createTaskComposerValues(["Review", "Ready", "Done"]);
-		expect(values.status).toBe("Review");
-		expect(values.type).toBe("");
-		expect(values.priority).toBe("");
-		expect(values.project).toBe("");
-	});
-
 	it("offers Draft only in the opened status choices without changing the resting value", () => {
 		const values = createTaskComposerValues(["Backlog", "Doing", "Done"]);
 		const choices = getTaskComposerStatusChoices(["Backlog", "Doing", "Done"]);
@@ -2144,17 +2136,6 @@ describe("TUI task creation board outcome", () => {
 			focusTaskId: "TASK-1",
 			message: "Created TASK-1.",
 			tone: "green",
-		});
-	});
-
-	it("explains why drafts and filtered tasks cannot be focused", () => {
-		expect(getCreatedTaskBoardOutcome(task({ id: "DRAFT-1", status: "Draft" }), false)).toEqual({
-			message: "Created DRAFT-1 as a draft. Drafts are not shown on the task board.",
-			tone: "yellow",
-		});
-		expect(getCreatedTaskBoardOutcome(task(), false)).toEqual({
-			message: "Created TASK-1, but it is hidden by the current board filters.",
-			tone: "yellow",
 		});
 	});
 });

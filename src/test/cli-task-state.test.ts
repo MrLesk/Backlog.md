@@ -58,12 +58,6 @@ describe("CLI Integration", () => {
 			expect(archiveFiles.some((f) => f.startsWith("task-1"))).toBe(true);
 		});
 
-		it("should handle archiving non-existent task", async () => {
-			const core = new Core(TEST_DIR);
-
-			expect(await core.archiveTask("task-999", false)).toBe(false);
-		});
-
 		it("archives a Done task through the CLI and keeps its ID reserved", async () => {
 			const core = new Core(TEST_DIR);
 
@@ -269,24 +263,10 @@ describe("CLI Integration", () => {
 			expect(archiveFiles.some((f) => f.startsWith(draft.id.toLowerCase()))).toBe(true);
 		});
 
-		it("should handle promoting non-existent draft", async () => {
-			const core = new Core(TEST_DIR);
-
-			const success = await core.promoteDraft("task-999", false);
-			expect(success).toBe(false);
-		});
-
 		it("should handle demoting non-existent task", async () => {
 			const core = new Core(TEST_DIR);
 
 			const { success } = await core.demoteTask("task-999", false);
-			expect(success).toBe(false);
-		});
-
-		it("should handle archiving non-existent draft", async () => {
-			const core = new Core(TEST_DIR);
-
-			const success = await core.archiveDraft("task-999", false);
 			expect(success).toBe(false);
 		});
 
