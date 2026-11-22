@@ -292,7 +292,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
 
   return (
     <div
-      className={`rounded-lg p-4 transition-colors duration-200 h-full ${
+      className={`min-w-0 rounded-lg p-2.5 sm:p-4 transition-colors duration-200 h-full ${
         isEmpty ? 'min-h-24' : 'min-h-96'
       } ${
         isDragOver && (dragSourceStatus !== title || (dragSourceLane ?? null) !== (laneId ?? null))
@@ -303,9 +303,9 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
       }`}
       {...dropEvents}
     >
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100 transition-colors duration-200">{title}</h3>
+      <div className="flex items-center justify-between mb-3 sm:mb-4">
+        <div className="flex min-w-0 items-center gap-1 sm:gap-2">
+          <h3 className="wrap-anywhere font-semibold text-gray-900 dark:text-gray-100 transition-colors duration-200">{title}</h3>
           <span className={`px-2 py-1 text-xs font-medium rounded-circle ${getStatusBadgeClass(title)}`}>
             {tasks.length}
           </span>

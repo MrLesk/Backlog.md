@@ -12,17 +12,11 @@ import {
 } from '../../types';
 import { useBrowserAccess } from '../contexts/BrowserAccessContext';
 import ErrorBoundary from './ErrorBoundary';
-import { createUrlPath, sanitizeUrlTitle } from '../utils/urlHelpers';
+import { createRecordUrlPath, createUrlPath } from '../utils/urlHelpers';
 import { getWebVersion } from '../utils/version';
 import { apiClient } from '../lib/api';
 import { parseSearchCommandQuery } from '../utils/search-command-query';
 import { buildDocsTree, type DocsTreeNode } from '../lib/docs-tree';
-
-// Utility functions for ID transformations
-const stripIdPrefix = (id: string): string => {
-	// Remove any prefix pattern: letters followed by dash (task-, doc-, decision-, JIRA-, etc.)
-	return id.replace(/^[a-zA-Z]+-/, '');
-};
 
 const hasTaskSearchFilters = (parsedQuery: ReturnType<typeof parseSearchCommandQuery>): boolean => {
 	return Boolean(
@@ -195,7 +189,7 @@ const Icons = {
 // Shared render path for sidebar document links (search results, folder tree, and flat list).
 const DocLink = ({ doc, depth = 0 }: { doc: Document; depth?: number }) => (
 	<NavLink
-		to={`/documentation/${stripIdPrefix(doc.id)}/${sanitizeUrlTitle(doc.title)}`}
+		to={createRecordUrlPath('/documentation', doc)}
 		className={({ isActive }) =>
 			`flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${
 				isActive
@@ -254,6 +248,20 @@ const FolderNode = memo(function FolderNode({ node, depth, folderExpanded, onTog
 	);
 });
 
+// The drawer starts with destinations. The desktop tree remembers the reader's choice.
+function useSectionCollapse(key: string, count: number, inDrawer: boolean) {
+	const [preference, setPreference] = useState<boolean | null>(() => {
+		const saved = inDrawer ? null : localStorage.getItem(key);
+		return saved === null ? null : JSON.parse(saved);
+	});
+	const collapsed = preference ?? (inDrawer || count > 6);
+	const setCollapsed = (next: boolean) => {
+		setPreference(next);
+		if (!inDrawer) localStorage.setItem(key, JSON.stringify(next));
+	};
+	return [collapsed, setCollapsed] as const;
+}
+
 interface SideNavigationProps {
 	taskCount: number;
 	docs: Document[];
@@ -262,6 +270,8 @@ interface SideNavigationProps {
 	error?: Error | null;
 	onRetry?: () => void;
 	onRefreshData: () => Promise<void>;
+	onOpenDrawer?: () => void;
+	onCloseDrawer?: () => void;
 }
 
 const SideNavigation = memo(function SideNavigation({ 
@@ -270,14 +280,17 @@ const SideNavigation = memo(function SideNavigation({
 	decisions, 
 	isLoading,
 	error,
-	onRetry
+	onRetry,
+	onOpenDrawer,
+	onCloseDrawer,
 }: SideNavigationProps) {
 	const { canWrite, sections } = useBrowserAccess();
 	const canSearch = sections.tasks || sections.docs || sections.decisions;
-	const [isCollapsed, setIsCollapsed] = useState(() => {
+	const [desktopCollapsed, setDesktopCollapsed] = useState(() => {
 		const saved = localStorage.getItem('sideNavCollapsed');
 		return saved ? JSON.parse(saved) : false;
 	});
+	const isCollapsed = !onCloseDrawer && desktopCollapsed;
 	const [searchQuery, setSearchQuery] = useState('');
 	const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 	const [isSearching, setIsSearching] = useState(false);
@@ -286,28 +299,14 @@ const SideNavigation = memo(function SideNavigation({
 	const focusSearchOnExpandRef = useRef(false);
 	const expandAndFocusSearch = useCallback(() => {
 		focusSearchOnExpandRef.current = true;
-		setIsCollapsed(false);
+		setDesktopCollapsed(false);
 	}, []);
-	const [isDocsCollapsed, setIsDocsCollapsed] = useState(() => {
-		const saved = localStorage.getItem('docsCollapsed');
-		if (saved !== null) {
-			return JSON.parse(saved);
-		}
-		// Auto-collapse if more than 6 documents
-		return docs.length > 6;
-	});
+	const [isDocsCollapsed, setIsDocsCollapsed] = useSectionCollapse('docsCollapsed', docs.length, Boolean(onCloseDrawer));
 	const [folderExpanded, setFolderExpanded] = useState<Record<string, boolean>>(() => {
 		const saved = localStorage.getItem('docsFolderExpanded');
 		return saved ? JSON.parse(saved) : {};
 	});
-	const [isDecisionsCollapsed, setIsDecisionsCollapsed] = useState(() => {
-		const saved = localStorage.getItem('decisionsCollapsed');
-		if (saved !== null) {
-			return JSON.parse(saved);
-		}
-		// Auto-collapse if more than 6 decisions
-		return decisions.length > 6;
-	});
+	const [isDecisionsCollapsed, setIsDecisionsCollapsed] = useSectionCollapse('decisionsCollapsed', decisions.length, Boolean(onCloseDrawer));
 	const [version, setVersion] = useState<string>('');
 	const location = useLocation();
 	const navigate = useNavigate();
@@ -318,42 +317,17 @@ const SideNavigation = memo(function SideNavigation({
 	}, [navigate]);
 
 	useEffect(() => {
-		localStorage.setItem('sideNavCollapsed', JSON.stringify(isCollapsed));
-	}, [isCollapsed]);
+		localStorage.setItem('sideNavCollapsed', JSON.stringify(desktopCollapsed));
+	}, [desktopCollapsed]);
 
 	// Fetch version on mount
 	useEffect(() => {
 		getWebVersion().then(setVersion).catch(() => setVersion(''));
 	}, []);
 
-	// Save docs collapse state to localStorage
-	useEffect(() => {
-		localStorage.setItem('docsCollapsed', JSON.stringify(isDocsCollapsed));
-	}, [isDocsCollapsed]);
-
-	// Save decisions collapse state to localStorage
-	useEffect(() => {
-		localStorage.setItem('decisionsCollapsed', JSON.stringify(isDecisionsCollapsed));
-	}, [isDecisionsCollapsed]);
-
 	useEffect(() => {
 		localStorage.setItem('docsFolderExpanded', JSON.stringify(folderExpanded));
 	}, [folderExpanded]);
-
-	// Auto-collapse when data loads/changes if no saved preference exists
-	useEffect(() => {
-		const savedDocsCollapsed = localStorage.getItem('docsCollapsed');
-		if (savedDocsCollapsed === null && docs.length > 6) {
-			setIsDocsCollapsed(true);
-		}
-	}, [docs.length]);
-
-	useEffect(() => {
-		const savedDecisionsCollapsed = localStorage.getItem('decisionsCollapsed');
-		if (savedDecisionsCollapsed === null && decisions.length > 6) {
-			setIsDecisionsCollapsed(true);
-		}
-	}, [decisions.length]);
 
 	// Add keyboard shortcut for search
 	useEffect(() => {
@@ -361,6 +335,7 @@ const SideNavigation = memo(function SideNavigation({
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
 				e.preventDefault();
+				onOpenDrawer?.();
 				if (isCollapsed) {
 					expandAndFocusSearch();
 				} else if (searchInputRef) {
@@ -371,7 +346,7 @@ const SideNavigation = memo(function SideNavigation({
 
 		document.addEventListener('keydown', handleKeyDown);
 		return () => document.removeEventListener('keydown', handleKeyDown);
-	}, [canSearch, expandAndFocusSearch, searchInputRef, isCollapsed]);
+	}, [canSearch, expandAndFocusSearch, searchInputRef, isCollapsed, onOpenDrawer]);
 
 	// Auto-focus search only after an explicit collapsed-to-expanded transition.
 	useEffect(() => {
@@ -457,7 +432,7 @@ const SideNavigation = memo(function SideNavigation({
 			expandAndFocusSearch();
 			return;
 		}
-		setIsCollapsed(true);
+		setDesktopCollapsed(true);
 	}, [expandAndFocusSearch, isCollapsed]);
 
 	const milestoneLink = { path: '/milestones', label: 'Milestones', Icon: Icons.Milestone, visible: sections.milestones };
@@ -469,38 +444,53 @@ const SideNavigation = memo(function SideNavigation({
 		{ path: '/statistics', label: 'Statistics', Icon: Icons.Statistics, visible: sections.tasks },
 	].filter(({ visible }) => visible);
 
+	const desktopSidebarSize = isCollapsed ? 'w-16' : 'w-80 min-w-80';
+	const sidebarSize = onCloseDrawer ? 'h-full w-full' : `min-h-full transition-all duration-300 ${desktopSidebarSize}`;
+
 	return (
 		<ErrorBoundary>
-			<div className={`relative bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 flex flex-col min-h-full z-10 ${isCollapsed ? 'w-16' : 'w-80 min-w-80'}`}>
+			<div className={`relative bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col z-10 ${sidebarSize}`}>
 			{/* Search Bar */}
-			<div className={`${isCollapsed ? 'px-2' : 'px-4'} border-b border-gray-200 dark:border-gray-700 h-18 flex items-center relative`}>
-				{/* Collapse Toggle Button - Always positioned on the border */}
-				<button
-					onClick={toggleCollapse}
-					className="absolute -right-3 top-1/2 transform -translate-y-1/2 z-10 flex items-center justify-center w-6 h-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-circle shadow-sm hover:shadow-md text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-200"
-					aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-					title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-				>
-					{isCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronLeft />}
-				</button>
-				
+			<div className={`${isCollapsed ? 'px-2' : 'px-4'} border-b border-gray-200 dark:border-gray-700 h-14 lg:h-18 shrink-0 flex items-center gap-2 relative`}>
+				{onCloseDrawer ? (
+					<button
+						type="button"
+						onClick={onCloseDrawer}
+						className="flex size-11 shrink-0 items-center justify-center rounded-lg text-xl text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+						aria-label="Close navigation menu"
+					>
+						×
+					</button>
+				) : (
+					<button
+						onClick={toggleCollapse}
+						className="absolute -right-3 top-1/2 transform -translate-y-1/2 z-10 flex items-center justify-center w-6 h-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-circle shadow-sm hover:shadow-md text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-all duration-200"
+						aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+						title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+					>
+						{isCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronLeft />}
+					</button>
+				)}
+
 				{canSearch && (!isCollapsed ? (
-					<div className="flex items-center w-full">
-						<div className="relative flex-1">
+					<div className="flex min-w-0 flex-1 items-center">
+						<div className="relative min-w-0 flex-1">
 							<div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 dark:text-gray-500">
 								<Icons.Search />
 							</div>
 							<input
 								ref={setSearchInputRef}
 								type="text"
-								placeholder="Search (⌘K)..."
+								aria-label="Search project"
+								placeholder={onCloseDrawer ? "Search" : "Search (⌘K)..."}
 								value={searchQuery}
 								onChange={(e) => setSearchQuery(e.target.value)}
-								className="w-full pl-10 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200"
+								className="w-full pl-10 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-base lg:text-sm text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200"
 							/>
 								{searchQuery && (
 									<button
 										onClick={() => setSearchQuery('')}
+										aria-label="Clear search"
 										className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-200"
 									>
 										<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -541,10 +531,10 @@ const SideNavigation = memo(function SideNavigation({
 									: (result as DecisionSearchResult).decision;
 							const getResultLink = () => {
 								if (result.type === 'document') {
-									return `/documentation/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
+									return createRecordUrlPath('/documentation', item);
 								}
 								if (result.type === 'decision') {
-									return `/decisions/${stripIdPrefix(item.id)}/${sanitizeUrlTitle(item.title)}`;
+									return createRecordUrlPath('/decisions', item);
 								}
 								const taskPath = createUrlPath('/board', item.id, item.title);
 								const isBoardLocation = location.pathname === '/board' || location.pathname.startsWith('/board/');
@@ -659,7 +649,7 @@ const SideNavigation = memo(function SideNavigation({
 							data-tooltip-content={isCollapsed ? label : undefined}
 							className={({ isActive }) => [
 								'flex items-center transition-colors duration-200',
-								isCollapsed ? 'justify-center p-3 rounded-md' : 'px-3 py-2 rounded-lg',
+								isCollapsed ? 'justify-center p-3 rounded-md' : 'min-h-11 px-3 py-2 rounded-lg lg:min-h-0',
 								isActive ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 font-medium'
 									: 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100',
 							].join(' ')}
@@ -678,20 +668,25 @@ const SideNavigation = memo(function SideNavigation({
 						{pageLinks.length > 0 && <div className="mx-4 my-2 border-t border-gray-200 dark:border-gray-700" />}
 						
 						{/* Documents Section */}
-						<div className="px-4 py-4">
-							<div className="flex items-center justify-between mb-4">
-									<div className="flex items-center space-x-3">
-										<button
-											onClick={() => setIsDocsCollapsed(!isDocsCollapsed)}
-											className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-colors duration-200"
-											title={isDocsCollapsed ? "Expand documents" : "Collapse documents"}
-										>
-											{isDocsCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
+						<div className="px-4 py-1 lg:py-4">
+							<div className="flex items-center justify-between lg:mb-4">
+								<div className="flex flex-1 items-center gap-2 lg:flex-initial lg:gap-3">
+									<NavLink
+										to="/documentation"
+										end
+										className="flex min-h-11 flex-1 items-center gap-3 whitespace-nowrap px-3 text-sm font-medium text-gray-600 hover:underline dark:text-gray-300 lg:min-h-0 lg:px-0 lg:font-semibold lg:uppercase lg:tracking-wider lg:dark:text-gray-400"
+									>
+										<span className="text-gray-500 dark:text-gray-400"><Icons.Document /></span>
+										<span>Documents (<NavigationCount count={docs.length} isLoading={isLoading} error={error} label="document" />)</span>
+									</NavLink>
+									<button
+										onClick={() => setIsDocsCollapsed(!isDocsCollapsed)}
+										className="inline-flex size-11 shrink-0 items-center justify-center rounded text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 lg:order-first lg:size-auto lg:p-1"
+										aria-expanded={!isDocsCollapsed}
+										title={isDocsCollapsed ? "Expand documents" : "Collapse documents"}
+									>
+										{isDocsCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
 									</button>
-									<span className="text-gray-500 dark:text-gray-400"><Icons.Document /></span>
-									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">
-										Documents (<NavigationCount count={docs.length} isLoading={isLoading} error={error} label="document" />)
-									</span>
 								</div>
 									{canWrite && (
 										<button
@@ -750,20 +745,25 @@ const SideNavigation = memo(function SideNavigation({
 						)}
 
 						{/* Decisions Section */}
-						<div className="px-4 py-4">
-							<div className="flex items-center justify-between mb-4">
-									<div className="flex items-center space-x-3">
-										<button
-											onClick={() => setIsDecisionsCollapsed(!isDecisionsCollapsed)}
-											className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-colors duration-200"
-											title={isDecisionsCollapsed ? "Expand decisions" : "Collapse decisions"}
-										>
-											{isDecisionsCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
+						<div className="px-4 py-1 lg:py-4">
+							<div className="flex items-center justify-between lg:mb-4">
+								<div className="flex flex-1 items-center gap-2 lg:flex-initial lg:gap-3">
+									<NavLink
+										to="/decisions"
+										end
+										className="flex min-h-11 flex-1 items-center gap-3 whitespace-nowrap px-3 text-sm font-medium text-gray-600 hover:underline dark:text-gray-300 lg:min-h-0 lg:px-0 lg:font-semibold lg:uppercase lg:tracking-wider lg:dark:text-gray-400"
+									>
+										<span className="text-gray-500 dark:text-gray-400"><Icons.Decision /></span>
+										<span>Decisions (<NavigationCount count={decisions.length} isLoading={isLoading} error={error} label="decision" />)</span>
+									</NavLink>
+									<button
+										onClick={() => setIsDecisionsCollapsed(!isDecisionsCollapsed)}
+										className="inline-flex size-11 shrink-0 items-center justify-center rounded text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 lg:order-first lg:size-auto lg:p-1"
+										aria-expanded={!isDecisionsCollapsed}
+										title={isDecisionsCollapsed ? "Expand decisions" : "Collapse decisions"}
+									>
+										{isDecisionsCollapsed ? <Icons.ChevronRight /> : <Icons.ChevronDown />}
 									</button>
-									<span className="text-gray-500 dark:text-gray-400"><Icons.Decision /></span>
-									<span className="text-sm font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 whitespace-nowrap">
-										Decisions (<NavigationCount count={decisions.length} isLoading={isLoading} error={error} label="decision" />)
-									</span>
 								</div>
 							</div>
 							
@@ -780,7 +780,7 @@ const SideNavigation = memo(function SideNavigation({
 										filteredDecisions.map((decision) => (
 											<NavLink
 												key={decision.id}
-												to={`/decisions/${stripIdPrefix(decision.id)}/${sanitizeUrlTitle(decision.title)}`}
+												to={createRecordUrlPath('/decisions', decision)}
 												className={({ isActive }) =>
 													`flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${
 														isActive
@@ -805,11 +805,12 @@ const SideNavigation = memo(function SideNavigation({
 						{sections.docs && (
 							<button
 								onClick={() => {
-									setIsCollapsed(false);
+									setDesktopCollapsed(false);
 									setIsDocsCollapsed(false);
 								}}
 									data-tooltip-id="sidebar-tooltip"
-									data-tooltip-content="Documentation"
+									aria-label="Documentation"
+								data-tooltip-content="Documentation"
 									className={`flex items-center justify-center p-3 rounded-md transition-colors duration-200 w-full ${
 										location.pathname.startsWith('/documentation')
 											? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
@@ -824,11 +825,12 @@ const SideNavigation = memo(function SideNavigation({
 						{sections.decisions && (
 							<button
 								onClick={() => {
-									setIsCollapsed(false);
+									setDesktopCollapsed(false);
 									setIsDecisionsCollapsed(false);
 								}}
 									data-tooltip-id="sidebar-tooltip"
-									data-tooltip-content="Decisions"
+									aria-label="Decisions"
+								data-tooltip-content="Decisions"
 									className={`flex items-center justify-center p-3 rounded-md transition-colors duration-200 w-full ${
 										location.pathname.startsWith('/decisions')
 											? 'bg-blue-50 dark:bg-blue-600/20 text-blue-700 dark:text-blue-400'
@@ -867,6 +869,7 @@ const SideNavigation = memo(function SideNavigation({
 					<NavLink
 						to="/settings"
 						data-tooltip-id="sidebar-tooltip"
+						aria-label="Settings"
 						data-tooltip-content="Settings"
 						className={({ isActive }) =>
 							`flex items-center justify-center p-3 rounded-md transition-colors duration-200 ${

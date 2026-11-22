@@ -32,45 +32,36 @@ const MilestoneTaskRow: React.FC<MilestoneTaskRowProps> = ({
 	onEditTask,
 	drag,
 }) => (
-	<div
+	<button
+		type="button"
 		draggable={drag ? true : undefined}
 		onDragStart={drag ? (event) => drag.start(event, task) : undefined}
 		onDragEnd={drag?.end}
 		onClick={() => onEditTask(task)}
-		className="group grid grid-cols-[auto_auto_1fr_auto_auto] gap-3 items-center px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer"
+		className="group flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 md:grid md:grid-cols-[auto_auto_minmax(0,1fr)_auto_auto] md:gap-3"
 	>
-		<div className="w-6 flex justify-center opacity-40 group-hover:opacity-100 transition-opacity">
+		<span className="flex w-6 justify-center opacity-40 transition-opacity empty:hidden group-hover:opacity-100 md:empty:flex">
 			{drag && <DragHandle />}
-		</div>
+		</span>
 
-		<div className={`w-24 text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap ${isDone ? "opacity-60" : ""}`}>
-			{task.id}
-		</div>
+		<span className="font-mono text-xs text-gray-500 dark:text-gray-400 md:w-24">{task.id}</span>
 
-		<div className={`min-w-0 overflow-hidden ${isDone ? "opacity-60" : ""}`}>
-			<span
-				className={`text-sm truncate block whitespace-nowrap ${
-					isDone ? "line-through text-gray-500" : "text-gray-900 dark:text-gray-100"
-				}`}
-			>
-				{task.title}
-			</span>
-		</div>
+		<span className={`order-first min-w-0 basis-full wrap-anywhere text-sm font-medium md:order-none md:truncate ${isDone ? "text-gray-500 line-through dark:text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>
+			{task.title}
+		</span>
 
-		<div className="w-24 flex justify-center">
-			<span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${statusBadgeClass}`}>{task.status}</span>
-		</div>
+		<span className="flex max-w-full justify-center md:w-24">
+			<span className={`wrap-anywhere rounded-full px-2 py-0.5 text-[11px] font-medium ${statusBadgeClass}`}>{task.status}</span>
+		</span>
 
-		<div className="w-20 flex justify-center">
+		<span className="flex justify-center md:w-20">
 			{task.priority ? (
-				<span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${priorityBadgeClass}`}>
-					{task.priority}
-				</span>
+				<span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${priorityBadgeClass}`}>{task.priority}</span>
 			) : (
-				<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
+				<span className="hidden text-xs text-gray-300 dark:text-gray-600 md:inline">—</span>
 			)}
-		</div>
-	</div>
+		</span>
+	</button>
 );
 
 export default MilestoneTaskRow;

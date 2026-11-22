@@ -48,7 +48,7 @@ interface BoardProps {
 }
 
 const BOARD_FILTER_SELECT_CLASS =
-  'min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200';
+  'min-w-0 md:min-w-[140px] h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200';
 
 const BOARD_FILTER_BUTTON_CLASS =
   'h-10 py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg whitespace-nowrap transition-colors duration-200 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700';
@@ -98,6 +98,7 @@ const Board: React.FC<BoardProps> = ({
   const [showCleanupModal, setShowCleanupModal] = useState(false);
   const [cleanupSuccessMessage, setCleanupSuccessMessage] = useState<string | null>(null);
   const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({});
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const terminalStatus = getTerminalStatus(statuses);
   const resolveStatus = useMemo(() => createStatusResolver(statuses), [statuses]);
   const priorityOptions = useMemo(
@@ -516,16 +517,11 @@ const Board: React.FC<BoardProps> = ({
     return lanes.filter(l => laneTaskCount(l.key) > 0);
   }, [laneMode, lanes, laneMetadataTasksByLane]);
 
-  // When hideEmptyColumns is on, filter out status columns with no tasks across all visible lanes.
-  // While a task is being dragged we keep every column visible so empty statuses remain drop targets.
   const visibleStatuses = useMemo(() => {
+    // Empty columns are still drop targets while dragging.
     if (!hideEmptyColumns || hiddenColumnsRevealed) return statuses;
-    return statuses.filter(status => {
-      for (const statusMap of displayTasksByLane.values()) {
-        if ((statusMap.get(status) ?? []).length > 0) return true;
-      }
-      return false;
-    });
+    const groups = Array.from(displayTasksByLane.values());
+    return statuses.filter((status) => groups.some((group) => group.get(status)?.length));
   }, [hideEmptyColumns, hiddenColumnsRevealed, statuses, displayTasksByLane]);
 
   const cancelHiddenColumnsReveal = () => {
@@ -613,11 +609,6 @@ const Board: React.FC<BoardProps> = ({
     // biome-ignore lint/correctness/useExhaustiveDependencies: isLaneCollapsed is a plain render-scope helper; its inputs are listed.
   }, [canWrite, filteredTasks, laneMode, lanes, displayTasksByLane, collapsedLanes, milestoneFilter, canonicalMilestoneFilter]);
 
-  // Dynamic layout using flexbox:
-  // - Columns are flex items with equal growth (flex-1) to divide space evenly
-  // - A minimum width keeps columns readable; beyond available space, container scrolls horizontally
-  // - Works uniformly for any number of columns without per-count conditionals
-
   const columnActions = canWrite ? {
     onTaskReorder: handleTaskReorder,
     dragSourceStatus,
@@ -634,21 +625,26 @@ const Board: React.FC<BoardProps> = ({
   } : undefined;
   const openCleanup = canWrite ? () => setShowCleanupModal(true) : undefined;
 
-  const renderColumn = (status: string, laneKey: string, targetMilestone?: string | null) => (
-    <TaskColumn
-      title={status}
-      isTerminal={status === terminalStatus}
-      tasks={getTasksForLane(laneKey, status)}
-      onEditTask={onEditTask}
-      laneId={laneKey}
-      targetMilestone={targetMilestone}
-      priorityOrder={availablePriorities}
-      availableTypes={typeOptions}
-      availableProjects={projectOptions}
-      dateFormat={dateFormat}
-      onCleanup={status === terminalStatus ? openCleanup : undefined}
-      {...columnActions}
-    />
+  const renderColumns = (laneKey: string, targetMilestone?: string | null) => (
+    <div className="grid grid-flow-col auto-cols-[minmax(11.5rem,1fr)] gap-3 overflow-x-auto pb-2 sm:auto-cols-[minmax(14rem,1fr)] lg:auto-cols-[minmax(16rem,1fr)] lg:gap-4">
+      {visibleStatuses.map((status) => (
+        <TaskColumn
+          key={status}
+          title={status}
+          isTerminal={status === terminalStatus}
+          tasks={getTasksForLane(laneKey, status)}
+          onEditTask={onEditTask}
+          laneId={laneKey}
+          targetMilestone={targetMilestone}
+          priorityOrder={availablePriorities}
+          availableTypes={typeOptions}
+          availableProjects={projectOptions}
+          dateFormat={dateFormat}
+          onCleanup={status === terminalStatus ? openCleanup : undefined}
+          {...columnActions}
+        />
+      ))}
+    </div>
   );
 
   return (
@@ -664,7 +660,7 @@ const Board: React.FC<BoardProps> = ({
           {updateError}
         </div>
       )}
-      <div className="mb-6 space-y-3">
+      <div className="mb-4 space-y-3 md:mb-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 transition-colors duration-200">Kanban Board</h2>
           {canWrite && (
@@ -744,7 +740,22 @@ const Board: React.FC<BoardProps> = ({
               </button>
             </div>
             {onFiltersChange && (
-              <div className="flex flex-wrap items-center gap-3" aria-label="Board filters">
+              <button
+                type="button"
+                aria-expanded={mobileFiltersOpen}
+                aria-controls="board-filters"
+                className={`${BOARD_FILTER_BUTTON_CLASS} md:hidden`}
+                onClick={() => setMobileFiltersOpen((open) => !open)}
+              >
+                Filters{hasActiveFilters ? ' (active)' : ''}
+              </button>
+            )}
+            {onFiltersChange && (
+              <div
+                id="board-filters"
+                className={`${mobileFiltersOpen ? 'grid' : 'hidden'} w-full min-w-0 grid-cols-1 gap-3 md:flex md:w-auto md:flex-wrap md:items-center`}
+                aria-label="Board filters"
+              >
                 <select
                   aria-label="Filter board by assignee"
                   value={filterAssignee}
@@ -763,7 +774,7 @@ const Board: React.FC<BoardProps> = ({
                   selectedLabels={normalizedFilterLabels}
                   onChange={labels => onFiltersChange({ assignee: filterAssignee, labels, priority: filterPriority, taskType: filterType, project: filterProject })}
                   menuId="board-labels-filter-menu"
-                  className="min-w-[200px]"
+                  className="w-full min-w-0 md:w-auto md:min-w-[200px]"
                 />
 
                 <select
@@ -883,31 +894,15 @@ const Board: React.FC<BoardProps> = ({
 
                 {/* Lane content - columns */}
                 {!isCollapsed && (
-                  <div className="p-4">
-                    <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${visibleStatuses.length}, minmax(0, 1fr))` }}>
-                      {visibleStatuses.map((status) => (
-                        <div key={`${lane.key}-${status}`} className="min-w-0">
-                          {renderColumn(status, lane.key, lane.milestone ?? null)}
-                        </div>
-                      ))}
-                    </div>
+                  <div className="p-2 sm:p-4">
+                    {renderColumns(lane.key, lane.milestone ?? null)}
                   </div>
                 )}
               </div>
             );
           })}
         </div>
-      ) : (
-        <div className="overflow-x-auto pb-2">
-          <div className="flex flex-row flex-nowrap gap-4 w-full">
-            {visibleStatuses.map((status) => (
-              <div key={status} className="flex-1 min-w-[16rem]">
-                {renderColumn(status, DEFAULT_LANE_KEY)}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      ) : renderColumns(DEFAULT_LANE_KEY)}
 
       {canWrite && (
         <CleanupModal

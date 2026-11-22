@@ -234,7 +234,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
             flush right, so the badges are not squeezed to make room for it. */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1.5">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="shrink-0 text-xs text-gray-400 dark:text-gray-500 font-mono transition-colors duration-200">{task.id}</span>
+            <span className="shrink-0 text-xs text-gray-600 dark:text-gray-300 font-mono transition-colors duration-200">{task.id}</span>
             <TaskTypeBadge type={task.type} availableTypes={availableTypes} className="min-w-0" />
             <ProjectBadge project={task.project} availableProjects={availableProjects} className="min-w-0" />
           </div>
@@ -251,7 +251,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
         </div>
 
         {/* Title */}
-        <h4 className={`font-semibold text-sm line-clamp-2 transition-colors duration-200 ${
+        <h4 className={`font-semibold text-sm wrap-anywhere md:line-clamp-2 transition-colors duration-200 ${
           isFromOtherBranch
             ? 'text-gray-600 dark:text-gray-400'
             : 'text-gray-900 dark:text-gray-100'
@@ -279,7 +279,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
         )}
 
         {/* Footer with dates and assignee */}
-        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10px] text-gray-400 dark:text-gray-500 mt-2 pt-1.5 border-t border-gray-100 dark:border-gray-600/50 transition-colors duration-200">
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs md:text-[10px] text-gray-600 dark:text-gray-300 mt-2 pt-1.5 border-t border-gray-100 dark:border-gray-600/50 transition-colors duration-200">
           {/* Grouped so the updated date sits beside the created date on every card, whatever else the footer shows.
               The group uses the same gaps as the footer row (gap-x-2 gap-y-1), so change the two together.
               A new labelled date in the compact style belongs inside this group. */}
@@ -289,7 +289,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
           </span>
           {task.dueDate && <span>Due: <StoredDate value={task.dueDate} dateFormat={dateFormat} /></span>}
           {task.assignee.length > 0 && (
-            <span className="truncate max-w-[80px]" title={task.assignee.join(', ')}>
+            <span className="max-w-full truncate font-medium max-md:order-first md:max-w-[80px]" title={task.assignee.join(', ')}>
               {task.assignee[0]}
             </span>
           )}
