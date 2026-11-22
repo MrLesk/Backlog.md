@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { Readable } from "node:stream";
 import { $ } from "bun";
 import { Core } from "../core/backlog.ts";
+import { browserUrl } from "../utils/browser-host.ts";
 import {
 	closeServer,
 	createUniqueTestDir,
@@ -104,7 +105,10 @@ describe("browser command port selection", () => {
 		{ saved: "0.0.0.0", override: undefined, remote: true },
 		{ saved: "0.0.0.0", override: "127.0.0.1", remote: false },
 		{ saved: "127.0.0.1", override: "0.0.0.0", remote: true },
-	])("warns according to the effective host without changing config: %j", async ({ saved, override, remote }) => {
+		// The trailing dot gives loopback a name outside the server's built-in aliases.
+		{ saved: "localhost.", override: undefined, remote: false },
+		{ saved: "127.0.0.1", override: "localhost.", remote: false },
+	])("serves tasks through the selected host and warns for remote access: %j", async ({ saved, override, remote }) => {
 		const core = new Core(TEST_DIR);
 		const before = await core.filesystem.loadConfig();
 		if (!before) throw new Error("Missing fixture config");
@@ -135,7 +139,8 @@ describe("browser command port selection", () => {
 		try {
 			const output = await waitForOutput(child, "browser interface running");
 			expect(output).not.toContain("Opening browser");
-			expect((await fetch(`http://127.0.0.1:${probe.port}/api/status`)).status).toBe(200);
+			const url = browserUrl(override ?? saved, probe.port);
+			expect((await fetch(`${url}/api/tasks`)).status).toBe(200);
 			if (remote) {
 				expect(stderr).toContain("INSECURE REMOTE ACCESS");
 				expect(stderr).toContain("commands");
