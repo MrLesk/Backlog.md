@@ -110,8 +110,9 @@ incidental wording or inventory documentation.
 
 ## Tests
 
-Use [`cccc`](https://github.com/moznion/cccc) to measure cognitive complexity. Do not write tests for functions or code
-with a cognitive complexity score of 5 or less, unless they contain regular expressions.
+Before adding a unit test for a single function, run `cccc --pretty <source-file>` and read that function's `cognitive`
+score. If the score is **5 or lower**, skip the unit test unless the behavior being tested depends on a regular
+expression. Tests of a supported flow may exercise functions of any score. [cccc documentation](https://github.com/moznion/cccc#usage)
 
 Test domain rules, public contracts, and observable behavior. Before adding or extending a test, inspect existing coverage
 and identify the supported rule, the concrete wrong result it would catch, and the smallest missing check. Prefer
@@ -136,6 +137,10 @@ Definition of Done, manifesto, and documented behavior. Trace the changed flow a
 - Do names and contracts explain ownership and correct use?
 - What could I misunderstand or accidentally break?
 - What code, state, or indirection can be removed without changing required behavior?
+
+After the required code checks pass, use the `codehygiene` skill to review the files changed by the task. Focus on
+findings in the lines you changed. Apply suggestions that make the code easier to follow and preserve its behavior.
+[Code Hygiene instructions](https://github.com/brianbell-x/codehygiene#use)
 
 Apply reasonable review findings within the approved scope and rerun affected checks. Ask for approval only when
 applying a finding would change the scope. Prefer clearer structure over comments that explain hidden conventions.
