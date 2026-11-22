@@ -6,10 +6,9 @@ Backlog.md serves, its core loop, source of truth, surface hierarchy, interface 
 design principles, boundaries, and risks. All architecture and product decisions must
 align with it.
 
-If a request appears to conflict with the manifesto, or would materially change a
-principle in it, surface the conflict and ask Alex rather than silently proceeding. Do
-not edit the manifesto as a side effect of implementation; changes to it require an
-explicit product decision.
+If a request appears to conflict with the manifesto or would materially change one of its
+principles, ask a project maintainer to resolve the conflict before proceeding. Do not edit
+the manifesto as a side effect of implementation. Changes to it require an explicit product decision.
 
 ## Repository facts
 
@@ -22,8 +21,8 @@ or the manifesto.
 
 - Treat the explicit request and accepted task as the scope. Background, examples, and future plans explain the work but
   do not authorize additions. Investigation, review, and design requests authorize analysis, not implementation.
-- Distinguish verified facts, assumptions, recommendations, and Alex's decisions. If the requested solution does not fit
-  the evidence or product, explain the problem and recommend a better approach.
+- Distinguish verified facts, assumptions, recommendations, and decisions made by the person requesting the work.
+  If the requested solution does not fit the evidence or product, explain the problem and recommend a better approach.
 - Identify the actor, entry point, and expected result before changing behavior. For fixes and internal refactors,
   restore or preserve supported behavior; no new product example is needed.
 - Make routine implementation choices within approved scope. Ask when a missing decision would materially change the
@@ -138,8 +137,8 @@ Definition of Done, manifesto, and documented behavior. Trace the changed flow a
 - What could I misunderstand or accidentally break?
 - What code, state, or indirection can be removed without changing required behavior?
 
-Apply reasonable review findings within approved scope without asking Alex, and rerun affected checks. Ask only when
-applying a finding would change the approved scope. Prefer clearer structure over comments that explain hidden conventions.
+Apply reasonable review findings within the approved scope and rerun affected checks. Ask for approval only when
+applying a finding would change the scope. Prefer clearer structure over comments that explain hidden conventions.
 
 For substantial domain or architecture changes, or when explicitly requested, obtain one cold simplicity review after
 focused checks. Give that reviewer the task, diff, and repository without conversation history; ask it to explain the
@@ -159,24 +158,25 @@ Record evidence for the task's criteria and report what changed, how it was veri
 
 - Treat GitHub issues as reports, proposals, or evidence, not implementation specs. Evaluate the requested solution
   against the manifesto, public contracts, and current documented behavior before implementing it.
-- Ask Alex about ambiguous product behavior before implementation. PRs should normally link to a scoped issue first;
-  a broad feature PR without one needs an issue or discussion before implementation.
+- Ask a project maintainer to clarify ambiguous product behavior before implementation. PRs should normally link to
+  a scoped issue first. A broad feature PR without one needs an issue or discussion before implementation.
 - Every PR needs an associated Backlog task. Use the Backlog workflow below to search,
   create, assign, plan, and finalize tasks. Assign yourself when picking up work with `-a @your-name`.
 - Use the CLI allocator and lock for task IDs; do not manually pick or reserve IDs.
-- When acting publicly on Alex's behalf, use neutral maintainer language and identify yourself as `Alex's Agent:` when
-  needed. Keep private strategy, roadmap, and status framing out of public issues and PR discussions.
+- When posting publicly on behalf of a contributor or maintainer, use neutral language and say whose agent you are
+  when attribution is needed. Keep private strategy, roadmap, and status framing out of public issues and PR discussions.
 
 ## Git workflow
 
-- When Alex requests a documentation-only change, review and verify it, then commit and push it directly to `main`.
-  Alex's request is sufficient approval without a separate GitHub issue or PR.
+- When a project maintainer requests a documentation-only change, review and verify it, then commit and push it directly
+  to `main`. The maintainer's request is sufficient approval without a separate GitHub issue or PR.
 - Changes confined to `AGENTS.md` follow the same direct workflow and need no issue, Backlog task, feature branch, or PR.
   Use a descriptive commit subject.
 - For other work, use a feature branch for the task, such as `tasks/back-123-feature-name`. Inspect current changes before
-  editing shared files. Preserve unrelated changes by Alex or other agents; never revert, reformat, or stage them.
+  editing shared files. Preserve unrelated changes by other contributors and agents. Do not revert, reformat, or stage them.
 - For a task that needs a PR, once a maintainer has approved the scope, push the completed changes to the task branch
-  and open or update the PR. Ask Alex before any other commit, push, or merge that places commits on `main`.
+  and open or update the PR. Get a project maintainer's approval before any other commit, push, or merge that places
+  commits on `main`.
 - For task work, use the exact task ID and title for both the commit subject and PR title: `BACK-123 - Title of the task`.
 - Use `gh` for GitHub work when available.
 
