@@ -27,7 +27,7 @@
         "lint-staged": "17.6.1",
         "mdast-util-from-markdown": "2.1.0",
         "mermaid": "12.3.0",
-        "neo-neo-bblessed": "1.0.10",
+        "neo-neo-bblessed": "1.0.11",
         "picocolors": "1.1.1",
         "proper-lockfile": "4.1.2",
         "react": "19.3.1",
@@ -841,7 +841,7 @@
 
     "negotiator": ["negotiator@1.1.0", "", { "dependencies": { "content-type": "^2.1.0" } }, "sha512-NMPBRMJgiQHjbd8phG3Vebdx4kZ1H121rbl5IkMqeOsahptB9BKo/d7oJ3zTXqTgagn2bWlNSXkh0QUGM31RYg=="],
 
-    "neo-neo-bblessed": ["neo-neo-bblessed@1.0.10", "", { "dependencies": { "@xterm/headless": "^5.5.0", "crc-32": "^1.2.2", "eastasianwidth": "^0.3.0", "jimp": "^1.6.0", "pngjs": "^7.0.0", "unicode-properties": "^1.4.1" }, "peerDependencies": { "node-pty": "^1.0.0" }, "optionalPeers": ["node-pty"], "bin": { "neo-neo-bblessed": "bin/tput.ts" } }, "sha512-yMRryiO0PCxlGhhB/zZ8KtRXJVIGfHwNuv66gNOltJRzjcSrH0xp7WYEFdCBD/mCJtg9gKkvdKTRGtCmPvjXoQ=="],
+    "neo-neo-bblessed": ["neo-neo-bblessed@1.0.11", "", { "dependencies": { "@xterm/headless": "^5.5.0", "crc-32": "^1.2.2", "eastasianwidth": "^0.3.0", "jimp": "^1.6.0", "pngjs": "^7.0.0", "unicode-properties": "^1.4.1" }, "peerDependencies": { "node-pty": "^1.0.0" }, "optionalPeers": ["node-pty"], "bin": { "neo-neo-bblessed": "bin/tput.ts" } }, "sha512-KxWuS24A0ICSElO6DgdT3sQNIvazRhI+tIAVC7hm+ID2JnGXLYVrT/vK3pzifhB+82yTdZR5njKe0zP5V/Deqg=="],
 
     "nth-check": ["nth-check@2.1.1", "", { "dependencies": { "boolbase": "^1.0.0" } }, "sha512-lqjrjmaOoAnWfMmBPL+XNnynZh2+swxiX3WUE0s4yEHI6m+AwrK2UZOimIRl3X/4QctVqS8AiZjFqyOGrMXb/w=="],
 
