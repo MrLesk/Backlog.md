@@ -18,7 +18,7 @@ export function DuplicateIdWarning({ plan, onRepaired }: DuplicateIdWarningProps
 	return (
 		<>
 			<section
-				className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-amber-950 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-100 sm:px-6 lg:px-8"
+				className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-amber-950 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-100 sm:px-6 lg:px-5"
 				aria-live="polite"
 			>
 				<div className="flex min-h-9 flex-wrap items-center justify-between gap-2 sm:flex-nowrap sm:gap-4">

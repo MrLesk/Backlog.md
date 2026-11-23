@@ -62,14 +62,16 @@ describe("SideNavigation task loading", () => {
 		expect(loading).not.toContain("No documents");
 		expect(loading).not.toContain("No decisions");
 
-		const loaded = renderNavigation(false, 3).replaceAll("<!-- -->", "");
-		expect(loaded).toContain("Kanban Board");
-		expect(loaded).toContain("All Tasks");
-		expect(loaded).toContain("Tasks (3)");
-		expect(loaded).toContain("Documents (0)");
-		expect(loaded).toContain("Decisions (0)");
-		expect(loaded).toContain("No documents");
-		expect(loaded).toContain("No decisions");
+		const loaded = renderNavigation(false, 3);
+		// The counts sit in their own mono element, so the visible text is read without the markup.
+		const loadedText = loaded.replace(/<[^>]*>/g, "");
+		expect(loadedText).toContain("Kanban Board");
+		expect(loadedText).toContain("All Tasks");
+		expect(loadedText).toContain("Tasks (3)");
+		expect(loadedText).toContain("Documents (0)");
+		expect(loadedText).toContain("Decisions (0)");
+		expect(loadedText).toContain("No documents");
+		expect(loadedText).toContain("No decisions");
 		expect(loaded).not.toContain('aria-label="Loading task count"');
 	});
 

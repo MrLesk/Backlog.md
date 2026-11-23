@@ -294,8 +294,8 @@ try {
 		const stylesheet = await stylesheetResponse.text();
 		assert(stylesheet.includes(".flex{display:flex}"), "Compiled stylesheet is missing Tailwind utilities.");
 		assert(stylesheet.includes(".wmde-markdown"), "Compiled stylesheet is missing Markdown editor styles.");
-		// The typefaces travel inside the stylesheet, so the browser never requests a font, and their
-		// license notice must survive minification.
+		// The typefaces travel inside the stylesheet, so the browser never requests a font, and the full
+		// text of their license must survive minification.
 		const fontFaces = stylesheet.match(/@font-face\{[^}]*\}/g) ?? [];
 		for (const family of ["Geist", "Geist Mono"]) {
 			const embedsFamily = fontFaces.some(
@@ -304,7 +304,10 @@ try {
 			);
 			assert(embedsFamily, `Compiled stylesheet does not embed the ${family} font.`);
 		}
-		assert(stylesheet.includes("SIL Open Font License"), "Compiled stylesheet is missing the font license notice.");
+		assert(
+			stylesheet.includes("SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007"),
+			"Compiled stylesheet is missing the full font license text.",
+		);
 
 		const scriptResponse = await fetchWithTimeout(scriptUrl.href, { method: "HEAD" });
 		assert(scriptResponse.status === 200, `Browser script returned ${scriptResponse.status}.`);

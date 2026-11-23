@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, memo, type ComponentType } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Tooltip } from 'react-tooltip';
 import {
@@ -56,28 +56,28 @@ const NavigationCount = ({
 			/>
 		);
 	}
-	return error ? <span aria-label={`${label} count unavailable`}>—</span> : count;
+	return error ? <span aria-label={`${label} count unavailable`}>—</span> : <span className="font-mono">{count}</span>;
 };
 
 // Icon components for better semantics and performance
 const Icons = {
 	Tasks: () => (
-		<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
 		</svg>
 	),
 	Board: () => (
-		<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
 		</svg>
 	),
 	List: () => (
-		<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
 		</svg>
 	),
 	Draft: () => (
-		<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
 		</svg>
 	),
@@ -148,7 +148,7 @@ const Icons = {
 		</svg>
 	),
 	Search: () => (
-		<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
 		</svg>
 	),
@@ -173,18 +173,25 @@ const Icons = {
 		</svg>
 	),
 	Statistics: () => (
-		<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
 		</svg>
 	),
 	Milestone: () => (
-		<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<circle cx="12" cy="12" r="9" strokeWidth={2} />
 			<circle cx="12" cy="12" r="5" strokeWidth={2} />
 			<circle cx="12" cy="12" r="1" strokeWidth={2} />
 		</svg>
 	),
 };
+
+// The icon in front of each sidebar search result.
+const SEARCH_RESULT_ICONS = {
+	task: Icons.Tasks,
+	document: Icons.DocumentPage,
+	decision: Icons.DecisionPage,
+} satisfies Record<SearchResultType, ComponentType>;
 
 // The Backlog.md logo: the document outline takes the text color, the three bars the logo teal.
 const BrandMark = () => (
@@ -202,21 +209,28 @@ const BrandMark = () => (
 	</div>
 );
 
-// How a sidebar destination looks when it is the current page and when it is not. Page links, documents,
-// decisions and Settings all use it, so they change together.
-const navItemState = (isActive: boolean) =>
-	isActive ? 'bg-surface font-medium text-ink ring-1 ring-line' : 'text-ink-2 hover:bg-hover hover:text-ink';
+// The look of a sidebar row: its shape, its keyboard focus ring and whether it is the current page, which
+// is the only row in medium weight. Page links, documents, folders, decisions and Settings all use it, so a
+// row cannot miss the focus ring; call sites add only their layout.
+const navItemClass = (isActive: boolean) =>
+	`rounded-control transition-colors duration-200 focus-ring ${
+		isActive ? 'bg-surface font-medium text-ink ring-1 ring-line' : 'text-ink-2 hover:bg-hover hover:text-ink'
+	}`;
 
 // The Documents and Decisions captions also link to their pages: a full row in the drawer, a caption on wide screens.
 const SECTION_LINK_CLASS =
-	'flex min-h-11 flex-1 items-center gap-3 whitespace-nowrap px-3 text-sm font-medium text-ink-2 hover:text-ink hover:underline focus-ring lg:min-h-0 lg:px-0 lg:section-caption';
+	'flex min-h-11 flex-1 items-center gap-3 whitespace-nowrap px-3 text-sm text-ink-2 hover:text-ink hover:underline focus-ring lg:min-h-0 lg:pr-0 lg:section-caption';
+
+// The chevron after each of those captions that shows or hides its list.
+const SECTION_TOGGLE_CLASS =
+	'inline-flex size-11 shrink-0 items-center justify-center rounded-control text-ink-3 hover:bg-hover hover:text-ink transition-colors duration-200 focus-ring lg:size-auto lg:p-1';
 
 // Shared render path for sidebar document links (search results, folder tree, and flat list).
 const DocLink = ({ doc, depth = 0 }: { doc: Document; depth?: number }) => (
 	<NavLink
 		to={createRecordUrlPath('/documentation', doc)}
 		className={({ isActive }) =>
-			`flex items-center space-x-3 px-3 py-2 text-sm rounded-control transition-colors duration-200 focus-ring ${navItemState(isActive)}`
+			`flex items-center space-x-3 px-3 py-2 text-sm ${navItemClass(isActive)}`
 		}
 		style={depth > 0 ? { paddingLeft: `${12 + depth * 12}px` } : undefined}
 	>
@@ -242,7 +256,7 @@ const FolderNode = memo(function FolderNode({ node, depth, folderExpanded, onTog
 				aria-label={`${node.name} folder`}
 				aria-expanded={isExpanded}
 				title={node.name}
-				className="flex w-full items-center rounded-control px-3 py-2 text-sm text-ink-2 hover:bg-hover hover:text-ink transition-colors duration-200 focus-ring"
+				className={`flex w-full items-center px-3 py-2 text-sm ${navItemClass(false)}`}
 				style={{ paddingLeft: `${12 + depth * 12}px` }}
 			>
 				<span className="shrink-0">{isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}</span>
@@ -470,9 +484,9 @@ const SideNavigation = memo(function SideNavigation({
 
 	return (
 		<ErrorBoundary>
-			<div className={`relative flex flex-col z-10 ${sidebarSize}`}>
+			<div className={`flex flex-col ${sidebarSize}`}>
 			{/* Brand row: the logo, and the control that collapses the sidebar or closes the drawer. */}
-			<div className={`flex h-12 shrink-0 items-center gap-2 ${isCollapsed ? 'justify-center px-2' : 'pl-4 pr-2'}`}>
+			<div className={`flex h-14 shrink-0 items-center gap-2 lg:h-12 ${isCollapsed ? 'justify-center px-2' : 'pl-4 pr-2'}`}>
 				{!isCollapsed && <BrandMark />}
 				{onCloseDrawer ? (
 					<button
@@ -515,7 +529,7 @@ const SideNavigation = memo(function SideNavigation({
 							<button
 								onClick={() => setSearchQuery('')}
 								aria-label="Clear search"
-								className="absolute inset-y-0 right-0 pr-3 flex items-center text-ink-3 hover:text-ink transition-colors duration-200"
+								className="absolute inset-y-0 right-0 pr-3 flex items-center rounded-control text-ink-3 hover:text-ink transition-colors duration-200 focus-ring"
 							>
 								<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -538,9 +552,9 @@ const SideNavigation = memo(function SideNavigation({
 
 			{/* Unified Search Results */}
 			{!isCollapsed && searchQuery.trim() && unifiedSearchResults.length > 0 && (
-				<div className="p-4 border-b border-line">
+				<div className="mx-4 py-4 border-b border-line">
 					<div className="flex items-center justify-between mb-3">
-						<h3 className="text-sm font-medium text-ink">Search Results</h3>
+						<h3 className="section-caption px-3">Search Results</h3>
 						{isSearching && (
 							<span className="text-xs text-ink-3">Searching…</span>
 						)}
@@ -564,11 +578,7 @@ const SideNavigation = memo(function SideNavigation({
 								return isBoardLocation ? `${taskPath}${location.search}` : taskPath;
 							};
 
-							const getResultIcon = () => {
-								if (result.type === 'document') return <span className="text-ink-3"><Icons.DocumentPage /></span>;
-								if (result.type === 'decision') return <span className="text-ink-3"><Icons.DecisionPage /></span>;
-								return <span className="text-ink-3"><Icons.Tasks /></span>;
-							};
+							const ResultIcon = SEARCH_RESULT_ICONS[result.type];
 
 							return (
 								<NavLink
@@ -581,17 +591,17 @@ const SideNavigation = memo(function SideNavigation({
 									}
 									className="flex items-center space-x-3 px-3 py-2 text-sm rounded-control transition-colors duration-200 hover:bg-hover text-ink focus-ring"
 								>
-									{getResultIcon()}
+									<span className="text-ink-3"><ResultIcon /></span>
 									<div className="flex-1 min-w-0">
 										<div className="font-medium truncate">
 											{item.title}
 										</div>
 										<div className="text-xs text-ink-3 truncate">
-											{result.type.charAt(0).toUpperCase() + result.type.slice(1)} • {item.id}
+											{result.type.charAt(0).toUpperCase() + result.type.slice(1)} • <span className="font-mono">{item.id}</span>
 										</div>
 									</div>
 									{result.score !== null && (
-										<div className="text-xs text-ink-3">
+										<div className="font-mono text-xs text-ink-3">
 											{`${Math.round((1 - result.score) * 100)}%`}
 										</div>
 									)}
@@ -603,13 +613,13 @@ const SideNavigation = memo(function SideNavigation({
 			)}
 
 			{!isCollapsed && searchQuery.trim() && unifiedSearchResults.length === 0 && !isSearching && !searchError && (
-				<div className="px-4 py-2 text-sm text-ink-2 border-b border-line">
+				<div className="mx-4 px-3 py-2 text-sm text-ink-2 border-b border-line">
 					No matching results
 				</div>
 			)}
 
 			{!isCollapsed && searchQuery.trim() && searchError && (
-				<div className="px-4 py-2 text-sm text-red-700 dark:text-red-400 border-b border-line">
+				<div className="mx-4 px-3 py-2 text-sm text-red-700 dark:text-red-400 border-b border-line">
 					{searchError}
 				</div>
 			)}
@@ -622,7 +632,7 @@ const SideNavigation = memo(function SideNavigation({
 						<button
 							type="button"
 							onClick={onRetry}
-							className="flex w-full items-center justify-center rounded-control bg-red-50 p-3 font-bold text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30"
+							className="flex w-full items-center justify-center rounded-control bg-red-50 p-3 font-bold text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 focus-ring"
 							aria-label="Failed to load navigation. Retry"
 							title="Failed to load navigation. Retry"
 						>
@@ -638,7 +648,7 @@ const SideNavigation = memo(function SideNavigation({
 								{onRetry && (
 									<button
 										onClick={onRetry}
-										className="text-xs px-3 py-1 bg-red-600 dark:bg-red-700 text-white rounded-control hover:bg-red-700 dark:hover:bg-red-600 transition-colors duration-200"
+										className="text-xs px-3 py-1 bg-red-600 dark:bg-red-700 text-white rounded-control hover:bg-red-700 dark:hover:bg-red-600 transition-colors duration-200 focus-ring"
 									>
 										Retry
 									</button>
@@ -649,7 +659,7 @@ const SideNavigation = memo(function SideNavigation({
 				
 				{/* Task loading only changes the count; navigation remains stable. */}
 				{!isCollapsed && sections.tasks && (
-					<div className="px-4 py-4">
+					<div className="px-4 pt-3 pb-2">
 						<div className="flex items-center space-x-3 px-3">
 							<span className="text-ink-3"><Icons.Tasks /></span>
 							<span className="section-caption whitespace-nowrap">
@@ -671,15 +681,15 @@ const SideNavigation = memo(function SideNavigation({
 							data-tooltip-id={isCollapsed ? 'sidebar-tooltip' : undefined}
 							data-tooltip-content={isCollapsed ? label : undefined}
 							className={({ isActive }) => [
-								'flex items-center rounded-control transition-colors duration-200 focus-ring',
+								'flex items-center',
 								isCollapsed ? 'justify-center p-3' : 'min-h-11 px-3 py-2 lg:min-h-0',
-								navItemState(isActive),
+								navItemClass(isActive),
 							].join(' ')}
 						>
 							{isCollapsed ? (
 								<div className="w-6 h-6 flex items-center justify-center"><Icon /></div>
 							) : (
-								<><Icon /><span className="ml-3 text-sm font-medium">{label}</span></>
+								<><Icon /><span className="ml-3 text-sm">{label}</span></>
 							)}
 						</NavLink>
 					))}
@@ -690,8 +700,8 @@ const SideNavigation = memo(function SideNavigation({
 						{pageLinks.length > 0 && <div className="mx-4 my-2 border-t border-line" />}
 						
 						{/* Documents Section */}
-						<div className="px-4 py-1 lg:py-4">
-							<div className="flex items-center justify-between lg:mb-4">
+						<div className="px-4 pt-1">
+							<div className="flex items-center justify-between lg:mb-1">
 								<div className="flex flex-1 items-center gap-2 lg:flex-initial lg:gap-3">
 									<NavLink
 										to="/documentation"
@@ -703,7 +713,7 @@ const SideNavigation = memo(function SideNavigation({
 									</NavLink>
 									<button
 										onClick={() => setIsDocsCollapsed(!isDocsCollapsed)}
-										className="inline-flex size-11 shrink-0 items-center justify-center rounded-control text-ink-3 hover:text-ink focus-ring lg:order-first lg:size-auto lg:p-1"
+										className={SECTION_TOGGLE_CLASS}
 										aria-expanded={!isDocsCollapsed}
 										title={isDocsCollapsed ? "Expand documents" : "Collapse documents"}
 									>
@@ -767,8 +777,8 @@ const SideNavigation = memo(function SideNavigation({
 						)}
 
 						{/* Decisions Section */}
-						<div className="px-4 py-1 lg:py-4">
-							<div className="flex items-center justify-between lg:mb-4">
+						<div className="px-4 pt-1">
+							<div className="flex items-center justify-between lg:mb-1">
 								<div className="flex flex-1 items-center gap-2 lg:flex-initial lg:gap-3">
 									<NavLink
 										to="/decisions"
@@ -780,7 +790,7 @@ const SideNavigation = memo(function SideNavigation({
 									</NavLink>
 									<button
 										onClick={() => setIsDecisionsCollapsed(!isDecisionsCollapsed)}
-										className="inline-flex size-11 shrink-0 items-center justify-center rounded-control text-ink-3 hover:text-ink focus-ring lg:order-first lg:size-auto lg:p-1"
+										className={SECTION_TOGGLE_CLASS}
 										aria-expanded={!isDecisionsCollapsed}
 										title={isDecisionsCollapsed ? "Expand decisions" : "Collapse decisions"}
 									>
@@ -804,7 +814,7 @@ const SideNavigation = memo(function SideNavigation({
 												key={decision.id}
 												to={createRecordUrlPath('/decisions', decision)}
 												className={({ isActive }) =>
-													`flex items-center space-x-3 px-3 py-2 text-sm rounded-control transition-colors duration-200 focus-ring ${navItemState(isActive)}`
+													`flex items-center space-x-3 px-3 py-2 text-sm ${navItemClass(isActive)}`
 												}
 											>
 												<span className="text-ink-3"><Icons.DecisionPage /></span>
@@ -829,7 +839,7 @@ const SideNavigation = memo(function SideNavigation({
 									data-tooltip-id="sidebar-tooltip"
 									aria-label="Documentation"
 								data-tooltip-content="Documentation"
-									className={`flex w-full items-center justify-center rounded-control p-3 transition-colors duration-200 focus-ring ${navItemState(location.pathname.startsWith('/documentation'))}`}
+									className={`flex w-full items-center justify-center p-3 ${navItemClass(location.pathname.startsWith('/documentation'))}`}
 							>
 								<div className="w-6 h-6 flex items-center justify-center">
 									<Icons.Document />
@@ -845,7 +855,7 @@ const SideNavigation = memo(function SideNavigation({
 									data-tooltip-id="sidebar-tooltip"
 									aria-label="Decisions"
 								data-tooltip-content="Decisions"
-									className={`flex w-full items-center justify-center rounded-control p-3 transition-colors duration-200 focus-ring ${navItemState(location.pathname.startsWith('/decisions'))}`}
+									className={`flex w-full items-center justify-center p-3 ${navItemClass(location.pathname.startsWith('/decisions'))}`}
 							>
 								<div className="w-6 h-6 flex items-center justify-center">
 									<Icons.Decision />
@@ -857,18 +867,18 @@ const SideNavigation = memo(function SideNavigation({
 			</nav>
 			
 			{/* Settings Button - Bottom Left */}
-			<div className={`border-t border-line ${isCollapsed ? 'px-2 py-2' : 'px-4 py-4'}`}>
+			<div className={`border-t border-line py-2 ${isCollapsed ? 'mx-2' : 'mx-4'}`}>
 				{!isCollapsed ? (
 					<NavLink
 						to="/settings"
 						className={({ isActive }) =>
-							`flex items-center px-3 py-2 rounded-control transition-colors duration-200 focus-ring ${navItemState(isActive)}`
+							`flex min-h-11 items-center px-3 py-2 lg:min-h-0 ${navItemClass(isActive)}`
 						}
 					>
 						<Icons.DocumentSettings />
-						<span className="ml-3 text-sm font-medium">Settings</span>
+						<span className="ml-3 text-sm">Settings</span>
 						{version && (
-							<span className="ml-auto font-mono text-xs text-ink-3">Backlog.md - v{version}</span>
+							<span className="ml-auto font-mono text-xs text-ink-3">v{version}</span>
 						)}
 					</NavLink>
 				) : (
@@ -878,7 +888,7 @@ const SideNavigation = memo(function SideNavigation({
 						aria-label="Settings"
 						data-tooltip-content="Settings"
 						className={({ isActive }) =>
-							`flex items-center justify-center p-3 rounded-control transition-colors duration-200 focus-ring ${navItemState(isActive)}`
+							`flex items-center justify-center p-3 ${navItemClass(isActive)}`
 						}
 					>
 						<div className="w-6 h-6 flex items-center justify-center">
@@ -888,7 +898,8 @@ const SideNavigation = memo(function SideNavigation({
 				)}
 			</div>
 			
-			<Tooltip id="sidebar-tooltip" place="right" />
+			{/* The labels of the collapsed sidebar; z-20 keeps them above the content panel. */}
+			<Tooltip id="sidebar-tooltip" place="right" className="z-20" />
 			</div>
 		</ErrorBoundary>
 	);

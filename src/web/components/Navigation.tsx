@@ -11,7 +11,7 @@ interface NavigationProps {
 /** The header row at the top of the content panel. */
 const Navigation: React.FC<NavigationProps> = ({ projectName, loadingMessage, onOpenMenu }) => {
     return (
-        <nav className="relative h-14 shrink-0 px-2 lg:h-12 lg:px-5 border-b border-line-soft">
+        <nav className="relative h-14 shrink-0 px-2 lg:h-12 lg:px-5 border-b border-line-soft transition-colors duration-200">
             <div className="h-full flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
                     {onOpenMenu && (

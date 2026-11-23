@@ -87,8 +87,8 @@ export default function Layout({
 	);
 
 	// The sidebar sits on the page background (paper, set on body in source.css) and every page renders
-	// inside one floating content panel beside it. Narrow screens open the sidebar in a drawer that paints
-	// the same background itself.
+	// inside one floating content panel beside it. Narrow screens open the sidebar in a drawer, which sets its
+	// background, text color and edge itself because a dialog does not inherit them from body.
 	return (
 		<div className="h-dvh flex gap-2 overflow-hidden p-2">
 			<HealthIndicator />
@@ -97,7 +97,7 @@ export default function Layout({
 					ref={drawer}
 					id="backlog-navigation"
 					aria-label="Navigation menu"
-					className="fixed inset-y-0 left-0 right-auto m-0 h-dvh max-h-none w-80 max-w-full overflow-hidden bg-paper p-0 backdrop:bg-black/40"
+					className="fixed inset-y-0 left-0 right-auto m-0 h-dvh max-h-none w-80 max-w-full overflow-hidden border-r border-line bg-paper p-0 text-ink backdrop:bg-black/40"
 					onClick={(event) => {
 						if (event.target === event.currentTarget) closeDrawer();
 					}}
@@ -105,7 +105,7 @@ export default function Layout({
 					{sideNavigation}
 				</dialog>
 			) : sideNavigation}
-			<div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden rounded-panel border border-line bg-surface">
+			<div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden rounded-panel border border-line bg-surface transition-colors duration-200">
 				<Navigation projectName={projectName} loadingMessage={loadingMessage} onOpenMenu={useDrawer ? openDrawer : undefined} />
 				<DuplicateIdWarning plan={duplicateRepairPlan} onRepaired={onRefreshData} />
 				<main ref={main} className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
