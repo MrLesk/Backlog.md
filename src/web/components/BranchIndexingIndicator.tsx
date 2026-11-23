@@ -49,12 +49,12 @@ export function BranchIndexingIndicator({
 			<div
 				role="status"
 				title={detail}
-				className={`flex items-center gap-2 rounded-circle bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-600 transition-all duration-200 dark:bg-blue-600/20 dark:text-blue-400 ${
+				className={`flex items-center gap-2 rounded-chip bg-surface-2 px-2.5 py-1 text-xs font-medium text-accent-text transition-all duration-200 ${
 					active ? "translate-y-0 opacity-100" : "-translate-y-0.5 opacity-0"
 				}`}
 			>
 				<span
-					className="h-3 w-3 shrink-0 animate-spin rounded-circle border-2 border-blue-200 border-t-blue-600 motion-reduce:animate-none dark:border-blue-400/30 dark:border-t-blue-400"
+					className="h-3 w-3 shrink-0 animate-spin rounded-circle border-2 border-line border-t-accent-strong motion-reduce:animate-none"
 					aria-hidden="true"
 				/>
 				<span aria-hidden="true" className="hidden sm:inline">
@@ -68,7 +68,7 @@ export function BranchIndexingIndicator({
 					active ? "opacity-100" : "opacity-0"
 				}`}
 			>
-				<div className="animate-indexing-sweep h-full w-2/5 bg-gradient-to-r from-transparent via-blue-500 to-transparent dark:via-blue-400" />
+				<div className="animate-indexing-sweep h-full w-2/5 bg-gradient-to-r from-transparent via-accent-strong to-transparent" />
 			</div>
 		</>
 	);

@@ -1,3 +1,7 @@
+/*! Geist and Geist Mono 1.9.2. Copyright 2026 The Geist Project Authors (https://github.com/vercel/geist-font).
+    Licensed under the SIL Open Font License, Version 1.1, available with a FAQ at https://openfontlicense.org */
+/* This notice opens the file because the minifier keeps such comments only at the top of the built stylesheet.
+   The fonts it covers are declared by the @font-face rules below. */
 @import "tailwindcss";
 @import '@uiw/react-md-editor/markdown-editor.css';
 @import '@uiw/react-markdown-preview/markdown.css';
@@ -6,11 +10,104 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* The font files and their license (OFL.txt) are in src/web/fonts: the upright variable faces
+   fonts/Geist/webfonts/Geist[wght].woff2 and fonts/GeistMono/webfonts/GeistMono[wght].woff2 of the
+   Geist 1.9.2 release. The bundler embeds them in the built stylesheet, so the browser never requests a font. */
+@font-face {
+    font-family: "Geist";
+    src: url("../fonts/Geist-Variable.woff2") format("woff2");
+    font-weight: 100 900;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: "Geist Mono";
+    src: url("../fonts/GeistMono-Variable.woff2") format("woff2");
+    font-weight: 100 900;
+    font-style: normal;
+}
+
+/* Design tokens: the one definition of the shared colors, radii and typefaces of the web UI. New and restyled
+   components use them; pages that still use Tailwind's gray and blue move onto them in their own redesign tasks.
+   @theme holds the light values and .dark below overrides them, so components use the Tailwind utilities
+   (bg-paper, bg-surface, text-ink-2, border-line, rounded-panel, font-mono) without dark: variants.
+   When you change a color, keep every text color at a contrast of 4.5:1 or more on paper, surface,
+   surface-2 and hover in both themes, and status or focus marks at 3:1 or more. */
 @theme {
-    --radius-circle: 9999px;
+    --color-paper: #F2F5F7;         /* page background */
+    --color-surface: #FFFFFF;       /* panels */
+    --color-surface-2: #EDF1F4;     /* group headers, chips, code */
+    --color-hover: #EAEEF2;         /* row and button hover */
+    --color-line: #D6DEE5;          /* hairlines */
+    --color-line-soft: #E6EBEF;     /* row separators */
+    --color-ink: #0E3149;           /* text, primary button */
+    --color-ink-2: #455E75;         /* secondary text */
+    --color-ink-3: #54687A;         /* IDs, counts, hints */
+    --color-on-ink: #FFFFFF;        /* text on the primary button */
+    --color-accent: #00C0C9;        /* logo teal, for the bars of the logo only; too light for text or marks */
+    --color-accent-strong: #008A93; /* teal marks on a surface: work in motion, keyboard focus */
+    --color-accent-text: #00717A;   /* teal text */
+    --color-you: #8A5200;           /* waiting for a person */
+    --color-you-bg: #FDF1DA;
+    --color-blocked: #B3261E;       /* blocked */
+    --color-blocked-bg: #FBE6E3;
+
+    --radius-panel: 12px;           /* the content panel */
+    --radius-control: 8px;          /* buttons, inputs and navigation items */
+    --radius-chip: 5px;             /* chips and badges */
+    --radius-circle: 9999px;        /* round marks; the build leaves out rounded-full */
+
+    --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    /* Geist Mono's ligatures draw " --" as one long dash and hide the space before a command flag.
+       Tailwind applies this to font-mono and to code, kbd, samp and pre. */
+    --font-mono--font-feature-settings: "liga" 0;
+}
+
+/* index.html and ThemeContext put the dark class on <html>. */
+.dark {
+    --color-paper: #08121B;
+    --color-surface: #0D1A26;
+    --color-surface-2: #132433;
+    --color-hover: #182C3D;
+    --color-line: #22384C;
+    --color-line-soft: #172A3B;
+    --color-ink: #E4EDF3;
+    --color-ink-2: #A9BBC9;
+    --color-ink-3: #8499AA;
+    --color-on-ink: #08121B;
+    --color-accent: #00C0C9;
+    --color-accent-strong: #00C0C9;
+    --color-accent-text: #2ED3DB;
+    --color-you: #F2B552;
+    --color-you-bg: #2E2410;
+    --color-blocked: #F28B82;
+    --color-blocked-bg: #36171A;
+}
+
+/* Keyboard focus for the controls of the shell: one teal outline that shows on paper and surface in both themes. */
+@utility focus-ring {
+    &:focus-visible {
+        outline: 2px solid var(--color-accent-strong);
+        outline-offset: 2px;
+    }
+}
+
+/* The small uppercase captions above the sidebar sections: a mono detail, like the counts they hold. */
+@utility section-caption {
+    @apply font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3;
 }
 
 @layer base {
+    /* The page background behind the sidebar and the content panel. It is set on body so the first paint,
+       before the app renders, already has the colors of the stored theme. */
+    body {
+        background-color: var(--color-paper);
+        color: var(--color-ink);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+
     button {
         cursor: pointer;
     }
@@ -199,6 +296,32 @@
     }
 
     /* Avoid forcing internal editor heights; use component props instead */
+
+    /* The Markdown preview and editor bring their own font stacks; use the app's typefaces instead. */
+    .wmde-markdown,
+    .w-md-editor {
+        font-family: var(--font-sans) !important;
+    }
+
+    /* The editor draws its caret in a text area laid over a highlighted <pre><code> copy of the same text, so the
+       two must render glyphs at the same widths. Both read --md-editor-font-family, and the copy gets back the
+       ligatures that the mono setting in @theme turns off for every pre and code element. */
+    .w-md-editor {
+        --md-editor-font-family: var(--font-sans) !important;
+    }
+
+    .w-md-editor-text-pre,
+    .w-md-editor-text-pre > code {
+        font-feature-settings: normal;
+    }
+
+    .wmde-markdown code,
+    .wmde-markdown kbd,
+    .wmde-markdown pre,
+    .wmde-markdown samp,
+    .wmde-markdown tt {
+        font-family: var(--font-mono) !important;
+    }
 
     /* Fix for long content in markdown preview - scope to preview containers only */
     .wmde-markdown pre,

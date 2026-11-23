@@ -924,7 +924,7 @@ function AppContent() {
   if (isInitialized === null) {
     return (
       <ThemeProvider>
-        <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900" role="status">
+        <div className="min-h-screen flex items-center justify-center" role="status">
           <LoadingSpinner size="md" text="" />
           <span className="sr-only">Loading</span>
         </div>
