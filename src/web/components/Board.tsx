@@ -294,7 +294,9 @@ const Board: React.FC<BoardProps> = ({
     return visibleLanes.length > 1;
   }, [laneMode, visibleLanes]);
 
-  const isLaneCollapsed = (laneKey: string): boolean => collapsedLanes[laneKey] ?? false;
+  // Only a lane header opens a collapsed lane, so a lane shown without one, the only lane left, is always open.
+  const isLaneCollapsed = (laneKey: string): boolean =>
+    shouldShowLaneHeaders && (collapsedLanes[laneKey] ?? false);
 
   const getLaneLabel = (lane: typeof lanes[0]): string => {
     if (lane.isNoMilestone || !lane.milestone) {

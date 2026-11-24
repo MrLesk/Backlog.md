@@ -533,6 +533,18 @@ describe("Tasks page board", () => {
 		expect(container.querySelector("[role='group'][aria-label='Release 2']")).toBeNull();
 	});
 
+	it("shows the cards of a collapsed lane once a filter leaves it as the only lane", async () => {
+		const container = renderPage("/board?lane=milestone");
+		const releaseOne = container.querySelector("[role='group'][aria-label='Release 1']") as HTMLElement;
+		await click(releaseOne.querySelector("button[aria-expanded='true']") as HTMLButtonElement);
+		expect(boardTaskIds(container)).not.toContain("task-101");
+
+		await click(container.querySelector("button[aria-controls='task-filters']") as HTMLButtonElement);
+		await setSelectValue(select(container, "Filter by milestone"), "m-1");
+
+		expect(boardTaskIds(container).sort()).toEqual(["task-101", "task-103"]);
+	});
+
 	it("lets milestone lanes be turned off when no task has a milestone", async () => {
 		const container = renderPage("/board?lane=milestone", {
 			tasks: [createTask({ id: "task-1" }), createTask({ id: "task-2", status: "Done" })],

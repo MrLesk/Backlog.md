@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-23T20:53:00Z'
-updated_date: '2026-11-24T21:53:00Z'
+updated_date: '2026-11-24T22:00:00Z'
 labels:
   - web
 dependencies:
@@ -276,6 +276,8 @@ Checks, after the review round (origin/main had not moved): bun run check:types 
 Not verified: Firefox, Safari, Windows and Linux; a mouse drag in a real browser (covered by the tests; the keyboard move and a dragged card scrolling the tasks were checked in headless Chrome with dispatched drag events); what a screen reader announces (only the accessible names were checked); the native select pop-ups and touch use of the filter selects, which headless screenshots do not show. Typing on 2,000 tasks now renders each key before the next, about 150 ms per key; every key arrives, but filtering on a deferred copy of the search would make it smoother if large projects need it.
 
 Final complexity review on 2026-11-24 (full conversation context) found nothing blocking. Applied from it: countActiveFilters derives from the one URL key table; App's handleOpenTask and the sidebar search results use taskLayoutOfPath, so a task opened from a sidebar search result opens over the current or remembered layout instead of always over the Board; two comments corrected (which values the canonical rewrite drops, and the wording about matching the same tasks as the CLI, TUI and MCP). Rechecked after these edits: type check, Biome, the web and changed unit tests (393 pass), the build, the compiled-binary smoke script, and sidebar search result links from the List, the Board and the Milestones page in the compiled binary.
+
+Codex review of PR 1259 (2026-11-24): with milestone lanes on, a lane collapsed before a filter left it as the only lane lost both its header and its cards, so the board looked empty while the page counted matching tasks. A lane can be collapsed only while lane headers show, so the only lane left is always open (Board.tsx isLaneCollapsed). Regression test "shows the cards of a collapsed lane once a filter leaves it as the only lane" in web-tasks-page failed before the fix and passes after it; checked in the compiled binary (collapse Release 1, then filter to it on the same page: 48 cards shown).
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
