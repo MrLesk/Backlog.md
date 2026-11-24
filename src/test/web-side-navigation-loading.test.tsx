@@ -31,6 +31,19 @@ const renderNavigation = (isLoading: boolean, taskCount: number, error?: Error):
 		</MemoryRouter>,
 	);
 
+// The text a reader sees in server-rendered markup, read with Bun's HTML parser: no tags, no comments.
+const visibleText = (html: string): string => {
+	let text = "";
+	new HTMLRewriter()
+		.onDocument({
+			text(chunk) {
+				text += chunk.text;
+			},
+		})
+		.transform(html);
+	return text;
+};
+
 const renderBoard = (isLoading: boolean, error?: Error): string =>
 	renderToString(
 		<MemoryRouter>
@@ -63,8 +76,7 @@ describe("SideNavigation task loading", () => {
 		expect(loading).not.toContain("No decisions");
 
 		const loaded = renderNavigation(false, 3);
-		// The counts sit in their own mono element, so the visible text is read without the markup.
-		const loadedText = loaded.replace(/<[^>]*>/g, "");
+		const loadedText = visibleText(loaded);
 		expect(loadedText).toContain("Kanban Board");
 		expect(loadedText).toContain("All Tasks");
 		expect(loadedText).toContain("Tasks (3)");
