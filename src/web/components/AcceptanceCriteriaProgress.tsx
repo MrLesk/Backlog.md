@@ -29,10 +29,11 @@ export default function AcceptanceCriteriaProgress({ task, density }: Acceptance
 	if (!progress) return null;
 
 	const arcLength = (progress.checked / progress.total) * RING_CIRCUMFERENCE;
+	const isComplete = progress.checked === progress.total;
 
 	return (
 		<span
-			className="inline-flex items-center gap-1 whitespace-nowrap font-mono text-[10px] font-medium text-blue-600 dark:text-blue-300"
+			className={`inline-flex items-center gap-1 whitespace-nowrap font-mono text-[11.5px] font-medium leading-4 ${isComplete ? "text-ink" : "text-ink-2"}`}
 			data-acceptance-criteria-progress
 			data-density={density}
 			role="progressbar"
@@ -47,15 +48,7 @@ export default function AcceptanceCriteriaProgress({ task, density }: Acceptance
 				viewBox="0 0 12 12"
 				aria-hidden="true"
 			>
-				<circle
-					cx="6"
-					cy="6"
-					r={RING_RADIUS}
-					fill="none"
-					strokeWidth="2"
-					stroke="currentColor"
-					className="text-blue-200 dark:text-blue-400/30"
-				/>
+				<circle cx="6" cy="6" r={RING_RADIUS} fill="none" strokeWidth="2" className="stroke-line" />
 				{progress.checked > 0 && (
 					<circle
 						cx="6"
@@ -63,9 +56,9 @@ export default function AcceptanceCriteriaProgress({ task, density }: Acceptance
 						r={RING_RADIUS}
 						fill="none"
 						strokeWidth="2"
-						stroke="currentColor"
 						strokeLinecap="round"
 						strokeDasharray={`${arcLength} ${RING_CIRCUMFERENCE}`}
+						className="stroke-accent-strong"
 					/>
 				)}
 			</svg>

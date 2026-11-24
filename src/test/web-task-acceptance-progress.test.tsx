@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import TaskCard from "../web/components/TaskCard.tsx";
 import TaskList from "../web/components/TaskList.tsx";
@@ -63,48 +62,41 @@ const renderCard = (task: Task): HTMLElement => {
 	return container;
 };
 
-const rerenderList = (...tasks: Task[]) => {
-	act(() => {
-		activeRoot?.render(
-			<MemoryRouter>
-				<TaskList
-					tasks={tasks}
-					availableStatuses={STATUSES}
-					availableLabels={[]}
-					availableMilestones={[]}
-					milestoneEntities={[]}
-					archivedMilestones={[]}
-					onEditTask={() => {}}
-					onNewTask={() => {}}
-				/>
-			</MemoryRouter>,
-		);
-	});
-};
-
+// The final status group is open, so a row in every status is on screen.
 const renderList = (...tasks: Task[]): HTMLElement => {
 	const container = setupDom();
-	rerenderList(...tasks);
+	act(() => {
+		activeRoot?.render(
+			<TaskList
+				tasks={tasks}
+				statuses={STATUSES}
+				finalGroupOpenByDefault
+				isLoading={false}
+				onEditTask={() => {}}
+			/>,
+		);
+	});
 	return container;
 };
 
 const getProgress = (container: HTMLElement): HTMLElement | null =>
 	container.querySelector("[data-acceptance-criteria-progress]");
 
-// The header row is the metadata line that precedes the card title. jsdom has no layout, so the
-// check pins the class that lets the row wrap instead of squeezing the type and project badges.
+// The header row is the line that precedes the card title: priority, ID and the ring.
 const getHeaderRow = (container: HTMLElement): HTMLElement => {
 	const header = container.querySelector("h4")?.previousElementSibling as HTMLElement | null;
-	expect(header?.className).toContain("flex-wrap");
+	expect(header).toBeTruthy();
 	return header as HTMLElement;
 };
 
-// The title button of one All Tasks row. The ring slot, when the list has one, is the element
-// right before it in the title cell's flex row.
-const getListTitle = (container: HTMLElement, taskId: string): HTMLElement => {
-	const title = container.querySelector<HTMLElement>(`tbody button[aria-label^="Open ${taskId}:"]`);
-	expect(title?.parentElement?.className).toContain("flex");
-	return title as HTMLElement;
+const getPriorityName = (element: HTMLElement): string | null | undefined =>
+	element.querySelector("[role='img'][aria-label$='priority']")?.getAttribute("aria-label");
+
+// One row of the list, found through the button that opens its task.
+const getListRow = (container: HTMLElement, taskId: string): HTMLElement => {
+	const row = container.querySelector<HTMLElement>(`button[aria-label^="Open ${taskId}:"]`)?.closest("li");
+	expect(row).toBeTruthy();
+	return row as HTMLElement;
 };
 
 const RING_CIRCUMFERENCE = 2 * Math.PI * 5;
@@ -178,7 +170,7 @@ describe("browser task acceptance criteria progress", () => {
 		expect(getProgress(container)).toBeNull();
 	});
 
-	it("renders the card ring in the header row beside the priority badge", () => {
+	it("renders the card ring in the header row after the priority and the ID", () => {
 		const container = renderCard(createTask({ priority: "high", acceptanceCriteriaItems: createCriteria(4, 7) }));
 		const header = getHeaderRow(container);
 		const progress = getProgress(container);
@@ -186,15 +178,8 @@ describe("browser task acceptance criteria progress", () => {
 		expect(container.querySelectorAll("[data-acceptance-criteria-progress]").length).toBe(1);
 		expect(header.contains(progress)).toBe(true);
 		expectRing(progress, 4, 7);
-
-		// The ring joins the priority badge in a group that never shrinks. The group is pushed flush
-		// right, so the badge sits where cards without progress already put it: on the first header
-		// line, or alone on a second one when the id and badges need the first.
-		const rightGroup = header.lastElementChild as HTMLElement;
-		expect(rightGroup.className).toContain("shrink-0");
-		expect(rightGroup.className).toContain("ml-auto");
-		expect(rightGroup.contains(progress)).toBe(true);
-		expect(rightGroup.lastElementChild?.textContent).toBe("High");
+		expect(getPriorityName(header)).toBe("High priority");
+		expect(header.textContent).toBe("task-14/7");
 	});
 
 	it("renders the card ring in the header row when the task has no priority", () => {
@@ -203,118 +188,51 @@ describe("browser task acceptance criteria progress", () => {
 		const progress = getProgress(container);
 
 		expect(header.contains(progress)).toBe(true);
+		expect(getPriorityName(header)).toBe("No priority");
 		expect(header.textContent).toBe("task-12/3");
 	});
 
-	it("keeps the priority badge alone in the header row when the task has no criteria", () => {
+	it("shows only the priority and the ID in the header row when the task has no criteria", () => {
 		const container = renderCard(createTask({ priority: "medium" }));
 		const header = getHeaderRow(container);
 
 		expect(getProgress(container)).toBeNull();
-		expect(header.textContent).toBe("task-1Med");
-	});
-
-	it("renders nothing beside the id when the task has neither criteria nor priority", () => {
-		const container = renderCard(createTask());
-		const header = getHeaderRow(container);
-
-		expect(getProgress(container)).toBeNull();
-		expect(header.children.length).toBe(1);
+		expect(getPriorityName(header)).toBe("Medium priority");
 		expect(header.textContent).toBe("task-1");
 	});
 
-	it("renders a partial progress ring at list density in the wide list summary", () => {
+	it("renders a partial progress ring at list density in a list row", () => {
 		const container = renderList(createTask({ acceptanceCriteriaItems: createCriteria(4, 7) }));
 		const progress = getProgress(container);
 
 		expect(progress).toBeTruthy();
 		expect(progress?.dataset.density).toBe("list");
 		expect(progress?.querySelector("svg")?.getAttribute("class")).toContain("h-3.5 w-3.5");
+		expect(getListRow(container, "task-1").contains(progress)).toBe(true);
 		expectRing(progress, 4, 7);
 	});
 
-	it("renders the list ring on the title line, before the title", () => {
-		const container = renderList(createTask({ acceptanceCriteriaItems: createCriteria(4, 7) }));
-		const title = getListTitle(container, "task-1");
-		const slot = title.previousElementSibling;
-
-		// The ring shares the title's flex row, so it adds no line to the row. The slot never
-		// shrinks, so a long title is what truncates.
-		expect(slot?.contains(getProgress(container))).toBe(true);
-		expect(slot?.className).toContain("shrink-0");
-		expect(title.className).toContain("truncate");
-		expect(title.getAttribute("aria-label")).toBe("Open task-1: Task summary");
-	});
-
-	it("keeps titles aligned in a mixed list by giving every row the ring slot", () => {
-		const container = renderList(
-			createTask({ id: "task-1", acceptanceCriteriaItems: createCriteria(1, 2) }),
-			createTask({ id: "task-2" }),
-		);
-		const slotWithRing = getListTitle(container, "task-1").previousElementSibling;
-		const slotWithoutRing = getListTitle(container, "task-2").previousElementSibling;
-
-		expect(container.querySelectorAll("[data-acceptance-criteria-progress]").length).toBe(1);
-		expect(slotWithRing?.className).toContain("min-w-12");
-		expect(slotWithoutRing?.className).toBe(slotWithRing?.className);
-		expect(slotWithoutRing?.childElementCount).toBe(0);
-	});
-
-	it("shares enough ring space for larger counts and restores small-count spacing when they leave", () => {
-		const smallTasks = [
-			createTask({ id: "task-1", acceptanceCriteriaItems: createCriteria(1, 2) }),
-			createTask({ id: "task-2", acceptanceCriteriaItems: createCriteria(99, 99) }),
-			createTask({ id: "task-3" }),
-		];
-		const container = renderList(...smallTasks);
-		const getSlot = (id: string) => getListTitle(container, id).previousElementSibling as HTMLElement;
-		const smallWidth = getSlot("task-1").style.width;
-		expect(smallWidth).not.toBe("");
-
-		for (const total of [100, 1000]) {
-			rerenderList(...smallTasks, createTask({ id: "task-4", acceptanceCriteriaItems: createCriteria(total, total) }));
-			const wideWidth = getSlot("task-4").style.width;
-			expect(wideWidth).not.toBe(smallWidth);
-			for (const id of ["task-1", "task-2", "task-3", "task-4"]) {
-				expect(getSlot(id).style.width).toBe(wideWidth);
-			}
-			expectRing(getSlot("task-1").querySelector("[data-acceptance-criteria-progress]"), 1, 2);
-			expectRing(getSlot("task-2").querySelector("[data-acceptance-criteria-progress]"), 99, 99);
-			expect(getSlot("task-3").childElementCount).toBe(0);
-			expectRing(getSlot("task-4").querySelector("[data-acceptance-criteria-progress]"), total, total);
-
-			rerenderList(...smallTasks);
-			expect(container.querySelector('button[aria-label^="Open task-4:"]')).toBeNull();
-			for (const task of smallTasks) {
-				expect(getSlot(task.id).style.width).toBe(smallWidth);
-			}
-		}
-	});
-
-	it("keeps an all-checked task visibly In Progress in the wide list summary", () => {
+	it("keeps an all-checked task visibly In Progress in the list", () => {
 		const container = renderList(createTask({ acceptanceCriteriaItems: createCriteria(3, 3) }));
-		const progress = getProgress(container);
-		const statusCell = container.querySelector("tbody tr td:nth-child(3)");
+		const row = getListRow(container, "task-1");
 
-		expect(progress).toBeTruthy();
-		expect(progress?.dataset.density).toBe("list");
-		expectRing(progress, 3, 3);
-		expect(progress?.className).toContain("text-blue-600");
-		expect(statusCell?.textContent?.trim()).toBe("In Progress");
+		expectRing(getProgress(container), 3, 3);
+		expect(row.querySelector("[role='img'][aria-label='In Progress']")).toBeTruthy();
 	});
 
 	it.each(statusCases)("renders the list ring in the %s status (%s)", (_position, status, checked, total) => {
 		const container = renderList(createTask({ status, acceptanceCriteriaItems: createCriteria(checked, total) }));
+		const row = getListRow(container, "task-1");
 
 		expectRing(getProgress(container), checked, total);
-		expect(container.querySelector("tbody tr td:nth-child(3)")?.textContent?.trim()).toBe(status);
+		expect(row.querySelector(`[role='img'][aria-label='${status}']`)).toBeTruthy();
 	});
 
-	it("renders no ring and reserves no slot in a list without criteria", () => {
+	it("renders no ring in a list row without criteria", () => {
 		const container = renderList(createTask({ acceptanceCriteriaItems: [] }));
 
+		expect(getListRow(container, "task-1")).toBeTruthy();
 		expect(getProgress(container)).toBeNull();
-		expect(getListTitle(container, "task-1").previousElementSibling).toBeNull();
 	});
 
 	it("derives progress again when the task criteria change", () => {

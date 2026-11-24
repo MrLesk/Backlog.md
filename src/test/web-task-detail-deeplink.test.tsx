@@ -571,7 +571,7 @@ const dropTaskIntoStatus = async (
 	const targetHeading = Array.from(container.querySelectorAll("h3")).find(
 		(heading) => heading.textContent === targetStatus,
 	);
-	const targetColumn = targetHeading?.closest(".rounded-lg");
+	const targetColumn = targetHeading?.closest("[role='group']");
 	expect(targetColumn).toBeTruthy();
 	const dropEvent = new window.Event("drop", { bubbles: true, cancelable: true });
 	Object.defineProperty(dropEvent, "dataTransfer", {
@@ -599,6 +599,10 @@ const travel = async (direction: "back" | "forward", expectations: FetchExpectat
 		await navigated;
 	});
 };
+
+// The sidebar's Tasks entry, whose text is its label followed by the task count once the tasks have loaded.
+const sidebarTasksLink = (container: HTMLElement) =>
+	Array.from(container.querySelectorAll("nav a")).find((element) => /^Tasks\d*$/.test(element.textContent?.trim() ?? ""));
 
 const assertState = (predicate: () => boolean, message: string) => {
 	expect(predicate(), message).toBe(true);
@@ -916,7 +920,7 @@ describe("task detail routes", () => {
 		const targetHeading = Array.from(container.querySelectorAll("h3")).find(
 			(heading) => heading.textContent === "To Do",
 		);
-		const targetColumn = targetHeading?.closest(".rounded-lg");
+		const targetColumn = targetHeading?.closest("[role='group']");
 		const visibleTaskTitles = Array.from(targetColumn?.querySelectorAll("[draggable='true'] h4") ?? []).map(
 			(element) => element.textContent,
 		);
@@ -927,10 +931,9 @@ describe("task detail routes", () => {
 		const container = await renderApp("/");
 		assertState(() => container.textContent?.includes(tasks[0]?.title ?? "") ?? false, "board task");
 		expect(window.location.pathname).toBe("/board");
-		const boardLink = Array.from(container.querySelectorAll("a")).find(
-			(element) => element.textContent?.includes("Kanban Board"),
-		);
-		expect(boardLink?.getAttribute("aria-current")).toBe("page");
+		const tasksLink = sidebarTasksLink(container);
+		expect(tasksLink?.getAttribute("href")).toBe("/board");
+		expect(tasksLink?.getAttribute("aria-current")).toBe("page");
 
 		const title = Array.from(container.querySelectorAll("h4")).find((element) => element.textContent === tasks[0]?.title);
 		const card = title?.closest("[draggable='true']");
@@ -1011,6 +1014,20 @@ describe("task detail routes", () => {
 			tasks.splice(tasks.indexOf(detailFollower), 1);
 			for (const result of addedResults) searchResults.splice(searchResults.indexOf(result), 1);
 		}
+	});
+
+	it("keeps every key typed into the task search while the URL follows", async () => {
+		const container = await renderApp("/tasks");
+		const field = container.querySelector("input[aria-label='Search tasks']") as HTMLInputElement;
+
+		// Each key lands on the field as it is when the key arrives, before React has rendered the previous one.
+		await act(async () => {
+			for (const key of "lab") setNativeInputValue(field, `${field.value}${key}`);
+			await Promise.resolve();
+		});
+
+		expect(field.value).toBe("lab");
+		expect(new URLSearchParams(window.location.search).get("search")).toBe("lab");
 	});
 
 	it("preserves a type filter through board task Back, Forward, and close navigation", async () => {
@@ -1127,7 +1144,8 @@ describe("task detail routes", () => {
 		expect(container.textContent).toContain(customerTask.title);
 		expect(container.textContent).not.toContain(tasks[0]?.title ?? "");
 		expect(new URLSearchParams(window.location.search).get("type")).toBe("Customer Request");
-		const typeSelect = container.querySelector("select[aria-label='Filter board by type']") as HTMLSelectElement;
+		await click(container.querySelector("button[aria-controls='task-filters']") as HTMLButtonElement);
+		const typeSelect = container.querySelector("select[aria-label='Filter by type']") as HTMLSelectElement;
 		expect(Array.from(typeSelect.options).map((option) => option.value)).toContain("Customer Request");
 	});
 
@@ -1404,11 +1422,15 @@ describe("task detail routes", () => {
 
 	it("archives a routed task with a single history close", async () => {
 		const container = await renderApp("/milestones");
-		const allTasksLink = Array.from(container.querySelectorAll("a")).find(
-			(element) => element.textContent?.includes("All Tasks"),
+		const tasksLink = sidebarTasksLink(container);
+		expect(tasksLink).toBeTruthy();
+		await click(tasksLink as HTMLAnchorElement);
+		assertState(() => window.location.pathname === "/board", "Tasks entry opens the board first");
+		const listLink = Array.from(container.querySelectorAll("nav[aria-label='Layout'] a")).find(
+			(element) => element.textContent?.trim() === "List",
 		);
-		expect(allTasksLink).toBeTruthy();
-		await click(allTasksLink as HTMLAnchorElement);
+		expect(listLink).toBeTruthy();
+		await click(listLink as HTMLAnchorElement);
 		assertState(
 			() => window.location.pathname === "/tasks" && container.textContent?.includes(tasks[0]?.title ?? "") === true,
 			"task list navigation",

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
-import BoardPage from "../web/components/BoardPage";
 import SideNavigation from "../web/components/SideNavigation";
+import TasksPage from "../web/components/TasksPage";
 
 const storage = new Map<string, string>();
 globalThis.localStorage = {
@@ -16,9 +16,9 @@ globalThis.localStorage = {
 	},
 } as Storage;
 
-const renderNavigation = (isLoading: boolean, taskCount: number, error?: Error): string =>
+const renderNavigation = (isLoading: boolean, taskCount: number, error?: Error, path = "/"): string =>
 	renderToString(
-		<MemoryRouter>
+		<MemoryRouter initialEntries={[path]}>
 			<SideNavigation
 				taskCount={taskCount}
 				docs={[]}
@@ -44,21 +44,44 @@ const visibleText = (html: string): string => {
 	return text;
 };
 
+/** The href, aria-current and visible text of the sidebar's Tasks entry. */
+const tasksEntry = (html: string): { href: string | null; current: string | null; text: string } => {
+	const links: Array<{ href: string | null; current: string | null; text: string }> = [];
+	new HTMLRewriter()
+		.on("a", {
+			element(element) {
+				links.push({ href: element.getAttribute("href"), current: element.getAttribute("aria-current"), text: "" });
+			},
+			text(chunk) {
+				const link = links.at(-1);
+				if (link) link.text += chunk.text;
+			},
+		})
+		.transform(html);
+	const entry = links.find((link) => link.text.startsWith("Tasks"));
+	return entry ?? { href: null, current: null, text: "" };
+};
+
 const renderBoard = (isLoading: boolean, error?: Error): string =>
 	renderToString(
-		<MemoryRouter>
-			<BoardPage
-				onEditTask={() => {}}
-				onNewTask={() => {}}
+		<MemoryRouter initialEntries={["/board"]}>
+			<TasksPage
+				layout="board"
 				tasks={[]}
 				statuses={["To Do", "Done"]}
-				milestones={[]}
 				availableLabels={[]}
+				milestones={[]}
 				milestoneEntities={[]}
 				archivedMilestones={[]}
+				availableTypes={[]}
+				availableProjects={[]}
 				isLoading={isLoading}
 				loadError={error}
+				hideEmptyColumns={false}
+				onEditTask={() => {}}
+				onNewTask={() => {}}
 				onRefreshData={async () => {}}
+				onTasksUpdated={() => {}}
 			/>
 		</MemoryRouter>,
 	);
@@ -66,8 +89,7 @@ const renderBoard = (isLoading: boolean, error?: Error): string =>
 describe("SideNavigation task loading", () => {
 	it("keeps navigation mounted while only the task count is loading", () => {
 		const loading = renderNavigation(true, 0);
-		expect(loading).toContain("Kanban Board");
-		expect(loading).toContain("All Tasks");
+		expect(tasksEntry(loading).href).toBe("/board");
 		expect(loading).toContain('aria-label="Loading task count"');
 		expect(loading).toContain('aria-label="Loading document count"');
 		expect(loading).toContain('aria-label="Loading decision count"');
@@ -77,14 +99,29 @@ describe("SideNavigation task loading", () => {
 
 		const loaded = renderNavigation(false, 3);
 		const loadedText = visibleText(loaded);
-		expect(loadedText).toContain("Kanban Board");
-		expect(loadedText).toContain("All Tasks");
-		expect(loadedText).toContain("Tasks (3)");
+		// The entry's label followed by its count.
+		expect(tasksEntry(loaded).text).toBe("Tasks3");
 		expect(loadedText).toContain("Documents (0)");
 		expect(loadedText).toContain("Decisions (0)");
 		expect(loadedText).toContain("No documents");
 		expect(loadedText).toContain("No decisions");
 		expect(loaded).not.toContain('aria-label="Loading task count"');
+	});
+
+	it("offers one Tasks entry that is current on both layouts and opens the layout used last", () => {
+		const onBoard = renderNavigation(false, 3, undefined, "/board/BACK-1/open-task");
+		expect(visibleText(onBoard)).not.toContain("Kanban Board");
+		expect(visibleText(onBoard)).not.toContain("All Tasks");
+		expect(tasksEntry(onBoard)).toMatchObject({ href: "/board", current: "page" });
+		expect(tasksEntry(renderNavigation(false, 3, undefined, "/tasks"))).toMatchObject({ href: "/tasks", current: "page" });
+
+		storage.set("backlog.tasks.layout", "list");
+		try {
+			expect(tasksEntry(renderNavigation(false, 3, undefined, "/milestones"))).toMatchObject({ href: "/tasks", current: null });
+		} finally {
+			storage.delete("backlog.tasks.layout");
+		}
+		expect(tasksEntry(renderNavigation(false, 3, undefined, "/milestones"))).toMatchObject({ href: "/board", current: null });
 	});
 
 	it("shows a distinct unavailable presentation and exposes retry after a corpus failure", () => {
@@ -109,9 +146,8 @@ describe("SideNavigation task loading", () => {
 		}
 	});
 
-	it("keeps Kanban loading, loaded-empty, and error states distinct", () => {
+	it("keeps board loading, loaded-empty, and error states distinct", () => {
 		const loading = renderBoard(true);
-		expect(loading).toContain("Kanban Board");
 		expect(loading).toContain('role="status"');
 		expect(loading).not.toContain("Empty");
 

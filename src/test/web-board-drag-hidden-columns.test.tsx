@@ -49,16 +49,13 @@ const renderBoard = (options: {
 		activeRoot?.render(
 			<Board
 				onEditTask={() => {}}
-				onNewTask={() => {}}
 				tasks={[draggedTask]}
+				visibleTasks={[draggedTask]}
 				statuses={STATUSES}
 				isLoading={false}
-				milestones={[]}
-				availableLabels={[]}
 				milestoneEntities={[]}
 				archivedMilestones={[]}
 				laneMode="none"
-				onLaneChange={() => {}}
 				hideEmptyColumns={options.hideEmptyColumns}
 				onTasksUpdated={options.onTasksUpdated}
 			/>,
@@ -78,7 +75,7 @@ const getCard = (container: HTMLElement): HTMLElement => {
 
 const getColumn = (container: HTMLElement, status: string): HTMLElement => {
 	const heading = Array.from(container.querySelectorAll("h3")).find((element) => element.textContent === status);
-	const column = heading?.closest(".rounded-lg");
+	const column = heading?.closest("[role='group']");
 	expect(column).toBeTruthy();
 	return column as HTMLElement;
 };

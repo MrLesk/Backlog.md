@@ -167,8 +167,10 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     --font-mono--font-feature-settings: var(--font-sans--font-feature-settings);
 }
 
-/* index.html and ThemeContext put the dark class on <html>. */
+/* index.html and ThemeContext put the dark class on <html>. color-scheme draws the browser's own controls, such as
+   checkboxes and scrollbars, dark as well. */
 .dark {
+    color-scheme: dark;
     --color-paper: #08121B;
     --color-surface: #0D1A26;
     --color-surface-2: #132433;
@@ -211,6 +213,12 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 /* The small uppercase captions above the sidebar sections: a mono detail, like the counts they hold. */
 @utility section-caption {
     @apply font-mono text-[11px] leading-4 font-medium uppercase tracking-[0.08em] text-ink-3;
+}
+
+/* The side padding of the content panel's header row. Page content that lines up with the header row, such as the
+   Tasks page, uses the same utility, so the two edges cannot drift apart. */
+@utility panel-gutter {
+    @apply px-2 lg:px-5;
 }
 
 @layer base {

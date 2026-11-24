@@ -1,10 +1,10 @@
 import React from 'react';
 import { type Task } from '../../types';
-import { formatPriorityLabel } from '../../utils/priority-config';
 import AcceptanceCriteriaProgress, { getAcceptanceCriteriaProgressCounts } from './AcceptanceCriteriaProgress';
+import PriorityBars from './PriorityBars';
 import StoredDate from './StoredDate';
-import ProjectBadge from './ProjectBadge';
-import TaskTypeBadge from './TaskTypeBadge';
+import TaskBranch from './TaskBranch';
+import TaskTags from './TaskTags';
 
 interface TaskCardProps {
   task: Task;
@@ -13,7 +13,8 @@ interface TaskCardProps {
   onDragEnd?: () => void;
   status?: string;
   laneId?: string;
-  availableTypes?: string[];
+  /** The configured priorities, highest first, for the priority bars. */
+  priorities?: string[];
   availableProjects?: string[];
   dateFormat?: string;
   isSelected?: boolean;
@@ -51,7 +52,7 @@ const buildSelectionDragImage = (source: HTMLElement, count: number): HTMLElemen
   badge.textContent = String(count);
   badge.style.cssText =
     'position:absolute;top:-8px;right:-8px;min-width:24px;height:24px;padding:0 6px;border-radius:9999px;' +
-    'background:#3b82f6;color:#ffffff;font-size:12px;font-weight:600;line-height:24px;text-align:center;' +
+    'background:var(--color-ink);color:var(--color-on-ink);font-size:12px;font-weight:600;line-height:24px;text-align:center;' +
     'box-shadow:0 1px 3px rgba(0,0,0,0.3);';
   ghost.appendChild(badge);
 
@@ -65,7 +66,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
   onDragEnd,
   status,
   laneId,
-  availableTypes,
+  priorities,
   availableProjects,
   dateFormat,
   isSelected = false,
@@ -132,32 +133,6 @@ const TaskCard: React.FC<TaskCardProps> = ({
     onDragEnd?.();
   };
 
-  const getPriorityClass = (priority?: string) => {
-    switch (priority) {
-      case 'high': return 'border-l-4 border-l-red-500 dark:border-l-red-400';
-      case 'medium': return 'border-l-4 border-l-yellow-500 dark:border-l-yellow-400';
-      case 'low': return 'border-l-4 border-l-green-500 dark:border-l-green-400';
-      default: return 'border-l-4 border-l-gray-300 dark:border-l-gray-600';
-    }
-  };
-
-  const getPriorityBadge = (priority?: string) => {
-    switch (priority) {
-      case 'high': return { bg: 'bg-red-100 dark:bg-red-900/40', text: 'text-red-700 dark:text-red-300', label: 'High' };
-      case 'medium': return { bg: 'bg-yellow-100 dark:bg-yellow-900/40', text: 'text-yellow-700 dark:text-yellow-300', label: 'Med' };
-      case 'low': return { bg: 'bg-green-100 dark:bg-green-900/40', text: 'text-green-700 dark:text-green-300', label: 'Low' };
-      default:
-        return priority
-          ? {
-              bg: 'bg-gray-100 dark:bg-gray-600',
-              text: 'text-gray-700 dark:text-gray-200',
-              label: formatPriorityLabel(priority),
-            }
-          : null;
-    }
-  };
-
-  const priorityBadge = getPriorityBadge(task.priority);
   const dragEvents = onDragStart ? {
     draggable: !isFromOtherBranch,
     onDragStart: handleDragStart,
@@ -166,31 +141,20 @@ const TaskCard: React.FC<TaskCardProps> = ({
 
   return (
     <div className="relative">
-      {/* Branch tooltip when trying to drag cross-branch task */}
+      {/* Shown when a read-only card from another branch is dragged. */}
       {showBranchTooltip && isFromOtherBranch && (
-        <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 z-50 px-3 py-2 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-md shadow-lg whitespace-nowrap">
-          <div className="flex items-center gap-1">
-            <svg className="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            Switch to <span className="font-semibold text-amber-300">{task.branch}</span> branch to move this task
-          </div>
-          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900 dark:bg-gray-700"></div>
+        <div className="absolute -top-12 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-control bg-ink px-3 py-2 text-xs text-on-ink shadow-lg">
+          Switch to <span className="font-semibold">{task.branch}</span> branch to move this task
+          <div className="absolute bottom-0 left-1/2 h-2 w-2 -translate-x-1/2 translate-y-1/2 rotate-45 bg-ink"></div>
         </div>
       )}
 
       <div
-        className={`bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md p-3 mb-2 transition-all duration-200 ${
-          isFromOtherBranch 
-            ? 'opacity-75 cursor-not-allowed border-dashed' 
-            : 'cursor-pointer hover:shadow-md dark:hover:shadow-lg hover:border-stone-500 dark:hover:border-stone-400'
-        } ${getPriorityClass(task.priority)} ${
-          isDragging || (isSelected && isSelectionDragging) ? 'opacity-50 transform rotate-2 scale-105' : ''
+        className={`rounded-[10px] border bg-surface p-3 transition-all duration-200 ${
+          isFromOtherBranch ? 'cursor-not-allowed border-dashed border-line' : 'cursor-pointer border-line hover:border-ink-3'
         } ${
-          isSelected
-            ? 'ring-2 ring-blue-500 dark:ring-blue-400 border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/30'
-            : ''
-        }`}
+          isDragging || (isSelected && isSelectionDragging) ? 'opacity-50 transform rotate-2 scale-105' : ''
+        } ${isSelected ? 'border-accent-strong ring-2 ring-accent-strong' : ''} focus-ring`}
         aria-selected={isSelected}
 		role="button"
 		tabIndex={0}
@@ -217,69 +181,25 @@ const TaskCard: React.FC<TaskCardProps> = ({
 			}
 		}}
       >
-        {/* Cross-branch indicator banner */}
-        {isFromOtherBranch && (
-          <div className="flex items-center gap-1.5 mb-2 px-2 py-1 -mx-1 -mt-1 bg-amber-50 dark:bg-amber-900/30 border-b border-amber-200 dark:border-amber-700 rounded-t text-xs text-amber-700 dark:text-amber-300">
-            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-            </svg>
-            <span className="truncate">
-              From <span className="font-semibold">{task.branch}</span> branch
-            </span>
-          </div>
-        )}
-
-        {/* Header row with task metadata. It wraps like the footer: when the id, the badges and the
-            ring and priority group do not fit on one line, the group moves to a second line, still
-            flush right, so the badges are not squeezed to make room for it. */}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1.5">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="shrink-0 text-xs text-gray-600 dark:text-gray-300 font-mono transition-colors duration-200">{task.id}</span>
-            <TaskTypeBadge type={task.type} availableTypes={availableTypes} className="min-w-0" />
-            <ProjectBadge project={task.project} availableProjects={availableProjects} className="min-w-0" />
-          </div>
-          {(acceptanceCriteriaProgress || priorityBadge) && (
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              <AcceptanceCriteriaProgress task={task} density="card" />
-              {priorityBadge && (
-                <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${priorityBadge.bg} ${priorityBadge.text} transition-colors duration-200`}>
-                  {priorityBadge.label}
-                </span>
-              )}
-            </div>
-          )}
+        {/* Header row: the same priority and ID as a row of the list, and the acceptance-criteria ring. */}
+        <div className="flex items-center gap-2">
+          <PriorityBars priority={task.priority} priorities={priorities} />
+          <span className="min-w-0 font-mono text-xs font-medium text-ink-3 wrap-anywhere">{task.id}</span>
+          <span className="ml-auto flex shrink-0">
+            <AcceptanceCriteriaProgress task={task} density="card" />
+          </span>
         </div>
 
-        {/* Title */}
-        <h4 className={`font-semibold text-sm wrap-anywhere md:line-clamp-2 transition-colors duration-200 ${
-          isFromOtherBranch
-            ? 'text-gray-600 dark:text-gray-400'
-            : 'text-gray-900 dark:text-gray-100'
-        }`}>
+        <h4 className="mt-1.5 text-sm font-medium leading-snug text-ink wrap-anywhere md:line-clamp-2">
           {task.title}
         </h4>
 
-        {/* Labels - limit to 3 */}
-        {task.labels.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
-            {task.labels.slice(0, 3).map(label => (
-              <span
-                key={label}
-                className="inline-block px-1.5 py-0.5 text-[10px] bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300 rounded transition-colors duration-200"
-              >
-                {label}
-              </span>
-            ))}
-            {task.labels.length > 3 && (
-              <span className="inline-block px-1.5 py-0.5 text-[10px] text-gray-400 dark:text-gray-500">
-                +{task.labels.length - 3}
-              </span>
-            )}
-          </div>
-        )}
+        <div className="mt-2 flex flex-wrap gap-1 empty:hidden">
+          <TaskTags task={task} projects={availableProjects} />
+        </div>
 
-        {/* Footer with dates and assignee */}
-        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs md:text-[10px] text-gray-600 dark:text-gray-300 mt-2 pt-1.5 border-t border-gray-100 dark:border-gray-600/50 transition-colors duration-200">
+        {/* Footer with dates, branch and assignee */}
+        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-line-soft pt-1.5 text-[11px] text-ink-3">
           {/* Grouped so the updated date sits beside the created date on every card, whatever else the footer shows.
               The group uses the same gaps as the footer row (gap-x-2 gap-y-1), so change the two together.
               A new labelled date in the compact style belongs inside this group. */}
@@ -288,8 +208,9 @@ const TaskCard: React.FC<TaskCardProps> = ({
             {task.updatedDate && <span>Updated: <StoredDate value={task.updatedDate} dateFormat={dateFormat} compact /></span>}
           </span>
           {task.dueDate && <span>Due: <StoredDate value={task.dueDate} dateFormat={dateFormat} /></span>}
+          {task.branch && <TaskBranch branch={task.branch} />}
           {task.assignee.length > 0 && (
-            <span className="max-w-full truncate font-medium max-md:order-first md:max-w-[80px]" title={task.assignee.join(', ')}>
+            <span className="ml-auto max-w-[7rem] truncate font-mono text-ink-2" title={task.assignee.join(', ')}>
               {task.assignee[0]}
             </span>
           )}

@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation, useMatch, useNavigate } from 'react-router-dom';
 import Layout from './components/Layout';
-import BoardPage from './components/BoardPage';
+import TasksPage from './components/TasksPage';
 import DocumentationDetail from './components/DocumentationDetail';
 import DecisionDetail from './components/DecisionDetail';
-import TaskList from './components/TaskList';
 import DraftsList from './components/DraftsList';
 import Settings from './components/Settings';
 import Statistics from './components/Statistics';
@@ -41,7 +40,7 @@ import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from 
 import { getProjectValues } from '../utils/project-config';
 import { getTaskTypeValues } from '../utils/task-type-config';
 import { createUrlPath } from './utils/urlHelpers';
-import { filterKanbanTasks } from './utils/kanban-tasks';
+import { readRememberedTaskLayout, TASK_LAYOUT_PATHS, type TaskLayout, taskLayoutOfPath } from './lib/task-view';
 import { reconcileById } from './utils/reconcile';
 import { parseBrowserLoadingState } from '../utils/browser-loading-state';
 
@@ -213,7 +212,7 @@ type TaskModalState =
 
 function AppContent() {
   const { canWrite, sections } = useBrowserAccess();
-  const landingPath = (sections.tasks && '/board')
+  const landingPath = (sections.tasks && TASK_LAYOUT_PATHS[readRememberedTaskLayout()])
     || (sections.docs && '/documentation')
     || (sections.decisions && '/decisions')
     || '/milestones';
@@ -274,7 +273,8 @@ function AppContent() {
   
   // Centralized data state
   const [tasks, setTasks] = useState<Task[]>([]);
-  const kanbanTasks = React.useMemo(() => filterKanbanTasks(tasks), [tasks]);
+  // Archived tasks stay off the Tasks page; they remain reachable through their task detail.
+  const tasksPageTasks = React.useMemo(() => tasks.filter((task) => task.source !== 'archived'), [tasks]);
   const [docs, setDocs] = useState<Document[]>([]);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   // Mirrors of the store lists, so refreshes can reconcile in place without
@@ -542,12 +542,8 @@ function AppContent() {
   }, []);
 
   const handleOpenTask = useCallback((task: Task) => {
-    const basePath =
-      location.pathname.startsWith('/board')
-        ? '/board'
-        : location.pathname.startsWith('/tasks')
-          ? '/tasks'
-          : null;
+    const layout = taskLayoutOfPath(location.pathname);
+    const basePath = layout ? TASK_LAYOUT_PATHS[layout] : null;
 
     if (!basePath) {
       // Pages without a task route (milestones, statistics) open the modal directly, so they must
@@ -914,50 +910,34 @@ function AppContent() {
     );
   }
 
-  const boardPage = (
-    <BoardPage
-      onEditTask={handleOpenTask}
-      onNewTask={handleNewTask}
-      tasks={kanbanTasks}
-      onRefreshData={refreshData}
-	  onTasksUpdated={applyReorderedTasks}
+  const tasksPage = (layout: TaskLayout) => (
+    <TasksPage
+      layout={layout}
+      tasks={tasksPageTasks}
       statuses={statuses}
-      milestones={milestones}
       availableLabels={availableLabels}
+      milestones={milestones}
       milestoneEntities={milestoneEntities}
       archivedMilestones={archivedMilestones}
+      availablePriorities={config?.priorities}
+      availableTypes={availableTypes}
+      availableProjects={availableProjects}
       isLoading={isLoading}
       loadError={loadError}
       hideEmptyColumns={config?.hideEmptyColumns ?? false}
       dateFormat={config?.dateFormat}
-      availablePriorities={config?.priorities}
-      availableTypes={availableTypes}
-      availableProjects={availableProjects}
-    />
-  );
-
-  const taskListPage = (
-    <TaskList
       onEditTask={handleOpenTask}
       onNewTask={handleNewTask}
-      tasks={tasks}
-      availableStatuses={statuses}
-      availableLabels={availableLabels}
-      availableMilestones={milestones}
-      availablePriorities={config?.priorities}
-      milestoneEntities={milestoneEntities}
-      archivedMilestones={archivedMilestones}
       onRefreshData={refreshData}
-      dateFormat={config?.dateFormat}
-      isLoading={isLoading}
+      onTasksUpdated={applyReorderedTasks}
     />
   );
 
   const taskRoutes = sections.tasks && (
     <>
-      <Route path="board" element={boardPage} />
-      <Route path="board/:id" element={boardPage} />
-      <Route path="board/:id/:title" element={boardPage} />
+      <Route path="board" element={tasksPage('board')} />
+      <Route path="board/:id" element={tasksPage('board')} />
+      <Route path="board/:id/:title" element={tasksPage('board')} />
       <Route
         path="board/*"
         element={
@@ -968,9 +948,9 @@ function AppContent() {
           />
         }
       />
-      <Route path="tasks" element={taskListPage} />
-      <Route path="tasks/:id" element={taskListPage} />
-      <Route path="tasks/:id/:title" element={taskListPage} />
+      <Route path="tasks" element={tasksPage('list')} />
+      <Route path="tasks/:id" element={tasksPage('list')} />
+      <Route path="tasks/:id/:title" element={tasksPage('list')} />
       <Route
         path="tasks/*"
         element={
@@ -1130,7 +1110,8 @@ function App() {
   const Router = browserSnapshot ? HashRouter : BrowserRouter;
   return (
     <BrowserAccessProvider snapshot={browserSnapshot}>
-      <Router>
+      {/* No transitions: the Tasks search field shows the URL, so a URL that renders late loses the keys typed meanwhile. */}
+      <Router useTransitions={false}>
         <AppContent />
       </Router>
     </BrowserAccessProvider>

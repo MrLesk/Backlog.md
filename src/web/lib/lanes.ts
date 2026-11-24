@@ -151,6 +151,18 @@ function canonicalizeMilestone(value: string | null | undefined, aliasMap: Map<s
 	return normalized;
 }
 
+/**
+ * Resolves a milestone value (an ID, a numeric alias or a unique title) to the milestone ID its lane is keyed by,
+ * with the same rules buildLanes and groupTasksByLaneAndStatus use.
+ */
+export function createMilestoneCanonicalizer(
+	milestoneEntities: Milestone[],
+	archivedMilestones: Milestone[] = [],
+): (value: string | null | undefined) => string {
+	const aliasMap = buildMilestoneAliasMap(milestoneEntities, archivedMilestones);
+	return (value) => canonicalizeMilestone(value, aliasMap);
+}
+
 export function buildLanes(
 	mode: LaneMode,
 	tasks: Task[],

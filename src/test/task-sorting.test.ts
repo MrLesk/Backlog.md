@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
 	compareTaskIds,
-	compareTaskIdsDescending,
 	parseTaskId,
 	sectionTasks,
 	sortByPriority,
@@ -69,16 +68,6 @@ describe("compareTaskIds", () => {
 		expect(compareTaskIds("task-draft", "task-draft2")).toBeLessThan(0);
 		expect(compareTaskIds("task-draft2", "task-draft10")).toBeLessThan(0);
 		expect(compareTaskIds("task-draft10", "task-draft2")).toBeGreaterThan(0);
-	});
-});
-
-describe("compareTaskIdsDescending", () => {
-	test("sorts root task groups descending while keeping parents before subtasks", () => {
-		const ids = ["task-1", "task-3.01", "task-2", "task-3.02", "task-3"];
-
-		const sorted = [...ids].sort(compareTaskIdsDescending);
-
-		expect(sorted).toEqual(["task-3", "task-3.02", "task-3.01", "task-2", "task-1"]);
 	});
 });
 

@@ -22,11 +22,11 @@ const setupDom = () => {
 	return activeDom.window.document.getElementById("root") as HTMLElement;
 };
 
-const renderSkeleton = (container: HTMLElement, message: string | null, columnCount?: number) => {
+const renderSkeleton = (container: HTMLElement, columnCount?: number) => {
 	if (!activeRoot) activeRoot = createRoot(container);
 	const root = activeRoot;
 	act(() => {
-		root.render(<BoardLoadingSkeleton message={message} columnCount={columnCount} />);
+		root.render(<BoardLoadingSkeleton columnCount={columnCount} />);
 	});
 };
 
@@ -44,9 +44,9 @@ afterEach(() => {
 });
 
 describe("BoardLoadingSkeleton", () => {
-	it("announces a compact loading status without visible copy by default", () => {
+	it("announces a compact loading status without visible copy", () => {
 		const container = setupDom();
-		renderSkeleton(container, null);
+		renderSkeleton(container);
 
 		const status = container.querySelector('[role="status"]');
 		expect(status).not.toBeNull();
@@ -62,19 +62,9 @@ describe("BoardLoadingSkeleton", () => {
 		expect(container.innerHTML).not.toContain("rounded-full");
 	});
 
-	it("shows the progress message in the chip when provided", () => {
-		const container = setupDom();
-		renderSkeleton(container, "Indexing 3 recent remote branches...");
-
-		const status = container.querySelector('[role="status"]');
-		expect(status?.textContent).toContain("Indexing 3 recent remote branches...");
-		expect(status?.querySelector(".sr-only")?.textContent).toBe("Indexing 3 recent remote branches...");
-		expect(status?.querySelector(".animate-spin")).not.toBeNull();
-	});
-
 	it("renders ghost columns hidden from assistive tech that mirror the board geometry", () => {
 		const container = setupDom();
-		renderSkeleton(container, null);
+		renderSkeleton(container);
 
 		const ghosts = container.querySelector('[aria-hidden="true"].overflow-x-auto');
 		expect(ghosts).not.toBeNull();
@@ -87,7 +77,7 @@ describe("BoardLoadingSkeleton", () => {
 
 	it("keeps ghost columns at the real column floor height so the board never contracts", () => {
 		const container = setupDom();
-		renderSkeleton(container, null);
+		renderSkeleton(container);
 
 		// Every real column has at least min-h-24 (TaskColumn's empty floor); taller
 		// ghosts would contract to 6rem on an empty project when loading completes.
@@ -98,16 +88,16 @@ describe("BoardLoadingSkeleton", () => {
 
 	it("matches the configured status count so the real board mounts without a column jump", () => {
 		const container = setupDom();
-		renderSkeleton(container, null, 5);
+		renderSkeleton(container, 5);
 		expect(countGhostColumns(container)).toBe(5);
 
-		renderSkeleton(container, null, 2);
+		renderSkeleton(container, 2);
 		expect(countGhostColumns(container)).toBe(2);
 	});
 
 	it("falls back to three ghost columns before the statuses are known", () => {
 		const container = setupDom();
-		renderSkeleton(container, null, 0);
+		renderSkeleton(container, 0);
 		expect(countGhostColumns(container)).toBe(3);
 	});
 });

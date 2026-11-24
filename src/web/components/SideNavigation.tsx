@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef, memo, type ComponentType } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, memo, type ComponentType, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Tooltip } from 'react-tooltip';
 import {
@@ -17,6 +17,7 @@ import { getWebVersion } from '../utils/version';
 import { apiClient } from '../lib/api';
 import { parseSearchCommandQuery } from '../utils/search-command-query';
 import { buildDocsTree, type DocsTreeNode } from '../lib/docs-tree';
+import { readRememberedTaskLayout, TASK_LAYOUT_PATHS, taskLayoutOfPath } from '../lib/task-view';
 
 const hasTaskSearchFilters = (parsedQuery: ReturnType<typeof parseSearchCommandQuery>): boolean => {
 	return Boolean(
@@ -64,16 +65,6 @@ const Icons = {
 	Tasks: () => (
 		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-		</svg>
-	),
-	Board: () => (
-		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-		</svg>
-	),
-	List: () => (
-		<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
 		</svg>
 	),
 	Draft: () => (
@@ -472,9 +463,12 @@ const SideNavigation = memo(function SideNavigation({
 
 	const milestoneLink = { path: '/milestones', label: 'Milestones', Icon: Icons.Milestone, visible: sections.milestones };
 	const draftLink = { path: '/drafts', label: 'Drafts', Icon: Icons.Draft, visible: canWrite };
-	const pageLinks = [
-		{ path: '/board', label: 'Kanban Board', Icon: Icons.Board, visible: sections.tasks },
-		{ path: '/tasks', label: 'All Tasks', Icon: Icons.List, visible: sections.tasks },
+	// On the Tasks page the entry keeps the layout on screen; elsewhere it opens the layout this browser used last.
+	// Its count is the only part that waits for the tasks to load, so the entry itself never moves.
+	const tasksPath = TASK_LAYOUT_PATHS[taskLayoutOfPath(location.pathname) ?? readRememberedTaskLayout()];
+	const taskCountBadge = <NavigationCount count={taskCount} isLoading={isLoading} error={error} label="task" />;
+	const pageLinks: Array<{ path: string; label: string; Icon: ComponentType; visible: boolean; count?: ReactNode }> = [
+		{ path: tasksPath, label: 'Tasks', Icon: Icons.Tasks, visible: sections.tasks, count: taskCountBadge },
 		...(isCollapsed ? [draftLink, milestoneLink] : [milestoneLink, draftLink]),
 		{ path: '/statistics', label: 'Statistics', Icon: Icons.Statistics, visible: sections.tasks },
 	].filter(({ visible }) => visible);
@@ -573,9 +567,8 @@ const SideNavigation = memo(function SideNavigation({
 								if (result.type === 'decision') {
 									return createRecordUrlPath('/decisions', item);
 								}
-								const taskPath = createUrlPath('/board', item.id, item.title);
-								const isBoardLocation = location.pathname === '/board' || location.pathname.startsWith('/board/');
-								return isBoardLocation ? `${taskPath}${location.search}` : taskPath;
+								const taskPath = createUrlPath(tasksPath, item.id, item.title);
+								return taskLayoutOfPath(location.pathname) ? `${taskPath}${location.search}` : taskPath;
 							};
 
 							const ResultIcon = SEARCH_RESULT_ICONS[result.type];
@@ -657,23 +650,8 @@ const SideNavigation = memo(function SideNavigation({
 					</div>
 				)}
 				
-				{/* Task loading only changes the count; navigation remains stable. */}
-				{!isCollapsed && sections.tasks && (
-					<div className="px-4 pt-3 pb-2">
-						<div className="flex items-center space-x-3 px-3">
-							<span className="text-ink-3"><Icons.Tasks /></span>
-							<span className="section-caption whitespace-nowrap">
-								Tasks (<NavigationCount count={taskCount} isLoading={isLoading} error={error} label="task" />)
-							</span>
-						</div>
-						{isLoading && (
-							<LoadingPhase className="mt-2 px-3 text-xs text-ink-3" />
-						)}
-					</div>
-				)}
-
 				<div className={isCollapsed ? 'px-2 py-2 space-y-2' : 'px-4 space-y-1'}>
-					{pageLinks.map(({ path, label, Icon }) => (
+					{pageLinks.map(({ path, label, Icon, count }) => (
 						<NavLink
 							key={path}
 							to={path}
@@ -689,7 +667,11 @@ const SideNavigation = memo(function SideNavigation({
 							{isCollapsed ? (
 								<div className="w-6 h-6 flex items-center justify-center"><Icon /></div>
 							) : (
-								<><Icon /><span className="ml-3 text-sm">{label}</span></>
+								<>
+									<Icon />
+									<span className="ml-3 text-sm">{label}</span>
+									{count && <span className="ml-auto text-xs text-ink-3">{count}</span>}
+								</>
 							)}
 						</NavLink>
 					))}
