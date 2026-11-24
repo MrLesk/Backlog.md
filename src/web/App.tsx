@@ -12,6 +12,7 @@ import MilestonesPage from './components/MilestonesPage';
 import TaskDetailsModal from './components/TaskDetailsModal';
 import InitializationScreen from './components/InitializationScreen';
 import LoadingSpinner from './components/LoadingSpinner';
+import { HealthIndicator } from './components/HealthIndicator';
 import { SuccessToast } from './components/SuccessToast';
 import { BrowserAccessProvider, useBrowserAccess } from './contexts/BrowserAccessContext';
 import { browserSnapshot } from './lib/browser-snapshot';
@@ -34,7 +35,7 @@ import type { TaskDetail } from '../core/task-detail';
 import type { DuplicateRepairPlan } from '../core/duplicate-task-repair';
 import { collectAvailableLabels } from '../utils/label-filter';
 import { isValidTaskId } from '../utils/task-id';
-import { useHealthCheckContext } from './contexts/HealthCheckContext';
+import { useBrowserConnection } from './hooks/useBrowserConnection';
 import { getWebVersion } from './utils/version';
 import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from './utils/milestones';
 import { getProjectValues } from '../utils/project-config';
@@ -263,7 +264,7 @@ function AppContent() {
   const [milestones, setMilestones] = useState<string[]>([]);
   const [milestoneEntities, setMilestoneEntities] = useState<Milestone[]>([]);
   const [archivedMilestones, setArchivedMilestones] = useState<Milestone[]>([]);
-  const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [showReconnectToast, setShowReconnectToast] = useState(false);
   const [taskConfirmation, setTaskConfirmation] = useState<{task: Task, isDraft: boolean} | null>(null);
   const [dependencyCleanupNotice, setDependencyCleanupNotice] = useState<string | null>(null);
   const dependencyCleanupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -288,8 +289,6 @@ function AppContent() {
   const [loadError, setLoadError] = useState<Error | null>(null);
   const [duplicateRepairPlan, setDuplicateRepairPlan] = useState<DuplicateRepairPlan | null>(null);
   
-  const { isOnline } = useHealthCheckContext();
-  const previousOnlineRef = useRef<boolean | null>(null);
   const hasBeenRunningRef = useRef(false);
   const loadAllDataRequestRef = useRef(0);
   const hasLoadedDataRef = useRef(false);
@@ -494,13 +493,6 @@ function AppContent() {
     }
   }, [loadAllData, isInitialized]);
 
-  // Reload data when connection is restored
-  React.useEffect(() => {
-    if (isOnline && previousOnlineRef.current === false) {
-      void loadAllData();
-    }
-  }, [isOnline, loadAllData]);
-
   // Update document title when project name changes
   React.useEffect(() => {
     if (projectName) {
@@ -516,23 +508,11 @@ function AppContent() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Show success toast when connection is restored
   useEffect(() => {
-    // Only show toast if:
-    // 1. We went from offline to online AND
-    // 2. We've been running for a while (not initial page load)
-    if (isOnline && previousOnlineRef.current === false && hasBeenRunningRef.current) {
-      setShowSuccessToast(true);
-      // Auto-dismiss after 4 seconds
-      const timer = setTimeout(() => {
-        setShowSuccessToast(false);
-      }, 4000);
-      return () => clearTimeout(timer);
-    }
-    
-    // Update the ref for next time
-    previousOnlineRef.current = isOnline;
-  }, [isOnline]);
+    if (!showReconnectToast) return;
+    const timer = setTimeout(() => setShowReconnectToast(false), 4000);
+    return () => clearTimeout(timer);
+  }, [showReconnectToast]);
 
   const handleNewTask = () => {
     setModal({ kind: 'create', isDraft: false });
@@ -822,53 +802,46 @@ function AppContent() {
     };
   }, [detailSession, detailId, dataVersion]);
 
-  useEffect(() => {
-    if (!canWrite) return;
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${protocol}//${window.location.host}`);
-	let disposed = false;
-    ws.onmessage = (event) => {
-	  const loadingState = parseBrowserLoadingState(event.data);
-	  if (loadingState?.type === 'loading') {
-		if (pendingDataRequestRef.current === null) protocolOnlyLoadingRef.current = true;
-		// Once content is on screen it stays interactive; the header indexing
-		// indicator (driven by loadingMessage) is the only loading signal. A new
-		// loading attempt always clears a stale terminal error, so a passive
-		// client shows its cached content instead of the obsolete failure.
-		if (!hasLoadedDataRef.current) setIsLoading(true);
-		applyLoadError(null);
-		setLoadingMessage(loadingState.message);
-	  } else if (loadingState?.type === 'loaded') {
-		const shouldRefresh = protocolOnlyLoadingRef.current && pendingDataRequestRef.current === null;
-		protocolOnlyLoadingRef.current = false;
-		setLoadingMessage(null);
-		// Indexing can surface cross-branch data (including duplicate findings)
-		// that an incremental reconcile would miss, so reload everything.
-		if (shouldRefresh) void fullRefreshData();
-	  } else if (loadingState?.type === 'error') {
-		protocolOnlyLoadingRef.current = false;
-		setIsLoading(false);
-		setLoadingMessage(null);
-		applyLoadError(new Error(loadingState.message));
-      } else if (event.data === "tasks-updated") {
+  const { isOnline, retry } = useBrowserConnection({
+    enabled: canWrite,
+    onMessage(data) {
+      const loadingState = parseBrowserLoadingState(data);
+      if (loadingState?.type === 'loading') {
+        if (pendingDataRequestRef.current === null) protocolOnlyLoadingRef.current = true;
+        // Keep existing content interactive while indexing and clear any previous error.
+        if (!hasLoadedDataRef.current) setIsLoading(true);
+        applyLoadError(null);
+        setLoadingMessage(loadingState.message);
+      } else if (loadingState?.type === 'loaded') {
+        const shouldRefresh = protocolOnlyLoadingRef.current && pendingDataRequestRef.current === null;
+        protocolOnlyLoadingRef.current = false;
+        setLoadingMessage(null);
+        // Indexing can surface cross-branch data, including duplicate findings.
+        if (shouldRefresh) void fullRefreshData();
+      } else if (loadingState?.type === 'error') {
+        protocolOnlyLoadingRef.current = false;
+        setIsLoading(false);
+        setLoadingMessage(null);
+        applyLoadError(new Error(loadingState.message));
+      } else if (data === "tasks-updated") {
         void refreshData();
-      } else if (event.data === "milestones-updated") {
+      } else if (data === "milestones-updated") {
         void refreshMilestoneData();
-      } else if (event.data === "config-updated") {
-        // Reload statuses when config changes
-        loadAllData();
+      } else if (data === "config-updated") {
+        void loadAllData();
       }
-    };
-	ws.onclose = () => {
-		if (disposed || !protocolOnlyLoadingRef.current || pendingDataRequestRef.current !== null) return;
-		protocolOnlyLoadingRef.current = false;
-		void fullRefreshData();
-	};
-	return () => {
-		disposed = true;
-		ws.close();
-	};
-  }, [refreshData, refreshMilestoneData, fullRefreshData, loadAllData, applyLoadError, canWrite]);
+    },
+    onDisconnect() {
+      setShowReconnectToast(false);
+      if (!protocolOnlyLoadingRef.current || pendingDataRequestRef.current !== null) return;
+      protocolOnlyLoadingRef.current = false;
+      void fullRefreshData();
+    },
+    onReconnect() {
+      void fullRefreshData();
+      if (hasBeenRunningRef.current) setShowReconnectToast(true);
+    },
+  });
 
   const handleCreateTask = async (taskData: Partial<Task>) => {
     const finalTaskData = isDraftMode ? { ...taskData, status: 'Draft' } : taskData;
@@ -1055,8 +1028,6 @@ function AppContent() {
               <Layout
                 projectName={projectName}
                 pagePath={routeBasePath ?? location.pathname}
-                showSuccessToast={showSuccessToast}
-                onDismissToast={() => setShowSuccessToast(false)}
                 tasks={tasks}
                 docs={docs}
                 decisions={decisions}
@@ -1124,6 +1095,11 @@ function AppContent() {
           defaultAssignee={config?.defaultAssignee}
           dateFormat={config?.dateFormat}
         />
+      )}
+
+      {!isOnline && <HealthIndicator onRetry={retry} />}
+      {showReconnectToast && (
+        <SuccessToast message="Connection restored!" onDismiss={() => setShowReconnectToast(false)} />
       )}
 
       {dependencyCleanupNotice && (

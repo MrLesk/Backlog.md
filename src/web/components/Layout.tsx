@@ -2,7 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Outlet, useLocation } from 'react-router-dom';
 import SideNavigation from './SideNavigation';
 import Navigation from './Navigation';
-import { HealthIndicator, HealthSuccessToast } from './HealthIndicator';
 import { DuplicateIdWarning } from './DuplicateIdWarning';
 import type { DuplicateRepairPlan } from '../../core/duplicate-task-repair';
 import { type Task, type Document, type Decision } from '../../types';
@@ -12,8 +11,6 @@ const DRAWER_MEDIA_QUERY = '(width < 64rem)';
 interface LayoutProps {
 	projectName: string;
 	pagePath: string;
-	showSuccessToast: boolean;
-	onDismissToast: () => void;
 	tasks: Task[];
 	docs: Document[];
 	decisions: Decision[];
@@ -27,8 +24,6 @@ interface LayoutProps {
 export default function Layout({
 	projectName,
 	pagePath,
-	showSuccessToast,
-	onDismissToast,
 	tasks,
 	docs,
 	decisions,
@@ -92,7 +87,6 @@ export default function Layout({
 	// against the dimmed page.
 	return (
 		<div className="h-dvh flex gap-2 overflow-hidden p-2">
-			<HealthIndicator />
 			{useDrawer ? (
 				<dialog
 					ref={drawer}
@@ -113,9 +107,6 @@ export default function Layout({
 					<Outlet context={{ tasks, docs, decisions, isLoading, error, onRefreshData }} />
 				</main>
 			</div>
-			{showSuccessToast && (
-				<HealthSuccessToast onDismiss={onDismissToast} />
-			)}
 		</div>
 	);
 }

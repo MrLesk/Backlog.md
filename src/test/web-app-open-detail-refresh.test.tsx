@@ -5,7 +5,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { type TaskDetail, toTaskDetail } from "../core/task-detail.ts";
 import type { BacklogConfig, SearchResult, Task } from "../types/index.ts";
 import App from "../web/App.tsx";
-import { HealthCheckProvider } from "../web/contexts/HealthCheckContext.tsx";
 import { apiClient } from "../web/lib/api.ts";
 
 const statuses = ["To Do", "In Progress", "Done"];
@@ -214,7 +213,7 @@ describe("open task detail across refreshes", () => {
 		};
 		activeRoot = createRoot(container);
 		await act(async () => {
-			activeRoot?.render(<HealthCheckProvider><App /></HealthCheckProvider>);
+			activeRoot?.render(<App />);
 		});
 		await waitForText(container, "Task TASK-2");
 		const button = (text: string) => Array.from(container.querySelectorAll("button"))
@@ -276,11 +275,7 @@ describe("open task detail across refreshes", () => {
 
 		activeRoot = createRoot(container);
 		await act(async () => {
-			activeRoot?.render(
-				<HealthCheckProvider>
-					<App />
-				</HealthCheckProvider>,
-			);
+			activeRoot?.render(<App />);
 			await Promise.resolve();
 		});
 		await waitForText(container, "Unknown dependency TASK-9");
@@ -325,11 +320,7 @@ describe("open task detail across refreshes", () => {
 
 		activeRoot = createRoot(container);
 		await act(async () => {
-			activeRoot?.render(
-				<HealthCheckProvider>
-					<App />
-				</HealthCheckProvider>,
-			);
+			activeRoot?.render(<App />);
 			await Promise.resolve();
 		});
 		await waitForText(container, "Unknown dependency TASK-9");
@@ -382,11 +373,7 @@ describe("open task detail across refreshes", () => {
 
 		activeRoot = createRoot(container);
 		await act(async () => {
-			activeRoot?.render(
-				<HealthCheckProvider>
-					<App />
-				</HealthCheckProvider>,
-			);
+			activeRoot?.render(<App />);
 			await Promise.resolve();
 		});
 		await waitForText(container, "Draft with dependency");
@@ -431,11 +418,7 @@ describe("open task detail across refreshes", () => {
 
 		activeRoot = createRoot(container);
 		await act(async () => {
-			activeRoot?.render(
-				<HealthCheckProvider>
-					<App />
-				</HealthCheckProvider>,
-			);
+			activeRoot?.render(<App />);
 			await Promise.resolve();
 		});
 		await waitForText(container, "Unknown dependency TASK-9");
@@ -518,11 +501,7 @@ describe("open task detail across refreshes", () => {
 
 		activeRoot = createRoot(container);
 		await act(async () => {
-			activeRoot?.render(
-				<HealthCheckProvider>
-					<App />
-				</HealthCheckProvider>,
-			);
+			activeRoot?.render(<App />);
 			await Promise.resolve();
 		});
 		const dialogText = () => container.querySelector("[role='dialog']")?.textContent ?? "";
@@ -585,11 +564,7 @@ describe("open task detail across refreshes", () => {
 
 		activeRoot = createRoot(container);
 		await act(async () => {
-			activeRoot?.render(
-				<HealthCheckProvider>
-					<App />
-				</HealthCheckProvider>,
-			);
+			activeRoot?.render(<App />);
 			await Promise.resolve();
 		});
 		await waitForText(container, "Draft with dependency");
