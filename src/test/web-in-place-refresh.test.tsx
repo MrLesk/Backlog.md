@@ -1,11 +1,10 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, jest } from "bun:test";
 import { JSDOM } from "jsdom";
 import { StrictMode, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { DuplicateRepairPlan } from "../core/duplicate-task-repair.ts";
 import type { Milestone, SearchResult, Task } from "../types/index.ts";
 import App from "../web/App.tsx";
-import { HealthCheckProvider } from "../web/contexts/HealthCheckContext.tsx";
 
 const makeTask = (id: string, title: string, status: string, overrides: Partial<Task> = {}): Task => ({
 	id,
@@ -70,6 +69,9 @@ class FakeWebSocket {
 
 	constructor() {
 		FakeWebSocket.instances.push(this);
+		Promise.resolve().then(() => {
+			if (this.readyState === FakeWebSocket.OPEN) this.onopen?.();
+		});
 	}
 
 	deliver(data: string) {
@@ -81,6 +83,8 @@ class FakeWebSocket {
 		this.readyState = FakeWebSocket.CLOSED;
 	}
 }
+
+const openSockets = () => FakeWebSocket.instances.filter((socket) => socket.readyState === FakeWebSocket.OPEN);
 
 const getAppDataWebSocket = (): FakeWebSocket => {
 	const socket = FakeWebSocket.instances.findLast(
@@ -189,9 +193,7 @@ const renderBoard = async (): Promise<HTMLElement> => {
 	await act(async () => {
 		activeRoot?.render(
 			<StrictMode>
-				<HealthCheckProvider>
-					<App />
-				</HealthCheckProvider>
+				<App />
 			</StrictMode>,
 		);
 		await Promise.resolve();
@@ -208,6 +210,7 @@ const hasLoadingShell = (container: HTMLElement) =>
 	container.querySelector('[role="status"][aria-label="Loading tasks"]') !== null;
 
 afterEach(() => {
+	jest.useRealTimers();
 	if (activeRoot) {
 		act(() => {
 			activeRoot?.unmount();
@@ -233,6 +236,43 @@ afterEach(() => {
 });
 
 describe("in-place data refresh", () => {
+	it.each(["automatically", "with Retry"])("reconnects %s, catches up and keeps receiving later task changes", async (mode) => {
+		tasks = [makeTask("TASK-1", "Original card", "To Do")];
+		const container = await renderBoard();
+		await waitFor(() => openSockets().some((socket) => socket.onopen !== null), "the browser connection");
+
+		jest.useFakeTimers();
+		act(() => {
+			for (const socket of openSockets()) {
+				socket.close();
+				socket.onclose?.();
+			}
+		});
+		expect(container.textContent).toContain("Server disconnected");
+		tasks.push(makeTask("TASK-2", "Created while offline", "To Do"));
+
+		await act(async () => {
+			if (mode === "automatically") {
+				jest.runOnlyPendingTimers();
+			} else {
+				const retry = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Retry");
+				if (!retry) throw new Error("Missing Retry button on the disconnected board");
+				retry.click();
+			}
+		});
+		jest.useRealTimers();
+		await waitFor(() => Boolean(container.textContent?.includes("Created while offline")), "the card created offline");
+
+		tasks.push(makeTask("TASK-3", "Created after reconnect", "To Do"));
+		await act(async () => {
+			for (const socket of openSockets()) {
+				socket.onmessage?.({ data: "tasks-updated" });
+			}
+		});
+		await waitFor(() => Boolean(container.textContent?.includes("Created after reconnect")), "the later live update");
+		expect(openSockets()).toHaveLength(1);
+	});
+
 	it("applies an external task edit in place through a single search refetch", async () => {
 		tasks = [makeTask("TASK-1", "Original title", "To Do"), makeTask("TASK-2", "Neighbor card", "To Do")];
 		const container = await renderBoard();

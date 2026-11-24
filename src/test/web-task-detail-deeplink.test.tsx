@@ -7,7 +7,6 @@ import type { SearchResult, Task } from "../types/index.ts";
 import { buildDependencyGraph } from "../utils/dependency-graph.ts";
 import { isValidTaskId, resolveTaskById } from "../utils/task-id.ts";
 import App from "../web/App.tsx";
-import { HealthCheckProvider } from "../web/contexts/HealthCheckContext.tsx";
 import { setNativeInputValue } from "./react-dom-input.ts";
 
 const tasks: Task[] = [
@@ -353,15 +352,6 @@ const getAppDataWebSocket = (): FakeWebSocket => {
 	throw new Error(`No live App data WebSocket found; instances: ${diagnostics || "none"}`);
 };
 
-const assertHealthSocketDoesNotShadowDataSocket = (): FakeWebSocket => {
-	const dataSocket = getAppDataWebSocket();
-	const latestSocket = FakeWebSocket.instances.at(-1);
-	expect(FakeWebSocket.instances.length).toBeGreaterThan(1);
-	expect(latestSocket?.onmessage).toBeNull();
-	expect(dataSocket).not.toBe(latestSocket);
-	return dataSocket;
-};
-
 class FakeResizeObserver {
 	disconnect() {}
 	observe() {}
@@ -469,7 +459,6 @@ const setupDom = (path: string) => {
 const renderApp = async (
 	path: string,
 	options: {
-		advanceHealthSocket?: boolean;
 		afterInitialStatus?: (container: HTMLElement) => void | Promise<void>;
 		beforeInitialStatus?: (container: HTMLElement) => void | Promise<void>;
 		manualDuplicatePlan?: boolean;
@@ -483,8 +472,7 @@ const renderApp = async (
 	const routeId = routeMatch?.[1]
 		? decodeURIComponent(routeMatch[1])
 		: requestedUrl.searchParams.get("highlight")?.trim() || null;
-	const controlledTimer =
-		requestedUrl.searchParams.has("highlight") || options.advanceHealthSocket ? controlTimer(100) : null;
+	const controlledTimer = requestedUrl.searchParams.has("highlight") ? controlTimer(100) : null;
 	const operation = new FetchOperation(`render ${path}`, [
 		expectFetch("initial status", "/api/status"),
 		expectFetch("initial search", "/api/search"),
@@ -502,9 +490,7 @@ const renderApp = async (
 	await act(async () => {
 		activeRoot?.render(
 			<StrictMode>
-				<HealthCheckProvider>
-					<App />
-				</HealthCheckProvider>
+				<App />
 			</StrictMode>,
 		);
 		await Promise.resolve();
@@ -834,8 +820,8 @@ describe("task detail routes", () => {
 	});
 
 	it("keeps a newer WebSocket-reconciled task when an earlier reorder response arrives late", async () => {
-		const container = await renderApp("/board?lane=none", { advanceHealthSocket: true });
-		const dataSocket = assertHealthSocketDoesNotShadowDataSocket();
+		const container = await renderApp("/board?lane=none");
+		const dataSocket = getAppDataWebSocket();
 		const sourceTask = tasks[0];
 		if (!sourceTask) throw new Error("Expected a source task");
 		const staleResponseTask: Task = {
@@ -900,8 +886,8 @@ describe("task detail routes", () => {
 	});
 
 	it("applies every rebalanced task when the data WebSocket is disconnected", async () => {
-		const container = await renderApp("/board?lane=none", { advanceHealthSocket: true });
-		const dataSocket = assertHealthSocketDoesNotShadowDataSocket();
+		const container = await renderApp("/board?lane=none");
+		const dataSocket = getAppDataWebSocket();
 		dataSocket.close();
 		const sourceTask = tasks[0];
 		const siblingTask = tasks[1];
@@ -1087,8 +1073,8 @@ describe("task detail routes", () => {
 	});
 
 	it("keeps the latest config and tasks when overlapping refreshes resolve out of order", async () => {
-		const container = await renderApp("/board?type=Customer%20Request", { advanceHealthSocket: true });
-		const dataSocket = assertHealthSocketDoesNotShadowDataSocket();
+		const container = await renderApp("/board?type=Customer%20Request");
+		const dataSocket = getAppDataWebSocket();
 		expect(new URLSearchParams(window.location.search).get("type")).toBe("Customer Request");
 
 		const customerTask: Task = {
@@ -1512,11 +1498,10 @@ describe("task detail routes", () => {
 		};
 		const initialLoadRef: { current?: FetchOperation } = {};
 		const container = await renderApp("/tasks", {
-			advanceHealthSocket: true,
 			manualDuplicatePlan: true,
 			operationRef: initialLoadRef,
 		});
-		const dataSocket = assertHealthSocketDoesNotShadowDataSocket();
+		const dataSocket = getAppDataWebSocket();
 		// The initial plan read has not landed yet, so the incremental refresh
 		// fetches a replacement plan; bumping the request counter is what
 		// invalidates the stale initial response below.

@@ -5,7 +5,6 @@ import { createRoot, type Root } from "react-dom/client";
 import type { DuplicateRepairPlan } from "../core/duplicate-task-repair.ts";
 import type { SearchResult, Task } from "../types/index.ts";
 import App from "../web/App.tsx";
-import { HealthCheckProvider } from "../web/contexts/HealthCheckContext.tsx";
 
 /**
  * Demoting a task rewrites other tasks, so the web UI reports which ones lost a reference. The
@@ -235,9 +234,7 @@ const renderTaskList = async (): Promise<HTMLElement> => {
 	await act(async () => {
 		activeRoot?.render(
 			<StrictMode>
-				<HealthCheckProvider>
-					<App />
-				</HealthCheckProvider>
+				<App />
 			</StrictMode>,
 		);
 		await Promise.resolve();
