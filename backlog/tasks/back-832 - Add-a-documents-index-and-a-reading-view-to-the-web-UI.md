@@ -4,6 +4,7 @@ title: Add a documents index and a reading view to the web UI
 status: To Do
 assignee: []
 created_date: '2026-11-23T20:53:00Z'
+updated_date: '2026-11-24T19:31:00Z'
 labels:
   - web
 dependencies:
@@ -20,9 +21,9 @@ ordinal: 428000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Documents were added to the web UI early and never finished. They can only be reached through the tree in the sidebar: `/documentation` shows "No document selected". The document page shows the raw ID, a fixed "Documentation" label and the full file path, but never the type or the tags, which only the CLI can set. A body that starts with its own level-one heading repeats the title, and the reading styles depend on a class that has no effect in this build.
+The `/documentation` page already lists document titles. Each title opens its document. The sidebar also has a folder tree. The document page shows the raw ID, a fixed "Documentation" label and the full file path, but never the type or the tags, which only the CLI can set. A body that starts with its own level-one heading repeats the title, and the reading styles depend on a class that has no effect in this build.
 
-The web redesign approved by the maintainer on 2026-11-23 gives documents an index and a reading view. The index lists every document with its type, tags and last update, grouped by folder. The reading view shows the title once, a line with the ID, type and dates, the text in a readable column, an outline of the headings, and the type and tags as properties that can be changed.
+The web redesign approved by the maintainer on 2026-11-23 builds on this list and updates the reading view. Group the documents by folder and show each document’s type, tags and last update. The reading view shows the title once, a line with the ID, type and dates, the text in a readable column, an outline of the headings, and the type and tags as properties that can be changed.
 
 This slice follows the slice that introduces the colors, type and page shell. It uses the document commands that exist when it is picked up; BACK-741 and BACK-742 may rename or extend them.
 <!-- SECTION:DESCRIPTION:END -->

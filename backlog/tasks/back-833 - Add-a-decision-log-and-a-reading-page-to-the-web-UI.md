@@ -4,6 +4,7 @@ title: Add a decision log and a reading page to the web UI
 status: To Do
 assignee: []
 created_date: '2026-11-23T20:53:00Z'
+updated_date: '2026-11-24T19:31:00Z'
 labels:
   - web
 dependencies:
@@ -20,9 +21,9 @@ ordinal: 429000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Decisions were added to the web UI early and never finished. They can only be reached through the list in the sidebar: `/decisions` shows "No decision selected". Nothing shows the statuses of all decisions at a glance, the decision that replaces a superseded one (`superseded_by`, BACK-738) is never shown, the status label has no dark styling, and an ID that does not exist renders a page with a blank ID.
+The `/decisions` page already lists decision titles. Each title opens its decision, where the reader can see its status. The sidebar also links to individual decisions. The decision that replaces a superseded one (`superseded_by`, BACK-738) is never shown, the status label has no dark styling, and an ID that does not exist renders a page with a blank ID.
 
-The web redesign approved by the maintainer on 2026-11-23 gives decisions a log and a reading page. The log lists decisions newest first with status, ID, title and date. The page shows the sections Context, Decision, Consequences and Alternatives in a readable column with an outline, and the status, date, last update and superseded-by as properties.
+The web redesign approved by the maintainer on 2026-11-23 turns this list into a decision log and updates the reading page. List decisions newest first with status, ID, title and date. The page shows the sections Context, Decision, Consequences and Alternatives in a readable column with an outline, and the status, date, last update and superseded-by as properties.
 
 This slice follows the slice that introduces the colors, type and page shell, and builds on BACK-740, which adds the editor and the status control. It adds no editing path of its own.
 
