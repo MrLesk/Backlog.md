@@ -302,7 +302,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
       } ${isDropTarget ? 'bg-hover' : ''}`}
       {...dropEvents}
     >
-      <div className="flex h-[42px] items-center gap-2">
+      <div className="relative flex h-[42px] items-center gap-2">
         <StatusMark status={title} statuses={statuses} decorative />
         <h3 id={headingId} className="min-w-0 text-sm font-semibold text-ink wrap-anywhere">{title}</h3>
         <span className="font-mono text-[11.5px] font-medium text-ink-3">{tasks.length}</span>
@@ -310,7 +310,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
         <span className="ml-auto flex items-center gap-0.5">
           {onCleanup && tasks.length > 0 && <CleanupButton onClick={onCleanup} />}
           {canReorderColumn && (
-            <div className="relative" ref={menuRef} onKeyDown={closeMenuOnEscape}>
+            <div ref={menuRef} onKeyDown={closeMenuOnEscape}>
               <button
                 type="button"
                 ref={menuButtonRef}
@@ -327,11 +327,12 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
                 </svg>
               </button>
 
+              {/* As wide as the column header it opens under, so the board's scroll area never cuts it off. */}
               {showMenu && (
                 <div
                   id={columnActionsId}
                   role="menu"
-                  className="absolute right-0 z-50 mt-1 w-60 rounded-control border border-line bg-surface py-1 shadow-lg"
+                  className="absolute inset-x-0 top-full z-50 rounded-control border border-line bg-surface py-1 shadow-lg"
                 >
                   <button type="button" role="menuitem" onClick={handleSortByPriority} className={menuItemClass}>
                     <svg className="size-4 text-ink-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">

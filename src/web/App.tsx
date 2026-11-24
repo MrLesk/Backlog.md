@@ -1114,7 +1114,8 @@ function App() {
   const Router = browserSnapshot ? HashRouter : BrowserRouter;
   return (
     <BrowserAccessProvider snapshot={browserSnapshot}>
-      <Router>
+      {/* No transitions: the Tasks search field shows the URL, so a URL that renders late loses the keys typed meanwhile. */}
+      <Router useTransitions={false}>
         <AppContent />
       </Router>
     </BrowserAccessProvider>

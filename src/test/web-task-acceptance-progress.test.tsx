@@ -72,7 +72,6 @@ const renderList = (...tasks: Task[]): HTMLElement => {
 				statuses={STATUSES}
 				finalGroupOpenByDefault
 				isLoading={false}
-				isFiltered={false}
 				onEditTask={() => {}}
 			/>,
 		);

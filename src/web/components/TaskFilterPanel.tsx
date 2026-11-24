@@ -7,7 +7,8 @@ import LabelFilterDropdown from "./LabelFilterDropdown";
 interface TaskFilterPanelProps {
 	id: string;
 	filters: TaskPageFilters;
-	onChange: (filters: TaskPageFilters) => void;
+	/** Receives only the filters a control changed. */
+	onChange: (changes: Partial<TaskPageFilters>) => void;
 	statuses: string[];
 	assignees: string[];
 	labels: string[];
@@ -20,9 +21,53 @@ interface TaskFilterPanelProps {
 	milestoneEntities: Milestone[];
 }
 
-const SELECT_CLASS =
-	"h-8 w-full min-w-0 rounded-control border border-line bg-surface px-2 text-sm text-ink transition-colors duration-200 hover:bg-hover focus-ring md:w-auto";
 const DROPDOWN_CLASS = "w-full md:w-auto md:min-w-[11rem]";
+
+interface FilterSelectProps {
+	/** The name shown on the control, as on the dropdown buttons beside it. */
+	name: string;
+	/** The accessible name of the select, such as "Filter by assignee". */
+	label: string;
+	value: string;
+	/** The choices after "All", which keeps every task. */
+	options: Array<{ value: string; label: string }>;
+	onChange: (value: string) => void;
+}
+
+/**
+ * A select drawn like the dropdown buttons beside it: the filter's name on the left and its choice on the right,
+ * "All" when there is none. The native select lies over the whole control, invisible, so a click anywhere opens
+ * it and the keyboard and screen readers reach it as usual.
+ */
+function FilterSelect({ name, label, value, options, onChange }: FilterSelectProps) {
+	// A value from a link that no option offers is still shown as it is.
+	const choice = value === "" ? "All" : (options.find((option) => option.value === value)?.label ?? value);
+	// The keyboard focus ring of the select is drawn on this control. Its color is set before focus, as in the
+	// focus-ring utility, so transition-colors cannot fade the ring in.
+	return (
+		<div
+			className={`${DROPDOWN_CLASS} relative flex h-8 items-center justify-between gap-2 rounded-control border border-line bg-surface px-2.5 text-sm text-ink outline-accent-strong transition-colors duration-200 hover:bg-hover has-[select:focus-visible]:outline-2 has-[select:focus-visible]:outline-offset-2`}
+		>
+			<span aria-hidden="true">{name}</span>
+			<span aria-hidden="true" className="truncate text-xs text-ink-3">
+				{choice}
+			</span>
+			<select
+				aria-label={label}
+				value={value}
+				onChange={(event) => onChange(event.target.value)}
+				className="absolute inset-0 cursor-pointer opacity-0"
+			>
+				<option value="">All</option>
+				{options.map((option) => (
+					<option key={option.value} value={option.value}>
+						{option.label}
+					</option>
+				))}
+			</select>
+		</div>
+	);
+}
 
 /** The filters of the Tasks page. Every change goes to the URL through `onChange`, so both layouts follow it. */
 export default function TaskFilterPanel({
@@ -38,17 +83,17 @@ export default function TaskFilterPanel({
 	milestones,
 	milestoneEntities,
 }: TaskFilterPanelProps) {
-	const change = (update: Partial<TaskPageFilters>) => onChange({ ...filters, ...update });
 	// A link may spell the assignee in another letter case than the option that selects the same tasks.
 	const assigneeOption =
 		assignees.find((name) => name.toLowerCase() === filters.assignee.toLowerCase()) ?? filters.assignee;
+	const valuesAsOptions = (values: string[]) => values.map((value) => ({ value, label: value }));
 
 	return (
 		<div id={id} className="grid grid-cols-1 gap-2 pt-3 sm:grid-cols-2 md:flex md:flex-wrap md:items-center">
 			<LabelFilterDropdown
 				availableLabels={statuses}
 				selectedLabels={filters.statuses}
-				onChange={(next) => change({ statuses: next })}
+				onChange={(next) => onChange({ statuses: next })}
 				menuId={`${id}-status`}
 				label="Status"
 				emptyLabel="All"
@@ -59,7 +104,7 @@ export default function TaskFilterPanel({
 			<LabelFilterDropdown
 				availableLabels={statuses}
 				selectedLabels={filters.excludedStatuses}
-				onChange={(next) => change({ excludedStatuses: next })}
+				onChange={(next) => onChange({ excludedStatuses: next })}
 				menuId={`${id}-exclude-status`}
 				label="Exclude status"
 				emptyLabel="None"
@@ -67,82 +112,53 @@ export default function TaskFilterPanel({
 				clearLabel="Clear excluded statuses"
 				className={DROPDOWN_CLASS}
 			/>
-			<select
-				aria-label="Filter by assignee"
+			<FilterSelect
+				name="Assignee"
+				label="Filter by assignee"
 				value={assigneeOption}
-				onChange={(event) => change({ assignee: event.target.value })}
-				className={SELECT_CLASS}
-			>
-				<option value="">All assignees</option>
-				<option value={UNASSIGNED}>Unassigned</option>
-				{assignees.map((assignee) => (
-					<option key={assignee} value={assignee}>
-						{assignee}
-					</option>
-				))}
-			</select>
+				options={[{ value: UNASSIGNED, label: "Unassigned" }, ...valuesAsOptions(assignees)]}
+				onChange={(assignee) => onChange({ assignee })}
+			/>
 			<LabelFilterDropdown
 				availableLabels={labels}
 				selectedLabels={filters.labels}
-				onChange={(next) => change({ labels: next })}
+				onChange={(next) => onChange({ labels: next })}
 				menuId={`${id}-labels`}
 				className={DROPDOWN_CLASS}
 			/>
-			<select
-				aria-label="Filter by type"
+			<FilterSelect
+				name="Type"
+				label="Filter by type"
 				value={filters.type}
-				onChange={(event) => change({ type: event.target.value })}
-				className={SELECT_CLASS}
-			>
-				<option value="">All types</option>
-				{types.map((type) => (
-					<option key={type} value={type}>
-						{type}
-					</option>
-				))}
-			</select>
+				options={valuesAsOptions(types)}
+				onChange={(type) => onChange({ type })}
+			/>
 			{projects.length > 0 && (
-				<select
-					aria-label="Filter by project"
+				<FilterSelect
+					name="Project"
+					label="Filter by project"
 					value={filters.project}
-					onChange={(event) => change({ project: event.target.value })}
-					className={SELECT_CLASS}
-				>
-					<option value="">All projects</option>
-					{projects.map((project) => (
-						<option key={project} value={project}>
-							{project}
-						</option>
-					))}
-				</select>
+					options={valuesAsOptions(projects)}
+					onChange={(project) => onChange({ project })}
+				/>
 			)}
-			<select
-				aria-label="Filter by priority"
+			<FilterSelect
+				name="Priority"
+				label="Filter by priority"
 				value={filters.priority}
-				onChange={(event) => change({ priority: event.target.value })}
-				className={SELECT_CLASS}
-			>
-				<option value="">All priorities</option>
-				{getPriorityOptions(priorities).map((option) => (
-					<option key={option.value} value={option.value}>
-						{option.label}
-					</option>
-				))}
-			</select>
-			<select
-				aria-label="Filter by milestone"
+				options={getPriorityOptions(priorities)}
+				onChange={(priority) => onChange({ priority })}
+			/>
+			<FilterSelect
+				name="Milestone"
+				label="Filter by milestone"
 				value={filters.milestone}
-				onChange={(event) => change({ milestone: event.target.value })}
-				className={SELECT_CLASS}
-			>
-				<option value="">All milestones</option>
-				<option value={NO_MILESTONE}>No milestone</option>
-				{milestones.map((milestone) => (
-					<option key={milestone} value={milestone}>
-						{getMilestoneLabel(milestone, milestoneEntities)}
-					</option>
-				))}
-			</select>
+				options={[
+					{ value: NO_MILESTONE, label: "No milestone" },
+					...milestones.map((milestone) => ({ value: milestone, label: getMilestoneLabel(milestone, milestoneEntities) })),
+				]}
+				onChange={(milestone) => onChange({ milestone })}
+			/>
 		</div>
 	);
 }

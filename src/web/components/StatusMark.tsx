@@ -16,10 +16,10 @@ interface StatusMarkProps {
 export default function StatusMark({ status, statuses, decorative = false }: StatusMarkProps) {
 	const position = statuses.indexOf(createStatusResolver(statuses)(status));
 	const finalPosition = statuses.length - 1;
-	const name = decorative ? { "aria-hidden": true } : { role: "img", "aria-label": status, title: status };
+	const accessibilityProps = decorative ? { "aria-hidden": true } : { role: "img", "aria-label": status, title: status };
 
 	return (
-		<span className="inline-flex size-3.5 shrink-0" {...name}>
+		<span className="inline-flex size-3.5 shrink-0" {...accessibilityProps}>
 			<svg viewBox="0 0 14 14" className="size-3.5" aria-hidden="true">
 				{position === -1 ? (
 					<circle cx="7" cy="7" r="6" fill="none" strokeWidth="1.5" strokeDasharray="2.4 1.8" className="stroke-ink-3" />

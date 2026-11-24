@@ -102,8 +102,11 @@ export default function TasksPage({
 	const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
 	const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
 
-	const setFilters = useCallback(
-		(next: TaskPageFilters) => setSearchParams((params) => writeTaskFilters(params, next), { replace: true }),
+	// Writes only the filters a control changed, so an edit made before the configuration has loaded keeps the
+	// values that cannot be resolved yet.
+	const changeFilters = useCallback(
+		(changes: Partial<TaskPageFilters>) =>
+			setSearchParams((params) => writeTaskFilters(params, changes), { replace: true }),
 		[setSearchParams],
 	);
 
@@ -183,6 +186,7 @@ export default function TasksPage({
 	const labels = useMemo(() => collectAvailableLabels(tasks, availableLabels), [tasks, availableLabels]);
 	const hasTasksWithMilestones = useMemo(() => tasks.some((task) => Boolean(task.milestone?.trim())), [tasks]);
 	const filtered = isFiltered(filters);
+	const showsNoMatches = filtered && !isLoading && visibleTasks.length === 0;
 
 	const openCleanup = canWrite ? () => setIsCleanupOpen(true) : undefined;
 	const handleCleanupSuccess = async (message: string) => {
@@ -192,9 +196,10 @@ export default function TasksPage({
 		setTimeout(() => setCleanupMessage(null), 4000);
 	};
 
+	// From md up the head stays in place and only the tasks below it scroll, so keyboard focus can never sit under it.
 	return (
-		<div>
-			<header className="border-b border-line-soft bg-surface panel-gutter pt-4 pb-3 md:sticky md:top-0 md:z-20">
+		<div className="md:flex md:h-full md:flex-col">
+			<header className="border-b border-line-soft panel-gutter pt-4 pb-3 md:shrink-0">
 				<div className="mb-3 flex items-baseline gap-2.5">
 					<h2 className="text-[22px] font-semibold leading-tight tracking-tight text-ink">Tasks</h2>
 					{!isLoading && !loadError && (
@@ -206,13 +211,13 @@ export default function TasksPage({
 				<TaskToolbar
 					layout={layout}
 					search={filters.search}
-					onSearchChange={(search) => setFilters({ ...filters, search })}
+					onSearchChange={(search) => changeFilters({ search })}
 					activeFilterCount={countActiveFilters(filters)}
 					filterPanelId={FILTER_PANEL_ID}
 					isFilterPanelOpen={isFilterPanelOpen}
 					onToggleFilterPanel={() => setIsFilterPanelOpen((open) => !open)}
 					isFiltered={filtered}
-					onClearFilters={() => setFilters(NO_TASK_FILTERS)}
+					onClearFilters={() => changeFilters(NO_TASK_FILTERS)}
 					laneMode={laneMode}
 					onLaneModeChange={changeLaneMode}
 					hasTasksWithMilestones={hasTasksWithMilestones}
@@ -222,7 +227,7 @@ export default function TasksPage({
 					<TaskFilterPanel
 						id={FILTER_PANEL_ID}
 						filters={filters}
-						onChange={setFilters}
+						onChange={changeFilters}
 						statuses={statuses}
 						assignees={assignees}
 						labels={labels}
@@ -235,55 +240,64 @@ export default function TasksPage({
 				)}
 			</header>
 
-			{loadError ? (
-				<div className="panel-gutter py-6">
-					<div
-						className="rounded-lg border border-red-200 bg-red-50 px-6 py-10 text-center dark:border-red-800 dark:bg-red-900/20"
-						role="alert"
-					>
-						<p className="font-medium text-red-700 dark:text-red-300">Failed to load tasks</p>
-						<p className="mt-1 text-sm text-red-600 dark:text-red-400">{loadError.message}</p>
-						<button
-							type="button"
-							onClick={() => void onRefreshData()}
-							className="mt-4 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 focus-ring dark:bg-red-700 dark:hover:bg-red-600"
-						>
-							Retry
-						</button>
+			{/* Keyed by layout, so each layout starts at the top. */}
+			<div key={layout} className="md:min-h-0 md:flex-1 md:overflow-y-auto">
+				{loadError ? (
+					<div className="panel-gutter py-6">
+						<div className="rounded-control border border-line bg-blocked-bg px-6 py-10 text-center" role="alert">
+							<p className="font-medium text-blocked">Failed to load tasks</p>
+							<p className="mt-1 text-sm text-blocked">{loadError.message}</p>
+							<button
+								type="button"
+								onClick={() => void onRefreshData()}
+								className="mt-4 rounded-control bg-blocked px-3 py-1.5 text-sm font-medium text-on-ink transition-opacity duration-200 hover:opacity-90 focus-ring"
+							>
+								Retry
+							</button>
+						</div>
 					</div>
-				</div>
-			) : layout === "list" ? (
-				<TaskList
-					tasks={visibleTasks}
-					statuses={statuses}
-					priorities={availablePriorities}
-					projects={availableProjects}
-					finalGroupOpenByDefault={filters.statuses.some((status) => isTerminalStatus(status, statuses))}
-					isLoading={isLoading}
-					isFiltered={filtered}
-					dateFormat={dateFormat}
-					onEditTask={onEditTask}
-					onCleanup={openCleanup}
-				/>
-			) : (
-				<Board
-					tasks={tasks}
-					visibleTasks={visibleTasks}
-					onEditTask={onEditTask}
-					onRefreshData={onRefreshData}
-					onTasksUpdated={onTasksUpdated}
-					statuses={statuses}
-					isLoading={isLoading}
-					milestoneEntities={milestoneEntities}
-					archivedMilestones={archivedMilestones}
-					laneMode={laneMode}
-					availablePriorities={availablePriorities}
-					availableProjects={availableProjects}
-					hideEmptyColumns={hideEmptyColumns}
-					dateFormat={dateFormat}
-					onCleanup={openCleanup}
-				/>
-			)}
+				) : (
+					<>
+						{showsNoMatches && (
+							<p className="panel-gutter py-10 text-center text-sm text-ink-2">No tasks match these filters</p>
+						)}
+						{/* Hidden rather than removed while nothing matches, so groups and lanes keep their open state. */}
+						<div hidden={showsNoMatches}>
+							{layout === "list" ? (
+								<TaskList
+									tasks={visibleTasks}
+									statuses={statuses}
+									priorities={availablePriorities}
+									projects={availableProjects}
+									finalGroupOpenByDefault={filters.statuses.some((status) => isTerminalStatus(status, statuses))}
+									isLoading={isLoading}
+									dateFormat={dateFormat}
+									onEditTask={onEditTask}
+									onCleanup={openCleanup}
+								/>
+							) : (
+								<Board
+									tasks={tasks}
+									visibleTasks={visibleTasks}
+									onEditTask={onEditTask}
+									onRefreshData={onRefreshData}
+									onTasksUpdated={onTasksUpdated}
+									statuses={statuses}
+									isLoading={isLoading}
+									milestoneEntities={milestoneEntities}
+									archivedMilestones={archivedMilestones}
+									laneMode={laneMode}
+									availablePriorities={availablePriorities}
+									availableProjects={availableProjects}
+									hideEmptyColumns={hideEmptyColumns}
+									dateFormat={dateFormat}
+									onCleanup={openCleanup}
+								/>
+							)}
+						</div>
+					</>
+				)}
+			</div>
 
 			{canWrite && (
 				<CleanupModal

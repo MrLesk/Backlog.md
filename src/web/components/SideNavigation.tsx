@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef, memo, type ComponentType } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, memo, type ComponentType, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Tooltip } from 'react-tooltip';
 import {
@@ -464,9 +464,11 @@ const SideNavigation = memo(function SideNavigation({
 	const milestoneLink = { path: '/milestones', label: 'Milestones', Icon: Icons.Milestone, visible: sections.milestones };
 	const draftLink = { path: '/drafts', label: 'Drafts', Icon: Icons.Draft, visible: canWrite };
 	// On the Tasks page the entry keeps the layout on screen; elsewhere it opens the layout this browser used last.
+	// Its count is the only part that waits for the tasks to load, so the entry itself never moves.
 	const tasksPath = TASK_LAYOUT_PATHS[taskLayoutOfPath(location.pathname) ?? readRememberedTaskLayout()];
-	const pageLinks = [
-		{ path: tasksPath, label: 'Tasks', Icon: Icons.Tasks, visible: sections.tasks },
+	const taskCountBadge = <NavigationCount count={taskCount} isLoading={isLoading} error={error} label="task" />;
+	const pageLinks: Array<{ path: string; label: string; Icon: ComponentType; visible: boolean; count?: ReactNode }> = [
+		{ path: tasksPath, label: 'Tasks', Icon: Icons.Tasks, visible: sections.tasks, count: taskCountBadge },
 		...(isCollapsed ? [draftLink, milestoneLink] : [milestoneLink, draftLink]),
 		{ path: '/statistics', label: 'Statistics', Icon: Icons.Statistics, visible: sections.tasks },
 	].filter(({ visible }) => visible);
@@ -649,23 +651,8 @@ const SideNavigation = memo(function SideNavigation({
 					</div>
 				)}
 				
-				{/* Task loading only changes the count; navigation remains stable. */}
-				{!isCollapsed && sections.tasks && (
-					<div className="px-4 pt-3 pb-2">
-						<div className="flex items-center space-x-3 px-3">
-							<span className="text-ink-3"><Icons.Tasks /></span>
-							<span className="section-caption whitespace-nowrap">
-								Tasks (<NavigationCount count={taskCount} isLoading={isLoading} error={error} label="task" />)
-							</span>
-						</div>
-						{isLoading && (
-							<LoadingPhase className="mt-2 px-3 text-xs text-ink-3" />
-						)}
-					</div>
-				)}
-
 				<div className={isCollapsed ? 'px-2 py-2 space-y-2' : 'px-4 space-y-1'}>
-					{pageLinks.map(({ path, label, Icon }) => (
+					{pageLinks.map(({ path, label, Icon, count }) => (
 						<NavLink
 							key={path}
 							to={path}
@@ -681,7 +668,11 @@ const SideNavigation = memo(function SideNavigation({
 							{isCollapsed ? (
 								<div className="w-6 h-6 flex items-center justify-center"><Icon /></div>
 							) : (
-								<><Icon /><span className="ml-3 text-sm">{label}</span></>
+								<>
+									<Icon />
+									<span className="ml-3 text-sm">{label}</span>
+									{count && <span className="ml-auto text-xs text-ink-3">{count}</span>}
+								</>
 							)}
 						</NavLink>
 					))}

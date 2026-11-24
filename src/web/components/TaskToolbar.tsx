@@ -40,8 +40,12 @@ function ToolbarIcon({ path }: { path: string }) {
 }
 
 /**
- * The controls of the Tasks page: the layout switch, the search, the Filter button, Clear filters, the board's
- * Milestone lanes toggle and New task. It holds no state; TasksPage owns the URL they change.
+ * The controls of the Tasks page in two groups. On the left, the layout switch and the board's Milestone lanes
+ * toggle; on the right, Clear filters, the search, Filter and New task. The right group keeps to the right edge and
+ * Clear filters is its first control, so nothing right of the search appears or disappears. In a toolbar narrower
+ * than 55rem, where both groups with every control do not fit on one row, the right group always takes a row of
+ * its own, so changing the layout or typing the first letter never moves the search either. It holds no state;
+ * TasksPage owns the URL the controls change.
  */
 export default function TaskToolbar({
 	layout,
@@ -62,40 +66,71 @@ export default function TaskToolbar({
 	const { search: query } = useLocation();
 	const filterButtonRef = useRef<HTMLButtonElement>(null);
 
+	// Lanes that are on can always be turned off, even after the last task with a milestone lost it.
+	const canToggleLanes = hasTasksWithMilestones || laneMode === "milestone";
+
 	return (
-		<div className="flex flex-wrap items-center gap-2">
-			<nav aria-label="Layout" className="inline-flex gap-0.5 rounded-[9px] bg-surface-2 p-0.5">
-				{LAYOUT_LINKS.map((link) => {
-					const isCurrent = link.layout === layout;
-					return (
-						<Link
-							key={link.layout}
-							to={{ pathname: TASK_LAYOUT_PATHS[link.layout], search: query }}
-							aria-current={isCurrent ? "page" : undefined}
-							className={`flex h-[26px] items-center gap-1.5 rounded-[7px] px-2.5 text-sm font-medium transition-colors duration-200 focus-ring ${
-								isCurrent ? "bg-surface text-ink ring-1 ring-line" : "text-ink-2 hover:text-ink"
-							}`}
-						>
-							<ToolbarIcon path={link.icon} />
-							{link.label}
-						</Link>
-					);
-				})}
-			</nav>
+		<div className="flex flex-wrap items-center gap-2 @container">
+			<div className="flex items-center gap-2">
+				<nav aria-label="Layout" className="inline-flex gap-0.5 rounded-[9px] bg-surface-2 p-0.5">
+					{LAYOUT_LINKS.map((link) => {
+						const isCurrent = link.layout === layout;
+						return (
+							<Link
+								key={link.layout}
+								to={{ pathname: TASK_LAYOUT_PATHS[link.layout], search: query }}
+								aria-current={isCurrent ? "page" : undefined}
+								className={`flex h-7 items-center gap-1.5 rounded-[7px] px-2.5 text-sm font-medium transition-colors duration-200 focus-ring ${
+									isCurrent ? "bg-surface text-ink ring-1 ring-line" : "text-ink-2 hover:text-ink"
+								}`}
+							>
+								<ToolbarIcon path={link.icon} />
+								{link.label}
+							</Link>
+						);
+					})}
+				</nav>
+				{layout === "board" && (
+					<button
+						type="button"
+						aria-pressed={laneMode === "milestone"}
+						disabled={!canToggleLanes}
+						title={canToggleLanes ? undefined : "No tasks have milestones. Assign milestones to tasks first."}
+						onClick={() => onLaneModeChange(laneMode === "milestone" ? "none" : "milestone")}
+						className={`${QUIET_BUTTON_CLASS} ${laneMode === "milestone" ? "bg-surface-2 text-ink" : ""}`}
+					>
+						<ToolbarIcon path="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
+						Milestone lanes
+					</button>
+				)}
+			</div>
 
-			<label className="order-3 flex h-8 w-full items-center gap-2 rounded-control border border-line bg-surface px-2.5 text-ink-3 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent-strong md:order-none md:ml-auto md:w-60">
-				<ToolbarIcon path="M11.2 11.2 14 14M12.25 7a5.25 5.25 0 1 1-10.5 0 5.25 5.25 0 0 1 10.5 0z" />
-				<input
-					type="search"
-					value={search}
-					onChange={(event) => onSearchChange(event.target.value)}
-					placeholder="Search tasks"
-					aria-label="Search tasks"
-					className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-3"
-				/>
-			</label>
-
-			<div className="order-4 flex flex-wrap items-center gap-1 md:order-none">
+			<div className="ml-auto flex w-full flex-wrap items-center justify-end gap-2 @[55rem]:w-auto">
+				{isFiltered && (
+					<button
+						type="button"
+						onClick={() => {
+							onClearFilters();
+							// The button goes away with the filters, so keyboard focus moves to Filter instead of being lost.
+							filterButtonRef.current?.focus();
+						}}
+						className={QUIET_BUTTON_CLASS}
+					>
+						Clear filters
+					</button>
+				)}
+				{/* Below md the search takes a row of its own under the buttons. */}
+				<label className="order-last flex h-8 w-full items-center gap-2 rounded-control border border-line bg-surface px-2.5 text-ink-3 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent-strong md:order-none md:w-60">
+					<ToolbarIcon path="M11.2 11.2 14 14M12.25 7a5.25 5.25 0 1 1-10.5 0 5.25 5.25 0 0 1 10.5 0z" />
+					<input
+						type="search"
+						value={search}
+						onChange={(event) => onSearchChange(event.target.value)}
+						placeholder="Search tasks"
+						aria-label="Search tasks"
+						className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-3"
+					/>
+				</label>
 				<button
 					ref={filterButtonRef}
 					type="button"
@@ -113,44 +148,17 @@ export default function TaskToolbar({
 						</span>
 					)}
 				</button>
-				{isFiltered && (
+				{onNewTask && (
 					<button
 						type="button"
-						onClick={() => {
-							onClearFilters();
-							// The button goes away with the filters, so keyboard focus moves to Filter instead of being lost.
-							filterButtonRef.current?.focus();
-						}}
-						className={QUIET_BUTTON_CLASS}
+						onClick={onNewTask}
+						className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-control bg-ink px-3 text-sm font-medium text-on-ink transition-opacity duration-200 hover:opacity-90 focus-ring"
 					>
-						Clear filters
-					</button>
-				)}
-				{layout === "board" && (
-					<button
-						type="button"
-						aria-pressed={laneMode === "milestone"}
-						disabled={!hasTasksWithMilestones}
-						title={hasTasksWithMilestones ? undefined : "No tasks have milestones. Assign milestones to tasks first."}
-						onClick={() => onLaneModeChange(laneMode === "milestone" ? "none" : "milestone")}
-						className={`${QUIET_BUTTON_CLASS} ${laneMode === "milestone" ? "bg-surface-2 text-ink" : ""}`}
-					>
-						<ToolbarIcon path="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
-						Milestone lanes
+						<ToolbarIcon path="M8 3.5v9M3.5 8h9" />
+						New task
 					</button>
 				)}
 			</div>
-
-			{onNewTask && (
-				<button
-					type="button"
-					onClick={onNewTask}
-					className="order-2 ml-auto inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-control bg-ink px-3 text-sm font-medium text-on-ink transition-opacity duration-200 hover:opacity-90 focus-ring md:order-none md:ml-0"
-				>
-					<ToolbarIcon path="M8 3.5v9M3.5 8h9" />
-					New task
-				</button>
-			)}
 		</div>
 	);
 }

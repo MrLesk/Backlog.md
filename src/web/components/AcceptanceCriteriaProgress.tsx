@@ -33,7 +33,7 @@ export default function AcceptanceCriteriaProgress({ task, density }: Acceptance
 
 	return (
 		<span
-			className={`inline-flex items-center gap-1 whitespace-nowrap font-mono text-[11.5px] font-medium ${isComplete ? "text-ink" : "text-ink-2"}`}
+			className={`inline-flex items-center gap-1 whitespace-nowrap font-mono text-[11.5px] font-medium leading-4 ${isComplete ? "text-ink" : "text-ink-2"}`}
 			data-acceptance-criteria-progress
 			data-density={density}
 			role="progressbar"

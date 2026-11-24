@@ -22,7 +22,6 @@ interface TaskListProps {
 	 */
 	finalGroupOpenByDefault: boolean;
 	isLoading: boolean;
-	isFiltered: boolean;
 	dateFormat?: string;
 	onEditTask: (task: Task) => void;
 	/** Opens the cleanup dialog; absent without write access. */
@@ -41,7 +40,6 @@ export default function TaskList({
 	projects,
 	finalGroupOpenByDefault,
 	isLoading,
-	isFiltered,
 	dateFormat,
 	onEditTask,
 	onCleanup,
@@ -59,21 +57,20 @@ export default function TaskList({
 		);
 	}
 
+	// The page says when its filters match nothing, so an empty list here means the project has no tasks.
 	const groups = sectionTasks(sortTasks(tasks, undefined, priorities), undefined, statuses);
 	if (groups.length === 0) {
-		return (
-			<p className="panel-gutter py-10 text-center text-sm text-ink-2">
-				{isFiltered ? "No tasks match these filters" : "No tasks yet"}
-			</p>
-		);
+		return <p className="panel-gutter py-10 text-center text-sm text-ink-2">No tasks yet</p>;
 	}
 
 	const finalStatus = getTerminalStatus(statuses);
 	// IDs are drawn in the mono face, so a width in ch of the longest ID lines up every row of the list.
 	const idWidth = `${Math.max(...tasks.map((task) => task.id.length))}ch`;
 
+	// relative keeps the rows' screen-reader-only labels inside the list. Without it they are placed against the
+	// page and stretch it, which gives the window a second scroll bar.
 	return (
-		<div className="@container">
+		<div className="relative @container">
 			{groups.map(({ status, tasks: groupTasks }, index) => {
 				const name = status ?? "";
 				const isFinal = name === finalStatus;
@@ -82,13 +79,13 @@ export default function TaskList({
 				return (
 					<div key={name} className="border-t border-line-soft first:border-t-0">
 						<div className="flex h-[34px] items-center gap-2 bg-surface-2 panel-gutter">
-							<h3 className="min-w-0 flex-1">
+							<h3 className="flex min-w-0 flex-1 self-stretch">
 								<button
 									type="button"
 									aria-expanded={isOpen}
 									aria-controls={listId}
 									onClick={() => setOpenByStatus((current) => ({ ...current, [name]: !isOpen }))}
-									className="flex max-w-full items-center gap-2 rounded-[6px] text-sm font-semibold text-ink focus-ring"
+									className="flex h-full w-full min-w-0 items-center gap-2 rounded-[6px] text-left text-sm font-semibold text-ink focus-ring"
 								>
 									<svg viewBox="0 0 16 16" className={`size-3.5 shrink-0 text-ink-3 transition-transform ${isOpen ? "" : "-rotate-90"}`} aria-hidden="true">
 										<path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -134,8 +131,8 @@ interface TaskRowProps {
 }
 
 /**
- * One task: priority, ID, status and title, then its details. When the list is narrow, the details move to a second
- * line instead of squeezing the title.
+ * One task: priority, ID, status and title, then its details. A list of 64rem or more shows the row on one line and
+ * cuts a long title with an ellipsis; a narrower list puts the details on a second line and wraps the title.
  */
 function TaskRow({ task, statuses, priorities, projects, idWidth, dateFormat, onEditTask }: TaskRowProps) {
 	const [firstAssignee, ...otherAssignees] = task.assignee;
@@ -145,13 +142,18 @@ function TaskRow({ task, statuses, priorities, projects, idWidth, dateFormat, on
 		// shortcut for the mouse.
 		<li
 			onClick={() => onEditTask(task)}
-			className="grid cursor-pointer grid-cols-[14px_auto_14px_minmax(0,1fr)] items-center gap-x-2.5 gap-y-1 border-t border-line-soft panel-gutter py-2.5 transition-colors duration-200 hover:bg-hover @4xl:grid-cols-[14px_auto_14px_minmax(0,1fr)_auto] @4xl:py-2"
+			className="grid cursor-pointer grid-cols-[14px_auto_14px_minmax(0,1fr)] items-start gap-x-2.5 gap-y-1 border-t border-line-soft panel-gutter py-2.5 transition-colors duration-200 hover:bg-hover @5xl:grid-cols-[14px_auto_14px_minmax(0,1fr)_auto] @5xl:items-center @5xl:py-2"
 		>
-			<PriorityBars priority={task.priority} priorities={priorities} />
-			<span className="font-mono text-xs font-medium text-ink-3" style={{ width: idWidth }}>
+			{/* The marks and the ID are one title line tall, so they stay beside the first line of a title that wraps. */}
+			<span className="flex h-5 items-center">
+				<PriorityBars priority={task.priority} priorities={priorities} />
+			</span>
+			<span className="font-mono text-xs leading-5 font-medium text-ink-3" style={{ width: idWidth }}>
 				{task.id}
 			</span>
-			<StatusMark status={task.status} statuses={statuses} />
+			<span className="flex h-5 items-center">
+				<StatusMark status={task.status} statuses={statuses} />
+			</span>
 			<button
 				type="button"
 				onClick={(event) => {
@@ -160,12 +162,12 @@ function TaskRow({ task, statuses, priorities, projects, idWidth, dateFormat, on
 				}}
 				title={task.title}
 				aria-label={`Open ${task.id}: ${task.title}`}
-				className="min-w-0 truncate rounded-[4px] text-left text-sm font-medium text-ink focus-ring"
+				className="min-w-0 rounded-[4px] text-left text-sm font-medium text-ink wrap-anywhere focus-ring @5xl:truncate"
 			>
 				{task.title}
 			</button>
-			<div className="col-start-2 col-end-[-1] flex flex-wrap items-center gap-x-3 gap-y-1 @4xl:col-start-auto @4xl:col-end-auto @4xl:flex-nowrap @4xl:justify-end">
-				<div className="flex min-w-0 flex-wrap items-center gap-1.5 @4xl:flex-nowrap @4xl:justify-end">
+			<div className="col-start-2 col-end-[-1] flex flex-wrap items-center gap-x-3 gap-y-1 @5xl:col-start-auto @5xl:col-end-auto @5xl:flex-nowrap @5xl:justify-end">
+				<div className="flex min-w-0 flex-wrap items-center gap-1.5 @5xl:flex-nowrap @5xl:justify-end">
 					{task.branch && <TaskBranch branch={task.branch} />}
 					{task.dueDate && (
 						<span className="whitespace-nowrap text-xs text-ink-2">
@@ -174,17 +176,17 @@ function TaskRow({ task, statuses, priorities, projects, idWidth, dateFormat, on
 					)}
 					<TaskTags task={task} projects={projects} />
 				</div>
-				<span className="flex items-center empty:hidden @4xl:w-16 @4xl:empty:block">
+				<span className="flex items-center empty:hidden @5xl:w-16 @5xl:empty:block">
 					<AcceptanceCriteriaProgress task={task} density="list" />
 				</span>
 				<span
-					className="min-w-0 truncate font-mono text-xs text-ink-2 empty:hidden @4xl:w-[6.5rem] @4xl:empty:block"
+					className="min-w-0 truncate font-mono text-xs text-ink-2 empty:hidden @5xl:w-[6.5rem] @5xl:empty:block"
 					title={task.assignee.join(", ")}
 				>
 					{firstAssignee}
 					{otherAssignees.length > 0 && <span className="text-ink-3"> +{otherAssignees.length}</span>}
 				</span>
-				<span className="whitespace-nowrap text-xs text-ink-3 @4xl:w-20 @4xl:text-right">
+				<span className="whitespace-nowrap text-xs text-ink-3 @5xl:w-20 @5xl:text-right">
 					<span className="sr-only">Updated </span>
 					<StoredDate value={task.updatedDate || task.createdDate} dateFormat={dateFormat} compact />
 				</span>

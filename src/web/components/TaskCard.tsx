@@ -185,7 +185,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
         <div className="flex items-center gap-2">
           <PriorityBars priority={task.priority} priorities={priorities} />
           <span className="min-w-0 font-mono text-xs font-medium text-ink-3 wrap-anywhere">{task.id}</span>
-          <span className="ml-auto shrink-0">
+          <span className="ml-auto flex shrink-0">
             <AcceptanceCriteriaProgress task={task} density="card" />
           </span>
         </div>

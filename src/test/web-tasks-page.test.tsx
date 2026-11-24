@@ -71,6 +71,7 @@ interface PageOptions {
 	priorities?: string[];
 	types?: string[];
 	projects?: string[];
+	isLoading?: boolean;
 	dateFormat?: string;
 	onRefreshData?: () => Promise<void>;
 	onTasksUpdated?: (tasks: Task[], requestTask: Task) => void;
@@ -100,7 +101,7 @@ const renderPage = (path: string, options: PageOptions = {}): HTMLElement => {
 			availablePriorities={options.priorities}
 			availableTypes={options.types ?? TYPES}
 			availableProjects={options.projects ?? PROJECTS}
-			isLoading={false}
+			isLoading={options.isLoading ?? false}
 			hideEmptyColumns={false}
 			dateFormat={options.dateFormat}
 			onEditTask={() => {}}
@@ -290,7 +291,7 @@ describe("Tasks page layouts", () => {
 		await click(container.querySelector("button[aria-controls='task-filters']") as HTMLButtonElement);
 		const assignee = select(container, "Filter by assignee");
 		expect(Array.from(assignee.options, (option) => option.textContent)).toEqual([
-			"All assignees",
+			"All",
 			"Unassigned",
 			"@Alex",
 			"@alexa",
@@ -327,7 +328,7 @@ describe("Tasks page layouts", () => {
 		await click(container.querySelector("button[aria-controls='task-filters']") as HTMLButtonElement);
 		const priority = select(container, "Filter by priority");
 		expect(Array.from(priority.options, (option) => option.textContent)).toEqual([
-			"All priorities",
+			"All",
 			"Very High",
 			"High",
 			"Medium",
@@ -341,6 +342,25 @@ describe("Tasks page layouts", () => {
 
 		await waitFor(() => window.location.search === "?view=compact");
 		expect(boardTaskIds(container).sort()).toEqual(["task-101", "task-102", "task-103", "task-104"]);
+	});
+
+	it("keeps a project that is not resolved yet when a filter changes before the configuration loads", async () => {
+		const container = renderPage("/tasks?project=Web&status=In%20Progress", { projects: [], isLoading: true });
+
+		await typeInto(container.querySelector("input[aria-label='Search tasks']") as HTMLInputElement, "doc");
+		await click(container.querySelector("button[aria-controls='task-filters']") as HTMLButtonElement);
+		await setSelectValue(select(container, "Filter by priority"), "low");
+
+		expect(window.location.search).toBe("?project=Web&status=In+Progress&search=doc&priority=low");
+	});
+
+	it("says when the filters match nothing, in both layouts and with milestone lanes", async () => {
+		const container = renderPage("/tasks?search=zzqqxx&lane=milestone");
+		expect(container.textContent).toContain("No tasks match these filters");
+
+		await click(layoutLink(container, "Board"));
+		expect(container.textContent).toContain("No tasks match these filters");
+		expect(boardTaskIds(container)).toEqual([]);
 	});
 
 	it("clears every filter and the search but keeps the lanes and unrelated parameters", async () => {
@@ -511,6 +531,21 @@ describe("Tasks page board", () => {
 
 		expect(boardTaskIds(container).sort()).toEqual(["task-101", "task-103"]);
 		expect(container.querySelector("[role='group'][aria-label='Release 2']")).toBeNull();
+	});
+
+	it("lets milestone lanes be turned off when no task has a milestone", async () => {
+		const container = renderPage("/board?lane=milestone", {
+			tasks: [createTask({ id: "task-1" }), createTask({ id: "task-2", status: "Done" })],
+		});
+		const lanes = button(container, "Milestone lanes");
+		expect(lanes.getAttribute("aria-pressed")).toBe("true");
+		expect(lanes.disabled).toBe(false);
+
+		await click(lanes);
+
+		expect(search().has("lane")).toBe(false);
+		expect(lanes.getAttribute("aria-pressed")).toBe("false");
+		expect(lanes.disabled).toBe(true);
 	});
 
 	it("keeps the milestone filter when the lanes change", async () => {

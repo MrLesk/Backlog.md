@@ -44,21 +44,22 @@ const visibleText = (html: string): string => {
 	return text;
 };
 
-/** The href and aria-current of the sidebar's Tasks entry. */
-const tasksEntry = (html: string): { href: string | null; current: string | null } => {
-	const entry = { href: null as string | null, current: null as string | null };
-	let link: { href: string | null; current: string | null } | null = null;
+/** The href, aria-current and visible text of the sidebar's Tasks entry. */
+const tasksEntry = (html: string): { href: string | null; current: string | null; text: string } => {
+	const links: Array<{ href: string | null; current: string | null; text: string }> = [];
 	new HTMLRewriter()
 		.on("a", {
 			element(element) {
-				link = { href: element.getAttribute("href"), current: element.getAttribute("aria-current") };
+				links.push({ href: element.getAttribute("href"), current: element.getAttribute("aria-current"), text: "" });
 			},
 			text(chunk) {
-				if (link && chunk.text.trim() === "Tasks") Object.assign(entry, link);
+				const link = links.at(-1);
+				if (link) link.text += chunk.text;
 			},
 		})
 		.transform(html);
-	return entry;
+	const entry = links.find((link) => link.text.startsWith("Tasks"));
+	return entry ?? { href: null, current: null, text: "" };
 };
 
 const renderBoard = (isLoading: boolean, error?: Error): string =>
@@ -98,7 +99,8 @@ describe("SideNavigation task loading", () => {
 
 		const loaded = renderNavigation(false, 3);
 		const loadedText = visibleText(loaded);
-		expect(loadedText).toContain("Tasks (3)");
+		// The entry's label followed by its count.
+		expect(tasksEntry(loaded).text).toBe("Tasks3");
 		expect(loadedText).toContain("Documents (0)");
 		expect(loadedText).toContain("Decisions (0)");
 		expect(loadedText).toContain("No documents");
@@ -110,16 +112,16 @@ describe("SideNavigation task loading", () => {
 		const onBoard = renderNavigation(false, 3, undefined, "/board/BACK-1/open-task");
 		expect(visibleText(onBoard)).not.toContain("Kanban Board");
 		expect(visibleText(onBoard)).not.toContain("All Tasks");
-		expect(tasksEntry(onBoard)).toEqual({ href: "/board", current: "page" });
-		expect(tasksEntry(renderNavigation(false, 3, undefined, "/tasks"))).toEqual({ href: "/tasks", current: "page" });
+		expect(tasksEntry(onBoard)).toMatchObject({ href: "/board", current: "page" });
+		expect(tasksEntry(renderNavigation(false, 3, undefined, "/tasks"))).toMatchObject({ href: "/tasks", current: "page" });
 
 		storage.set("backlog.tasks.layout", "list");
 		try {
-			expect(tasksEntry(renderNavigation(false, 3, undefined, "/milestones"))).toEqual({ href: "/tasks", current: null });
+			expect(tasksEntry(renderNavigation(false, 3, undefined, "/milestones"))).toMatchObject({ href: "/tasks", current: null });
 		} finally {
 			storage.delete("backlog.tasks.layout");
 		}
-		expect(tasksEntry(renderNavigation(false, 3, undefined, "/milestones"))).toEqual({ href: "/board", current: null });
+		expect(tasksEntry(renderNavigation(false, 3, undefined, "/milestones"))).toMatchObject({ href: "/board", current: null });
 	});
 
 	it("shows a distinct unavailable presentation and exposes retry after a corpus failure", () => {

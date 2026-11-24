@@ -600,6 +600,10 @@ const travel = async (direction: "back" | "forward", expectations: FetchExpectat
 	});
 };
 
+// The sidebar's Tasks entry, whose text is its label followed by the task count once the tasks have loaded.
+const sidebarTasksLink = (container: HTMLElement) =>
+	Array.from(container.querySelectorAll("nav a")).find((element) => /^Tasks\d*$/.test(element.textContent?.trim() ?? ""));
+
 const assertState = (predicate: () => boolean, message: string) => {
 	expect(predicate(), message).toBe(true);
 };
@@ -927,9 +931,7 @@ describe("task detail routes", () => {
 		const container = await renderApp("/");
 		assertState(() => container.textContent?.includes(tasks[0]?.title ?? "") ?? false, "board task");
 		expect(window.location.pathname).toBe("/board");
-		const tasksLink = Array.from(container.querySelectorAll("nav a")).find(
-			(element) => element.textContent?.trim() === "Tasks",
-		);
+		const tasksLink = sidebarTasksLink(container);
 		expect(tasksLink?.getAttribute("href")).toBe("/board");
 		expect(tasksLink?.getAttribute("aria-current")).toBe("page");
 
@@ -1012,6 +1014,20 @@ describe("task detail routes", () => {
 			tasks.splice(tasks.indexOf(detailFollower), 1);
 			for (const result of addedResults) searchResults.splice(searchResults.indexOf(result), 1);
 		}
+	});
+
+	it("keeps every key typed into the task search while the URL follows", async () => {
+		const container = await renderApp("/tasks");
+		const field = container.querySelector("input[aria-label='Search tasks']") as HTMLInputElement;
+
+		// Each key lands on the field as it is when the key arrives, before React has rendered the previous one.
+		await act(async () => {
+			for (const key of "lab") setNativeInputValue(field, `${field.value}${key}`);
+			await Promise.resolve();
+		});
+
+		expect(field.value).toBe("lab");
+		expect(new URLSearchParams(window.location.search).get("search")).toBe("lab");
 	});
 
 	it("preserves a type filter through board task Back, Forward, and close navigation", async () => {
@@ -1406,9 +1422,7 @@ describe("task detail routes", () => {
 
 	it("archives a routed task with a single history close", async () => {
 		const container = await renderApp("/milestones");
-		const tasksLink = Array.from(container.querySelectorAll("nav a")).find(
-			(element) => element.textContent?.trim() === "Tasks",
-		);
+		const tasksLink = sidebarTasksLink(container);
 		expect(tasksLink).toBeTruthy();
 		await click(tasksLink as HTMLAnchorElement);
 		assertState(() => window.location.pathname === "/board", "Tasks entry opens the board first");
