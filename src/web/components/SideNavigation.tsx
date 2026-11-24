@@ -567,9 +567,8 @@ const SideNavigation = memo(function SideNavigation({
 								if (result.type === 'decision') {
 									return createRecordUrlPath('/decisions', item);
 								}
-								const taskPath = createUrlPath('/board', item.id, item.title);
-								const isBoardLocation = location.pathname === '/board' || location.pathname.startsWith('/board/');
-								return isBoardLocation ? `${taskPath}${location.search}` : taskPath;
+								const taskPath = createUrlPath(tasksPath, item.id, item.title);
+								return taskLayoutOfPath(location.pathname) ? `${taskPath}${location.search}` : taskPath;
 							};
 
 							const ResultIcon = SEARCH_RESULT_ICONS[result.type];

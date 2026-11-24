@@ -110,8 +110,9 @@ export default function TasksPage({
 		[setSearchParams],
 	);
 
-	// A link written by hand or by an older version gets the configured spelling, and values that are not configured
-	// leave the URL. This waits for a successful load, or every custom value would look unsupported.
+	// A link written by hand or by an older version gets the configured spelling of its statuses, types, projects and
+	// priorities, and type, project and priority values that are not configured leave the URL. This waits for a
+	// successful load, or every custom value would look unsupported.
 	useEffect(() => {
 		if (isLoading || loadError) return;
 		const canonical = writeTaskFilters(searchParams, filters);

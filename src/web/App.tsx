@@ -40,7 +40,7 @@ import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from 
 import { getProjectValues } from '../utils/project-config';
 import { getTaskTypeValues } from '../utils/task-type-config';
 import { createUrlPath } from './utils/urlHelpers';
-import { readRememberedTaskLayout, TASK_LAYOUT_PATHS, type TaskLayout } from './lib/task-view';
+import { readRememberedTaskLayout, TASK_LAYOUT_PATHS, type TaskLayout, taskLayoutOfPath } from './lib/task-view';
 import { reconcileById } from './utils/reconcile';
 import { parseBrowserLoadingState } from '../utils/browser-loading-state';
 
@@ -542,12 +542,8 @@ function AppContent() {
   }, []);
 
   const handleOpenTask = useCallback((task: Task) => {
-    const basePath =
-      location.pathname.startsWith('/board')
-        ? '/board'
-        : location.pathname.startsWith('/tasks')
-          ? '/tasks'
-          : null;
+    const layout = taskLayoutOfPath(location.pathname);
+    const basePath = layout ? TASK_LAYOUT_PATHS[layout] : null;
 
     if (!basePath) {
       // Pages without a task route (milestones, statistics) open the modal directly, so they must

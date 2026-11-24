@@ -1,11 +1,11 @@
 ---
 id: BACK-829
 title: Show tasks on one page with List and Board layouts
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-23T20:53:00Z'
-updated_date: '2026-11-24T21:47:00Z'
+updated_date: '2026-11-24T21:53:00Z'
 labels:
   - web
 dependencies:
@@ -274,6 +274,8 @@ Every required pair passes. The filter selects use the pairs above: names in ink
 Checks, after the review round (origin/main had not moved): bun run check:types and bun run check pass; the web tests and the changed unit tests (392) pass; the full suite through scripts/run-ci-tests.ts with the CI flags (--profile=full --parallel=2 --isolate --timeout=10000 --max-concurrency=2 and the bundled test CLI) passes: 3148 tests and 13 skipped in the parallel pass, 410 in the DOM pass. bun run build and `bun scripts/smoke-compiled-build.ts dist/backlog 1.57.4` pass, and every measurement above was repeated on that final binary. In the first round, a run without the CI flags (one process, no isolation) failed 24 CLI, decision and server tests that this change does not touch; they pass alone and with the CI flags, so they share state in that mode.
 
 Not verified: Firefox, Safari, Windows and Linux; a mouse drag in a real browser (covered by the tests; the keyboard move and a dragged card scrolling the tasks were checked in headless Chrome with dispatched drag events); what a screen reader announces (only the accessible names were checked); the native select pop-ups and touch use of the filter selects, which headless screenshots do not show. Typing on 2,000 tasks now renders each key before the next, about 150 ms per key; every key arrives, but filtering on a deferred copy of the search would make it smoother if large projects need it.
+
+Final complexity review on 2026-11-24 (full conversation context) found nothing blocking. Applied from it: countActiveFilters derives from the one URL key table; App's handleOpenTask and the sidebar search results use taskLayoutOfPath, so a task opened from a sidebar search result opens over the current or remembered layout instead of always over the Board; two comments corrected (which values the canonical rewrite drops, and the wording about matching the same tasks as the CLI, TUI and MCP). Rechecked after these edits: type check, Biome, the web and changed unit tests (393 pass), the build, the compiled-binary smoke script, and sidebar search result links from the List, the Board and the Milestones page in the compiled binary.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

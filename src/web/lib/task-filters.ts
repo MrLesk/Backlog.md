@@ -3,7 +3,8 @@
  *
  * The query string is the only place these filters live. TasksPage reads them with readTaskFilters, changes them
  * with writeTaskFilters, and toTaskFilterOptions hands them to the shared task search (src/utils/task-search.ts)
- * that `backlog task list`, the TUI and MCP also use, so a value matches the same tasks on both layouts as there.
+ * that `backlog task list`, the TUI and MCP also use, so a filter value matches the same tasks in both layouts as it
+ * does in those tools.
  * One difference: with several labels chosen, a task needs any one of them, as in the TUI by default, while
  * `backlog task list --labels` needs every one. A filter that is not set is not written, so a plain /tasks or
  * /board link shows every task.
@@ -165,16 +166,7 @@ export function writeTaskFilters(params: URLSearchParams, changes: Partial<TaskP
 
 /** How many of the Filter panel's filters are set. The search field has its own control and is not counted. */
 export function countActiveFilters(filters: TaskPageFilters): number {
-	return [
-		filters.statuses.length > 0,
-		filters.excludedStatuses.length > 0,
-		filters.assignee !== "",
-		filters.labels.length > 0,
-		filters.type !== "",
-		filters.project !== "",
-		filters.priority !== "",
-		filters.milestone !== "",
-	].filter(Boolean).length;
+	return FILTER_FIELDS.filter((field) => field !== "search" && urlValues(filters[field]).length > 0).length;
 }
 
 /** True while the search or any filter can hide a task. */
