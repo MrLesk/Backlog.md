@@ -1,11 +1,11 @@
 ---
 id: BACK-828
 title: Introduce shared colors, type and the page shell of the web redesign
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-23T20:52:00Z'
-updated_date: '2026-11-23T23:58:00Z'
+updated_date: '2026-11-24T00:14:00Z'
 labels:
   - web
 dependencies: []
@@ -180,6 +180,8 @@ Checks
 - Codehygiene finds nothing in the changed lines.
 
 Not verified: Firefox, Safari, and font rendering on Windows and Linux; only Chrome on macOS was used.
+
+Final complexity review on 2026-11-24 found nothing blocking. Applied from it: folder names in the document tree lose their medium weight, so navItemClass alone decides a row's weight; the body rule uses @apply like the other rules; clearer comments for the license header, the font files, the drawer and the ink and on-ink tokens. Rechecked after these edits: type check, Biome, all web tests, the build, the compiled-binary smoke script, and the body colors, font smoothing, license text and a folder row in the compiled binary.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

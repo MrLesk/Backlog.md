@@ -261,7 +261,7 @@ const FolderNode = memo(function FolderNode({ node, depth, folderExpanded, onTog
 			>
 				<span className="shrink-0">{isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}</span>
 				<span className="text-ink-3 ml-1 shrink-0"><Icons.Folder /></span>
-				<span className="ml-2 font-medium truncate">{node.name}</span>
+				<span className="ml-2 truncate">{node.name}</span>
 			</button>
 			{isExpanded && (
 				<div>

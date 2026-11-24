@@ -93,9 +93,10 @@ DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 */
-/* The comment above is a copy of src/web/fonts/OFL.txt, the license of the Geist fonts declared below. It opens
-   this file because the minifier keeps such comments only at the top of the built stylesheet, which is how the
-   full license text ships inside every build together with the fonts. */
+/* The comment above is a copy of src/web/fonts/OFL.txt, the license of the Geist fonts declared below; keep the
+   two identical. It must stay the first thing in this file and keep its "/*!" opening: the minifier drops every
+   other comment, and this one is how the full license text ships inside every build together with the fonts.
+   scripts/smoke-compiled-build.ts fails if the text is missing from the built stylesheet. */
 @import "tailwindcss";
 @import '@uiw/react-md-editor/markdown-editor.css';
 @import '@uiw/react-markdown-preview/markdown.css';
@@ -104,11 +105,11 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* The font files and their license (OFL.txt) are in src/web/fonts: the upright variable faces
-   fonts/Geist/webfonts/Geist[wght].woff2 and fonts/GeistMono/webfonts/GeistMono[wght].woff2 of the
-   Geist 1.9.2 release. Bun embeds a url() file in the built stylesheet only when it is smaller than 128 KiB.
-   Both fonts are, so the browser never requests a font; scripts/smoke-compiled-build.ts fails if one stops
-   being embedded. */
+/* The font files and their license (OFL.txt) are in src/web/fonts. They are the upright variable faces of the
+   Geist 1.9.2 release, where they are named fonts/Geist/webfonts/Geist[wght].woff2 and
+   fonts/GeistMono/webfonts/GeistMono[wght].woff2. Bun embeds a url() file in the built stylesheet only when it
+   is smaller than 128 KiB. Both fonts are, so the browser never requests a font;
+   scripts/smoke-compiled-build.ts fails if one stops being embedded. */
 @font-face {
     font-family: "Geist";
     src: url("../fonts/Geist-Variable.woff2") format("woff2");
@@ -124,7 +125,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 }
 
 /* Design tokens: the one definition of the shared colors, radii and typefaces of the web UI. New and restyled
-   components use them; pages that still use Tailwind's gray and blue move onto them in their own redesign tasks.
+   components use them. Pages that still use Tailwind's gray and blue classes have not moved onto them yet.
    @theme holds the light values and .dark below overrides them, so components use the Tailwind utilities
    (bg-paper, bg-surface, text-ink-2, border-line, rounded-panel, font-mono) without dark: variants.
    When you change a color, keep every text color at a contrast of 4.5:1 or more on paper, surface,
@@ -138,10 +139,10 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     --color-hover: #EAEEF2;         /* row and button hover */
     --color-line: #D6DEE5;          /* hairlines */
     --color-line-soft: #E6EBEF;     /* row separators */
-    --color-ink: #0E3149;           /* text, primary button */
+    --color-ink: #0E3149;           /* text; background of the primary button and tooltips */
     --color-ink-2: #455E75;         /* secondary text */
     --color-ink-3: #54687A;         /* IDs, counts, hints */
-    --color-on-ink: #FFFFFF;        /* text on the primary button */
+    --color-on-ink: #FFFFFF;        /* text on an ink background: primary button, tooltips */
     --color-accent: #00C0C9;        /* logo teal, for the bars of the logo only; too light for text or marks */
     --color-accent-strong: #008A93; /* teal marks on a surface: work in motion, keyboard focus */
     --color-accent-text: #00717A;   /* teal text */
@@ -217,11 +218,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
        before the app renders, already has the colors of the stored theme, and it fades with the controls
        when the theme changes. */
     body {
-        background-color: var(--color-paper);
-        color: var(--color-ink);
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-        @apply transition-colors duration-200;
+        @apply bg-paper text-ink antialiased transition-colors duration-200;
     }
 
     button {

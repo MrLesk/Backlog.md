@@ -87,8 +87,9 @@ export default function Layout({
 	);
 
 	// The sidebar sits on the page background (paper, set on body in source.css) and every page renders
-	// inside one floating content panel beside it. Narrow screens open the sidebar in a drawer, which sets its
-	// background, text color and edge itself because a dialog does not inherit them from body.
+	// inside one floating content panel beside it. Narrow screens open the sidebar in a drawer. The drawer sets
+	// its own background and text color, because a dialog does not inherit them from body, and a right edge
+	// against the dimmed page.
 	return (
 		<div className="h-dvh flex gap-2 overflow-hidden p-2">
 			<HealthIndicator />
