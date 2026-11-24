@@ -10,7 +10,7 @@ interface StoredDateProps {
 }
 
 /**
- * Renders a stored UTC date as local time with the canonical UTC value on hover.
+ * Renders a stored UTC date as local time with the canonical UTC value on hover, in the mono face.
  * Every web surface showing a stored date goes through this, so no component converts on its own.
  */
 const StoredDate: React.FC<StoredDateProps> = ({ value, dateFormat, compact = false, className }) => {
@@ -19,7 +19,7 @@ const StoredDate: React.FC<StoredDateProps> = ({ value, dateFormat, compact = fa
 		: formatStoredDateForDisplay(value, { dateFormat });
 
 	return (
-		<span className={className} title={title}>
+		<span className={className ? `font-mono ${className}` : "font-mono"} title={title}>
 			{text}
 		</span>
 	);

@@ -31,6 +31,19 @@ const renderNavigation = (isLoading: boolean, taskCount: number, error?: Error):
 		</MemoryRouter>,
 	);
 
+// The text a reader sees in server-rendered markup, read with Bun's HTML parser: no tags, no comments.
+const visibleText = (html: string): string => {
+	let text = "";
+	new HTMLRewriter()
+		.onDocument({
+			text(chunk) {
+				text += chunk.text;
+			},
+		})
+		.transform(html);
+	return text;
+};
+
 const renderBoard = (isLoading: boolean, error?: Error): string =>
 	renderToString(
 		<MemoryRouter>
@@ -62,14 +75,15 @@ describe("SideNavigation task loading", () => {
 		expect(loading).not.toContain("No documents");
 		expect(loading).not.toContain("No decisions");
 
-		const loaded = renderNavigation(false, 3).replaceAll("<!-- -->", "");
-		expect(loaded).toContain("Kanban Board");
-		expect(loaded).toContain("All Tasks");
-		expect(loaded).toContain("Tasks (3)");
-		expect(loaded).toContain("Documents (0)");
-		expect(loaded).toContain("Decisions (0)");
-		expect(loaded).toContain("No documents");
-		expect(loaded).toContain("No decisions");
+		const loaded = renderNavigation(false, 3);
+		const loadedText = visibleText(loaded);
+		expect(loadedText).toContain("Kanban Board");
+		expect(loadedText).toContain("All Tasks");
+		expect(loadedText).toContain("Tasks (3)");
+		expect(loadedText).toContain("Documents (0)");
+		expect(loadedText).toContain("Decisions (0)");
+		expect(loadedText).toContain("No documents");
+		expect(loadedText).toContain("No decisions");
 		expect(loaded).not.toContain('aria-label="Loading task count"');
 	});
 

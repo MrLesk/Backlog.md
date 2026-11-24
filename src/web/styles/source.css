@@ -1,3 +1,102 @@
+/*!
+Copyright 2026 The Geist Project Authors (https://github.com/vercel/geist-font)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+https://openfontlicense.org
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+*/
+/* The comment above is a copy of src/web/fonts/OFL.txt, the license of the Geist fonts declared below; keep the
+   two identical. It must stay the first thing in this file and keep its "/*!" opening: the minifier drops every
+   other comment, and this one is how the full license text ships inside every build together with the fonts.
+   scripts/smoke-compiled-build.ts fails if the text is missing from the built stylesheet. */
 @import "tailwindcss";
 @import '@uiw/react-md-editor/markdown-editor.css';
 @import '@uiw/react-markdown-preview/markdown.css';
@@ -6,11 +105,122 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-@theme {
-    --radius-circle: 9999px;
+/* The font files and their license (OFL.txt) are in src/web/fonts. They are the upright variable faces of the
+   Geist 1.9.2 release, where they are named fonts/Geist/webfonts/Geist[wght].woff2 and
+   fonts/GeistMono/webfonts/GeistMono[wght].woff2. Bun embeds a url() file in the built stylesheet only when it
+   is smaller than 128 KiB. Both fonts are, so the browser never requests a font;
+   scripts/smoke-compiled-build.ts fails if one stops being embedded. */
+@font-face {
+    font-family: "Geist";
+    src: url("../fonts/Geist-Variable.woff2") format("woff2");
+    font-weight: 100 900;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: "Geist Mono";
+    src: url("../fonts/GeistMono-Variable.woff2") format("woff2");
+    font-weight: 100 900;
+    font-style: normal;
+}
+
+/* Design tokens: the one definition of the shared colors, radii and typefaces of the web UI. New and restyled
+   components use them. Pages that still use Tailwind's gray and blue classes have not moved onto them yet.
+   @theme holds the light values and .dark below overrides them, so components use the Tailwind utilities
+   (bg-paper, bg-surface, text-ink-2, border-line, rounded-panel, font-mono) without dark: variants.
+   When you change a color, keep every text color at a contrast of 4.5:1 or more on paper, surface,
+   surface-2 and hover in both themes, and status or focus marks at 3:1 or more.
+   "static" keeps every token in the built stylesheet even while no utility uses it. Without it, Tailwind drops
+   the light value of an unused token, while its dark value below is plain CSS and stays. */
+@theme static {
+    --color-paper: #F2F5F7;         /* page background */
+    --color-surface: #FFFFFF;       /* panels */
+    --color-surface-2: #EDF1F4;     /* group headers, chips, code */
+    --color-hover: #EAEEF2;         /* row and button hover */
+    --color-line: #D6DEE5;          /* hairlines */
+    --color-line-soft: #E6EBEF;     /* row separators */
+    --color-ink: #0E3149;           /* text; background of the primary button and tooltips */
+    --color-ink-2: #455E75;         /* secondary text */
+    --color-ink-3: #54687A;         /* IDs, counts, hints */
+    --color-on-ink: #FFFFFF;        /* text on an ink background: primary button, tooltips */
+    --color-accent: #00C0C9;        /* logo teal, for the bars of the logo only; too light for text or marks */
+    --color-accent-strong: #008A93; /* teal marks on a surface: work in motion, keyboard focus */
+    --color-accent-text: #00717A;   /* teal text */
+    --color-you: #8A5200;           /* waiting for a person */
+    --color-you-bg: #FDF1DA;
+    --color-blocked: #B3261E;       /* blocked */
+    --color-blocked-bg: #FBE6E3;
+
+    --radius-panel: 12px;           /* the content panel */
+    --radius-control: 8px;          /* buttons, inputs and navigation items */
+    --radius-chip: 5px;             /* chips and badges */
+    --radius-circle: 9999px;        /* round marks; the build leaves out rounded-full */
+
+    --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    /* Text is shown as typed. With standard ligatures, both typefaces draw "->", "<--" and similar as arrows, and
+       Geist Mono joins " --" into one long dash. Tailwind applies the sans setting to all text and form controls,
+       and the mono setting to font-mono, code, kbd, samp and pre. The mono setting refers to the sans one, so the
+       two stay equal; the Markdown editor depends on that, because it draws its text area in one and the
+       highlighted copy under it in the other. */
+    --font-sans--font-feature-settings: "liga" 0;
+    --font-mono--font-feature-settings: var(--font-sans--font-feature-settings);
+}
+
+/* index.html and ThemeContext put the dark class on <html>. */
+.dark {
+    --color-paper: #08121B;
+    --color-surface: #0D1A26;
+    --color-surface-2: #132433;
+    --color-hover: #182C3D;
+    --color-line: #22384C;
+    --color-line-soft: #172A3B;
+    --color-ink: #E4EDF3;
+    --color-ink-2: #A9BBC9;
+    --color-ink-3: #8499AA;
+    --color-on-ink: #08121B;
+    --color-accent: #00C0C9;
+    --color-accent-strong: #00C0C9;
+    --color-accent-text: #2ED3DB;
+    --color-you: #F2B552;
+    --color-you-bg: #2E2410;
+    --color-blocked: #F28B82;
+    --color-blocked-bg: #36171A;
+}
+
+/* react-tooltip, which draws the labels of the collapsed sidebar, injects its default colors at run time with no
+   specificity and outside any layer. This unlayered :root rule outranks them: ink background, on-ink text, opaque. */
+:root {
+    --rt-color-dark: var(--color-ink);
+    --rt-color-white: var(--color-on-ink);
+    --rt-opacity: 1;
+}
+
+/* Keyboard focus for the controls of the shell: one teal outline that shows on paper and surface in both themes.
+   The outline color is set outside :focus-visible too, so a control's transition-colors cannot fade the ring in
+   from its text color. */
+@utility focus-ring {
+    outline-color: var(--color-accent-strong);
+
+    &:focus-visible {
+        outline: 2px solid var(--color-accent-strong);
+        outline-offset: 2px;
+    }
+}
+
+/* The small uppercase captions above the sidebar sections: a mono detail, like the counts they hold. */
+@utility section-caption {
+    @apply font-mono text-[11px] leading-4 font-medium uppercase tracking-[0.08em] text-ink-3;
 }
 
 @layer base {
+    /* The page background behind the sidebar and the content panel. It is set on body so the first paint,
+       before the app renders, already has the colors of the stored theme, and it fades with the controls
+       when the theme changes. */
+    body {
+        @apply bg-paper text-ink antialiased transition-colors duration-200;
+    }
+
     button {
         cursor: pointer;
     }
@@ -199,6 +409,30 @@
     }
 
     /* Avoid forcing internal editor heights; use component props instead */
+
+    /* The Markdown preview and editor bring their own font stacks; use the app's typefaces instead. */
+    .wmde-markdown,
+    .w-md-editor {
+        font-family: var(--font-sans) !important;
+    }
+
+    /* The editor draws its caret in a text area laid over a highlighted <pre><code> copy of the same text, so the
+       two must render glyphs at the same widths: both read --md-editor-font-family, and @theme gives both the
+       same feature setting. */
+    .w-md-editor {
+        --md-editor-font-family: var(--font-sans) !important;
+    }
+
+    /* The feature setting is repeated here because the library's font shorthand on kbd resets it, and the
+       mono defaults of pre and code do not cover tt. */
+    .wmde-markdown code,
+    .wmde-markdown kbd,
+    .wmde-markdown pre,
+    .wmde-markdown samp,
+    .wmde-markdown tt {
+        font-family: var(--font-mono) !important;
+        font-feature-settings: var(--font-mono--font-feature-settings) !important;
+    }
 
     /* Fix for long content in markdown preview - scope to preview containers only */
     .wmde-markdown pre,
