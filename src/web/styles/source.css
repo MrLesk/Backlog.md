@@ -213,6 +213,12 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     @apply font-mono text-[11px] leading-4 font-medium uppercase tracking-[0.08em] text-ink-3;
 }
 
+/* The side padding of the content panel's header row. Page content that lines up with the header row, such as the
+   Tasks page, uses the same utility, so the two edges cannot drift apart. */
+@utility panel-gutter {
+    @apply px-2 lg:px-5;
+}
+
 @layer base {
     /* The page background behind the sidebar and the content panel. It is set on body so the first paint,
        before the app renders, already has the colors of the stored theme, and it fades with the controls

@@ -198,9 +198,8 @@ const TASK_SORTERS = new Map<string, TaskSorter>([
 export const TASK_SORT_FIELDS = [...TASK_SORTERS.keys()];
 
 /**
- * Orders a task list for the plain, JSON, MCP and TUI lists. The browser's All Tasks table calls
- * it for the three sorts it shares with `--sort`; its other column sorts, and the column order of
- * both boards, are decided where they are drawn.
+ * Orders a task list for the plain, JSON, MCP, TUI and browser lists; the browser's list uses the
+ * default order. The column order of both boards is decided where they are drawn.
  *
  * `sortField` is one of TASK_SORT_FIELDS in any letter case. Without one the list is in its
  * default order: ordinal, then priority, then ID. A name that is not in TASK_SORT_FIELDS also
@@ -216,7 +215,7 @@ export function sortTasks<T extends SortableTask>(
 }
 
 /**
- * Splits an ordered task list into the sections the plain, MCP and TUI lists show it in.
+ * Splits an ordered task list into the sections the plain, MCP, TUI and browser lists show it in.
  *
  * A list with an explicit `priority` sort is flat: one section whose status is null. Every other
  * order, the default included, has one section per status: configured statuses first, then any

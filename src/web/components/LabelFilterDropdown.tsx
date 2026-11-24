@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 
 interface LabelFilterDropdownProps {
 	availableLabels: string[];
@@ -12,6 +12,7 @@ interface LabelFilterDropdownProps {
 	clearLabel?: string;
 }
 
+/** A button that opens a checkbox list for choosing several values, such as labels or statuses. */
 export default function LabelFilterDropdown({
 	availableLabels,
 	selectedLabels,
@@ -51,19 +52,27 @@ export default function LabelFilterDropdown({
 		onChange(next);
 	};
 
+	// Escape closes the list and returns focus to the button, so keyboard users never leave an open list behind.
+	const closeOnEscape = (event: KeyboardEvent) => {
+		if (event.key !== "Escape" || !isOpen) return;
+		event.stopPropagation();
+		setIsOpen(false);
+		buttonRef.current?.focus();
+	};
+
 	return (
-		<div className="relative">
+		<div className="relative" onKeyDown={closeOnEscape}>
 			<button
 				type="button"
 				ref={buttonRef}
 				onClick={() => setIsOpen((open) => !open)}
 				aria-expanded={isOpen}
 				aria-controls={menuId}
-				className={`${className} py-2 px-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200 text-left`}
+				className={`${className} h-8 rounded-control border border-line bg-surface px-2.5 text-left text-sm text-ink transition-colors duration-200 hover:bg-hover focus-ring`}
 			>
 				<div className="flex items-center justify-between gap-2">
 					<span>{label}</span>
-					<span className="text-xs text-gray-500 dark:text-gray-400">
+					<span className="truncate text-xs text-ink-3">
 						{selectedLabels.length === 0
 							? emptyLabel
 							: selectedLabels.length === 1
@@ -76,23 +85,23 @@ export default function LabelFilterDropdown({
 				<div
 					id={menuId}
 					ref={menuRef}
-					className="absolute z-50 mt-2 w-[220px] max-h-56 overflow-y-auto rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg"
+					className="absolute z-50 mt-1 max-h-56 w-[220px] overflow-y-auto rounded-control border border-line bg-surface py-1 shadow-lg"
 				>
 					{availableLabels.length === 0 ? (
-						<div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">{noOptionsLabel}</div>
+						<div className="px-3 py-2 text-sm text-ink-3">{noOptionsLabel}</div>
 					) : (
 						availableLabels.map((label) => {
 							const isSelected = selectedLabels.includes(label);
 							return (
 								<label
 									key={label}
-									className="flex items-center gap-2 px-3 py-2 text-sm text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+									className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-ink hover:bg-hover"
 								>
 									<input
 										type="checkbox"
 										checked={isSelected}
 										onChange={() => toggleLabel(label)}
-										className="h-4 w-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500"
+										className="size-4 accent-accent-strong focus-ring"
 									/>
 									<span className="truncate">{label}</span>
 								</label>
@@ -102,7 +111,7 @@ export default function LabelFilterDropdown({
 					{selectedLabels.length > 0 && (
 						<button
 							type="button"
-							className="w-full text-left px-3 py-2 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 border-t border-gray-200 dark:border-gray-700"
+							className="mt-1 w-full border-t border-line-soft px-3 py-2 text-left text-xs text-accent-text hover:bg-hover focus-ring"
 							onClick={() => {
 								onChange([]);
 								setIsOpen(false);

@@ -572,7 +572,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 						<div className="mt-4 flex items-center justify-between gap-3 border-t border-gray-100 dark:border-gray-700 pt-4">
 							<div className="flex items-center gap-2">
 								<Link
-									to={`/?lane=milestone&milestone=${encodeURIComponent(bucket.milestone ?? "")}`}
+									to={`/board?lane=milestone&milestone=${encodeURIComponent(bucket.milestone ?? "")}`}
 									className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
 								>
 									<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

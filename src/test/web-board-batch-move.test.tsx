@@ -46,7 +46,8 @@ const renderBoard = (
 		onTasksUpdated?: (tasks: Task[], requestTask: Task) => void;
 		onRefreshData?: () => Promise<void>;
 		tasks?: Task[];
-		filterPriority?: string;
+		/** What the page's filters keep; every task when absent. */
+		visibleTasks?: Task[];
 	} = {},
 ): HTMLElement => {
 	setupDom();
@@ -64,26 +65,23 @@ const rerenderBoard = (
 		onTasksUpdated?: (tasks: Task[], requestTask: Task) => void;
 		onRefreshData?: () => Promise<void>;
 		tasks?: Task[];
-		filterPriority?: string;
+		/** What the page's filters keep; every task when absent. */
+		visibleTasks?: Task[];
 	} = {},
 ) => {
 	act(() => {
 		activeRoot?.render(
 			<Board
 				onEditTask={onEditTask}
-				onNewTask={() => {}}
 				tasks={extra.tasks ?? TASKS}
+				visibleTasks={extra.visibleTasks ?? extra.tasks ?? TASKS}
 				statuses={STATUSES}
 				isLoading={false}
-				milestones={[]}
-				availableLabels={[]}
 				milestoneEntities={[]}
 				archivedMilestones={[]}
 				laneMode="none"
-				onLaneChange={() => {}}
 				onTasksUpdated={extra.onTasksUpdated}
 				onRefreshData={extra.onRefreshData}
-				filterPriority={extra.filterPriority}
 			/>,
 		);
 	});
@@ -101,16 +99,13 @@ const renderMilestoneBoard = (tasks: Task[] = MILESTONE_TASKS): HTMLElement => {
 		activeRoot?.render(
 			<Board
 				onEditTask={() => {}}
-				onNewTask={() => {}}
 				tasks={tasks}
+				visibleTasks={tasks}
 				statuses={STATUSES}
 				isLoading={false}
-				milestones={[MILESTONE.title]}
-				availableLabels={[]}
 				milestoneEntities={[MILESTONE]}
 				archivedMilestones={[]}
 				laneMode="milestone"
-				onLaneChange={() => {}}
 			/>,
 		);
 	});
@@ -193,7 +188,7 @@ const dispatchDragEnd = async (card: HTMLElement) => {
 
 const getColumn = (container: HTMLElement, status: string): HTMLElement => {
 	const heading = Array.from(container.querySelectorAll("h3")).find((element) => element.textContent === status);
-	const column = heading?.closest(".rounded-lg");
+	const column = heading?.closest("[role='group']");
 	expect(column).toBeTruthy();
 	return column as HTMLElement;
 };
@@ -204,11 +199,11 @@ const getLaneColumn = (container: HTMLElement, laneLabel: string, status: string
 		(heading) => heading.textContent?.trim() === laneLabel,
 	);
 	expect(lane).toBeTruthy();
-	const laneRoot = lane?.closest(".rounded-lg.border") as HTMLElement | null;
+	const laneRoot = lane?.closest("[role='group']") as HTMLElement | null;
 	expect(laneRoot).toBeTruthy();
 	const column = Array.from((laneRoot as HTMLElement).querySelectorAll("h3"))
 		.find((heading) => heading.textContent === status)
-		?.closest(".rounded-lg");
+		?.closest("[role='group']");
 	expect(column).toBeTruthy();
 	return column as HTMLElement;
 };
@@ -243,14 +238,15 @@ describe("Web board batch move", () => {
 		expect(selectedCardIds(container)).toEqual(["TASK-1", "TASK-2", "TASK-3"]);
 	});
 
-	it("marks a selected card in both the light and the dark theme", async () => {
+	it("marks a selected card with the teal selection ring", async () => {
 		const container = renderBoard();
 
 		await clickCard(getCard(container, "TASK-1"), { ctrlKey: true });
 
+		// The accent token has a light and a dark value, so one class marks the card in both themes.
 		const card = getCard(container, "TASK-1");
-		expect(card.className).toContain("ring-blue-500");
-		expect(card.className).toContain("dark:ring-blue-400");
+		expect(card.getAttribute("aria-selected")).toBe("true");
+		expect(card.className).toContain("ring-accent-strong");
 	});
 
 	it("clears the selection on a click on empty board space", async () => {
@@ -508,9 +504,9 @@ describe("Web board batch move", () => {
 			await clickCard(getCard(container, "TASK-2"), { ctrlKey: true });
 			await clickCard(getCard(container, "TASK-3"), { ctrlKey: true });
 
-			// The priority filter hides TASK-1, so it must drop out of the selection instead of riding
+			// A priority filter hides TASK-1, so it must drop out of the selection instead of riding
 			// along invisibly in the next batch move.
-			rerenderBoard(() => {}, { tasks, filterPriority: "high" });
+			rerenderBoard(() => {}, { tasks, visibleTasks: tasks.filter((task) => task.priority === "high") });
 			expect(selectedCardIds(container).sort()).toEqual(["TASK-2", "TASK-3"]);
 
 			await act(async () => {
@@ -699,7 +695,7 @@ describe("Web board batch move", () => {
 		await dispatchDragOver(getCard(container, "TASK-3"));
 
 		// A batch drop does not honor a card-level position, so no indicator may promise one.
-		expect(container.querySelector(".bg-blue-500.animate-pulse")).toBeNull();
+		expect(container.querySelector("[data-drop-indicator]")).toBeNull();
 	});
 
 	it("still shows the insertion indicator during a single-card drag", async () => {
@@ -708,7 +704,7 @@ describe("Web board batch move", () => {
 		await dispatchDragStart(getCard(container, "TASK-1"));
 		await dispatchDragOver(getCard(container, "TASK-3"));
 
-		expect(container.querySelector(".bg-blue-500.animate-pulse")).not.toBeNull();
+		expect(container.querySelector("[data-drop-indicator]")).not.toBeNull();
 	});
 
 	it("sends the batch in board order, not click order", async () => {

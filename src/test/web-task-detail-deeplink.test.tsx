@@ -571,7 +571,7 @@ const dropTaskIntoStatus = async (
 	const targetHeading = Array.from(container.querySelectorAll("h3")).find(
 		(heading) => heading.textContent === targetStatus,
 	);
-	const targetColumn = targetHeading?.closest(".rounded-lg");
+	const targetColumn = targetHeading?.closest("[role='group']");
 	expect(targetColumn).toBeTruthy();
 	const dropEvent = new window.Event("drop", { bubbles: true, cancelable: true });
 	Object.defineProperty(dropEvent, "dataTransfer", {
@@ -916,7 +916,7 @@ describe("task detail routes", () => {
 		const targetHeading = Array.from(container.querySelectorAll("h3")).find(
 			(heading) => heading.textContent === "To Do",
 		);
-		const targetColumn = targetHeading?.closest(".rounded-lg");
+		const targetColumn = targetHeading?.closest("[role='group']");
 		const visibleTaskTitles = Array.from(targetColumn?.querySelectorAll("[draggable='true'] h4") ?? []).map(
 			(element) => element.textContent,
 		);
@@ -927,10 +927,11 @@ describe("task detail routes", () => {
 		const container = await renderApp("/");
 		assertState(() => container.textContent?.includes(tasks[0]?.title ?? "") ?? false, "board task");
 		expect(window.location.pathname).toBe("/board");
-		const boardLink = Array.from(container.querySelectorAll("a")).find(
-			(element) => element.textContent?.includes("Kanban Board"),
+		const tasksLink = Array.from(container.querySelectorAll("nav a")).find(
+			(element) => element.textContent?.trim() === "Tasks",
 		);
-		expect(boardLink?.getAttribute("aria-current")).toBe("page");
+		expect(tasksLink?.getAttribute("href")).toBe("/board");
+		expect(tasksLink?.getAttribute("aria-current")).toBe("page");
 
 		const title = Array.from(container.querySelectorAll("h4")).find((element) => element.textContent === tasks[0]?.title);
 		const card = title?.closest("[draggable='true']");
@@ -1127,7 +1128,8 @@ describe("task detail routes", () => {
 		expect(container.textContent).toContain(customerTask.title);
 		expect(container.textContent).not.toContain(tasks[0]?.title ?? "");
 		expect(new URLSearchParams(window.location.search).get("type")).toBe("Customer Request");
-		const typeSelect = container.querySelector("select[aria-label='Filter board by type']") as HTMLSelectElement;
+		await click(container.querySelector("button[aria-controls='task-filters']") as HTMLButtonElement);
+		const typeSelect = container.querySelector("select[aria-label='Filter by type']") as HTMLSelectElement;
 		expect(Array.from(typeSelect.options).map((option) => option.value)).toContain("Customer Request");
 	});
 
@@ -1404,11 +1406,17 @@ describe("task detail routes", () => {
 
 	it("archives a routed task with a single history close", async () => {
 		const container = await renderApp("/milestones");
-		const allTasksLink = Array.from(container.querySelectorAll("a")).find(
-			(element) => element.textContent?.includes("All Tasks"),
+		const tasksLink = Array.from(container.querySelectorAll("nav a")).find(
+			(element) => element.textContent?.trim() === "Tasks",
 		);
-		expect(allTasksLink).toBeTruthy();
-		await click(allTasksLink as HTMLAnchorElement);
+		expect(tasksLink).toBeTruthy();
+		await click(tasksLink as HTMLAnchorElement);
+		assertState(() => window.location.pathname === "/board", "Tasks entry opens the board first");
+		const listLink = Array.from(container.querySelectorAll("nav[aria-label='Layout'] a")).find(
+			(element) => element.textContent?.trim() === "List",
+		);
+		expect(listLink).toBeTruthy();
+		await click(listLink as HTMLAnchorElement);
 		assertState(
 			() => window.location.pathname === "/tasks" && container.textContent?.includes(tasks[0]?.title ?? "") === true,
 			"task list navigation",

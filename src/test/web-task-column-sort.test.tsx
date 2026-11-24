@@ -40,6 +40,7 @@ const renderTaskColumn = (
 		activeRoot?.render(
 			<TaskColumn
 				title={options.title ?? "To Do"}
+				statuses={["To Do", "In Progress", options.title ?? "Done"]}
 				tasks={tasks}
 				onEditTask={() => {}}
 				onTaskReorder={onTaskReorder}
@@ -230,9 +231,7 @@ describe("TaskColumn cleanup affordance", () => {
 			},
 		});
 
-		const cleanupButton = Array.from(container.querySelectorAll("button")).find((button) =>
-			button.textContent?.includes("Clean Up Old Tasks"),
-		);
+		const cleanupButton = container.querySelector("button[aria-label='Clean up old tasks']");
 		expect(cleanupButton).toBeTruthy();
 
 		await clickElement(cleanupButton as Element);

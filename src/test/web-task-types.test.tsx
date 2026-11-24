@@ -162,28 +162,9 @@ describe("Web task type UI", () => {
 		expect(receivedUpdates[0]?.dueDate).toBeNull();
 	});
 
-	it("shows distinct type badges on cards and no badge for untyped tasks", () => {
-		const bugHtml = renderToString(
-			<TaskCard task={createTask({ type: "bug" })} onEdit={() => {}} />,
-		);
-		const featureHtml = renderToString(
-			<TaskCard task={createTask({ type: "feature" })} onEdit={() => {}} />,
-		);
-		const customHtml = renderToString(
-			<TaskCard
-				task={createTask({ type: "Customer Request" })}
-				onEdit={() => {}}
-				availableTypes={["Bug", "Customer Request", "Docs"]}
-			/>,
-		);
-		const docsHtml = renderToString(
-			<TaskCard
-				task={createTask({ type: "Docs" })}
-				onEdit={() => {}}
-				availableTypes={["Bug", "Customer Request", "Docs"]}
-			/>,
-		);
-		const untypedHtml = renderToString(<TaskCard task={createTask()} onEdit={() => {}} />);
+	it("names the type of a task on its card and shows no type for an untyped task", () => {
+		const typeChip = (task: Task) =>
+			JSDOM.fragment(renderToString(<TaskCard task={task} onEdit={() => {}} />)).querySelector("[data-task-type]");
 		const datedHtml = renderToString(
 			<TaskCard
 				task={createTask({ dueDate: "2026-08-10" })}
@@ -192,14 +173,10 @@ describe("Web task type UI", () => {
 			/>,
 		);
 
-		expect(bugHtml).toContain('data-task-type="bug"');
-		expect(bugHtml).toContain("bg-red-100");
-		expect(featureHtml).toContain('data-task-type="feature"');
-		expect(featureHtml).toContain("bg-blue-100");
-		expect(customHtml).toContain('data-task-type="Customer Request"');
-		expect(customHtml).toContain("bg-blue-100");
-		expect(docsHtml).toContain("bg-cyan-100");
-		expect(untypedHtml).not.toContain("data-task-type");
+		// The chip says what it is, so a type reads as a type and not as a label or a project.
+		expect(typeChip(createTask({ type: "bug" }))?.textContent).toBe("Type: bug");
+		expect(typeChip(createTask({ type: "Customer Request" }))?.textContent).toBe("Type: Customer Request");
+		expect(typeChip(createTask())).toBeNull();
 		expect(datedHtml).toContain("Due: ");
 		// The configured format rearranges the day; there is no time to show and nothing to hover.
 		expect(datedHtml).toContain(">10/08/2026<");

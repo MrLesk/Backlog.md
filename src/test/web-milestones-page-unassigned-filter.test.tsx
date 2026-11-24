@@ -74,4 +74,12 @@ describe("MilestonesPage unassigned filtering", () => {
 		expect(html).toContain("Milestone task");
 		expect(html).not.toContain("Unassigned done");
 	});
+
+	it("opens a milestone on the board and in the list, whichever layout was used last", () => {
+		const html = renderMilestonesPage([makeTask({ id: "task-2", title: "Milestone task", milestone: "m-1" })]);
+
+		// The start page opens the layout used last, so the Board link must name the board itself.
+		expect(html).toContain('href="/board?lane=milestone&amp;milestone=m-1"');
+		expect(html).toContain('href="/tasks?milestone=m-1"');
+	});
 });

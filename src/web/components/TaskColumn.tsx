@@ -3,11 +3,14 @@ import { type Task } from '../../types';
 import { compareTaskIds, sortByPriority } from '../../utils/task-sorting';
 import type { ReorderTaskPayload } from '../lib/api';
 import { parseStoredUtcDate } from '../../utils/utc-timestamp.ts';
+import CleanupButton from './CleanupButton';
+import StatusMark from './StatusMark';
 import TaskCard from './TaskCard';
 
 interface TaskColumnProps {
   title: string;
-  isTerminal?: boolean;
+  /** The configured statuses in workflow order, for the status mark of the column. */
+  statuses: string[];
   tasks: Task[];
   onEditTask: (task: Task) => void;
   onTaskReorder?: (payload: ReorderTaskPayload) => void;
@@ -19,7 +22,6 @@ interface TaskColumnProps {
   laneId?: string;
   targetMilestone?: string | null;
   priorityOrder?: string[];
-  availableTypes?: string[];
   availableProjects?: string[];
   dateFormat?: string;
   selectedTaskIds?: string[];
@@ -61,7 +63,7 @@ const sortByCreatedDate = (tasks: Task[], direction: CreatedDateSortDirection): 
 
 const TaskColumn: React.FC<TaskColumnProps> = ({
   title,
-  isTerminal,
+  statuses,
   tasks,
   onEditTask,
   onTaskReorder,
@@ -73,7 +75,6 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   laneId,
   targetMilestone,
   priorityOrder,
-  availableTypes,
   availableProjects,
   dateFormat,
   selectedTaskIds,
@@ -89,7 +90,11 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   const [dropPosition, setDropPosition] = React.useState<{ index: number; position: 'before' | 'after' | 'self' } | null>(null);
   const [showMenu, setShowMenu] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
+  const menuButtonRef = React.useRef<HTMLButtonElement>(null);
+  // The space around and between the cards; dragging over it, rather than over a card, clears the insertion point.
+  const cardListRef = React.useRef<HTMLDivElement>(null);
   const columnActionsId = React.useId();
+  const headingId = React.useId();
   const canDropTask = Boolean(onTaskReorder || onBatchMove);
   const canReorderColumn = Boolean(onTaskReorder) && tasks.length > 1 && tasks.every(task => !task.branch);
 
@@ -133,20 +138,6 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
 
   const handleSortByCreatedDate = (direction: CreatedDateSortDirection) => {
     emitColumnReorder(sortByCreatedDate(tasks, direction).map(t => t.id));
-  };
-
-  const getStatusBadgeClass = (status: string) => {
-    const statusLower = status.toLowerCase();
-    if (isTerminal) {
-      return 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 transition-colors duration-200';
-    }
-    if (statusLower.includes('progress') || statusLower.includes('doing')) {
-      return 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 transition-colors duration-200';
-    }
-    if (statusLower.includes('blocked') || statusLower.includes('stuck')) {
-      return 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 transition-colors duration-200';
-    }
-    return 'bg-stone-100 dark:bg-stone-900 text-stone-800 dark:text-stone-200 transition-colors duration-200';
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -228,7 +219,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     e.preventDefault();
     // Clear drop position if dragging in empty space
     const target = e.target as HTMLElement;
-    if (target === e.currentTarget || target.classList.contains('space-y-3')) {
+    if (target === e.currentTarget || target === cardListRef.current) {
       setDropPosition(null);
     }
   };
@@ -290,101 +281,95 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     };
   };
 
+  // Escape closes the column menu and returns focus to its button.
+  const closeMenuOnEscape = (event: React.KeyboardEvent) => {
+    if (event.key !== 'Escape' || !showMenu) return;
+    event.stopPropagation();
+    setShowMenu(false);
+    menuButtonRef.current?.focus();
+  };
+
+  const menuItemClass =
+    'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink transition-colors duration-150 hover:bg-hover focus-ring';
+  const isDropTarget = isDragOver && (dragSourceStatus !== title || (dragSourceLane ?? null) !== (laneId ?? null));
+
   return (
     <div
-      className={`min-w-0 rounded-lg p-2.5 sm:p-4 transition-colors duration-200 h-full ${
+      role="group"
+      aria-labelledby={headingId}
+      className={`h-full min-w-0 border-l border-line-soft px-2.5 pb-3 transition-colors duration-200 first:border-l-0 ${
         isEmpty ? 'min-h-24' : 'min-h-96'
-      } ${
-        isDragOver && (dragSourceStatus !== title || (dragSourceLane ?? null) !== (laneId ?? null))
-          ? 'bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-600 border-dashed'
-          : isEmpty
-            ? 'bg-gray-50/50 dark:bg-gray-800/30 border border-gray-200/50 dark:border-gray-700/50'
-            : 'bg-white border border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700'
-      }`}
+      } ${isDropTarget ? 'bg-hover' : ''}`}
       {...dropEvents}
     >
-      <div className="flex items-center justify-between mb-3 sm:mb-4">
-        <div className="flex min-w-0 items-center gap-1 sm:gap-2">
-          <h3 className="wrap-anywhere font-semibold text-gray-900 dark:text-gray-100 transition-colors duration-200">{title}</h3>
-          <span className={`px-2 py-1 text-xs font-medium rounded-circle ${getStatusBadgeClass(title)}`}>
-            {tasks.length}
-          </span>
-        </div>
-        
-        {canReorderColumn && (
-          <div className="relative" ref={menuRef}>
-            <button
-              type="button"
-              onClick={() => setShowMenu(!showMenu)}
-              className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 focus:outline-none"
-              title="Column actions"
-              aria-label="Column actions"
-              aria-haspopup="menu"
-              aria-expanded={showMenu}
-              aria-controls={columnActionsId}
-            >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-              </svg>
-            </button>
-            
-            {showMenu && (
-              <div
-                id={columnActionsId}
-                role="menu"
-                className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1 ring-1 ring-black ring-opacity-5"
+      <div className="flex h-[42px] items-center gap-2">
+        <StatusMark status={title} statuses={statuses} decorative />
+        <h3 id={headingId} className="min-w-0 text-sm font-semibold text-ink wrap-anywhere">{title}</h3>
+        <span className="font-mono text-[11.5px] font-medium text-ink-3">{tasks.length}</span>
+
+        <span className="ml-auto flex items-center gap-0.5">
+          {onCleanup && tasks.length > 0 && <CleanupButton onClick={onCleanup} />}
+          {canReorderColumn && (
+            <div className="relative" ref={menuRef} onKeyDown={closeMenuOnEscape}>
+              <button
+                type="button"
+                ref={menuButtonRef}
+                onClick={() => setShowMenu(!showMenu)}
+                className="inline-flex size-6 items-center justify-center rounded-[6px] text-ink-2 transition-colors duration-200 hover:bg-hover hover:text-ink focus-ring"
+                title="Column actions"
+                aria-label="Column actions"
+                aria-haspopup="menu"
+                aria-expanded={showMenu}
+                aria-controls={columnActionsId}
               >
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={handleSortByPriority}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors duration-150"
+                <svg className="size-3.5" viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M3.5 8h.01M8 8h.01M12.5 8h.01" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+                </svg>
+              </button>
+
+              {showMenu && (
+                <div
+                  id={columnActionsId}
+                  role="menu"
+                  className="absolute right-0 z-50 mt-1 w-60 rounded-control border border-line bg-surface py-1 shadow-lg"
                 >
-                  <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
-                  </svg>
-                  Sort by Priority
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => handleSortByCreatedDate('asc')}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors duration-150"
-                >
-                  <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3M5 11h14M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2zm5-7v4m0 0l-2-2m2 2l2-2" />
-                  </svg>
-                  Sort by Creation Date (oldest first)
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => handleSortByCreatedDate('desc')}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors duration-150"
-                >
-                  <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3M5 11h14M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2zm5 11v-4m0 0l-2 2m2-2l2 2" />
-                  </svg>
-                  Sort by Creation Date (newest first)
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+                  <button type="button" role="menuitem" onClick={handleSortByPriority} className={menuItemClass}>
+                    <svg className="size-4 text-ink-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+                    </svg>
+                    Sort by Priority
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => handleSortByCreatedDate('asc')} className={menuItemClass}>
+                    <svg className="size-4 text-ink-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3M5 11h14M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2zm5-7v4m0 0l-2-2m2 2l2-2" />
+                    </svg>
+                    Sort by Creation Date (oldest first)
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => handleSortByCreatedDate('desc')} className={menuItemClass}>
+                    <svg className="size-4 text-ink-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3M5 11h14M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2zm5 11v-4m0 0l-2 2m2-2l2 2" />
+                    </svg>
+                    Sort by Creation Date (newest first)
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </span>
       </div>
-      
-      <div className="space-y-3">
+
+      <div ref={cardListRef} className="space-y-2">
         {tasks.map((task, index) => (
-          <div 
-            key={task.id} 
+          <div
+            key={task.id}
             className="relative"
             onDragOver={onTaskReorder ? (event) => handleCardDragOver(event, task.id, index) : undefined}
           >
             {/* Drop indicator for before this task */}
             {dropPosition?.index === index && dropPosition.position === 'before' && (
-              <div className="h-1 bg-blue-500 rounded-full mb-2 animate-pulse" />
+              <div data-drop-indicator className="mb-2 h-1 animate-pulse rounded-circle bg-accent-strong" />
             )}
-            
+
             <TaskCard
               task={task}
               onEdit={onEditTask}
@@ -397,48 +382,30 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
               onDragEnd={canDropTask ? finishTaskDrag : undefined}
               status={title}
               laneId={laneId}
-              availableTypes={availableTypes}
+              priorities={priorityOrder}
               availableProjects={availableProjects}
               dateFormat={dateFormat}
             />
-            
+
             {/* Drop indicator for after this task */}
             {dropPosition?.index === index && dropPosition.position === 'after' && (
-              <div className="h-1 bg-blue-500 rounded-full mt-2 animate-pulse" />
+              <div data-drop-indicator className="mt-2 h-1 animate-pulse rounded-circle bg-accent-strong" />
             )}
           </div>
         ))}
-        
+
         {/* Drop zone indicator - only show in different columns */}
         {isDragOver && dragSourceStatus !== title && (
-          <div className="border-2 border-green-400 dark:border-green-500 border-dashed rounded-md bg-green-50 dark:bg-green-900/20 p-4 text-center transition-colors duration-200">
-            <div className="text-green-600 dark:text-green-400 text-sm font-medium transition-colors duration-200">
-              Drop task here to change status
-            </div>
-          </div>
-        )}
-        
-        {isEmpty && !isDragOver && (
-          <div className="text-center py-2 text-gray-400 dark:text-gray-500 text-xs transition-colors duration-200">
-            {dragSourceStatus && dragSourceStatus !== title
-              ? `Drop to move`
-              : `Empty`}
+          <div className="rounded-control border-2 border-dashed border-accent-strong p-4 text-center text-sm font-medium text-accent-text transition-colors duration-200">
+            Drop task here to change status
           </div>
         )}
 
-        {/* Cleanup button for the configured terminal column */}
-        {onCleanup && tasks.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-	            <button
-	              onClick={onCleanup}
-	              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors duration-200"
-	              title="Clean up old completed tasks"
-	            >
-	              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-	                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              Clean Up Old Tasks
-            </button>
+        {isEmpty && !isDragOver && (
+          <div className="py-2 text-center text-xs text-ink-3 transition-colors duration-200">
+            {dragSourceStatus && dragSourceStatus !== title
+              ? `Drop to move`
+              : `Empty`}
           </div>
         )}
       </div>

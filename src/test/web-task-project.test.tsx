@@ -3,9 +3,7 @@ import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
-import { BrowserRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
-import BoardPage from "../web/components/BoardPage.tsx";
 import TaskCard from "../web/components/TaskCard.tsx";
 import { TaskDetailsModal } from "../web/components/TaskDetailsModal.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext.tsx";
@@ -273,78 +271,5 @@ describe("Web task project UI", () => {
 
 		expect(submitted?.title).toBe("API onboarding");
 		expect(submitted?.project).toBe("API");
-	});
-});
-
-describe("Web board project filter", () => {
-	const tasks: Task[] = [
-		createTask({ id: "task-101", title: "Web task", project: "Web" }),
-		createTask({ id: "task-102", title: "API task", project: "API" }),
-		createTask({ id: "task-103", title: "Unprojected task" }),
-	];
-
-	const renderBoardPage = (url: string | undefined, availableProjects: string[] | undefined): HTMLElement => {
-		const container = setupDom(url ?? "http://localhost/board");
-		activeRoot = createRoot(container);
-		act(() => {
-			activeRoot?.render(
-				<BrowserRouter>
-					<BoardPage
-						tasks={tasks}
-						statuses={["To Do", "In Progress", "Done"]}
-						milestones={[]}
-						availableLabels={[]}
-						milestoneEntities={[]}
-						archivedMilestones={[]}
-						isLoading={false}
-						onEditTask={() => {}}
-						onNewTask={() => {}}
-						availableProjects={availableProjects}
-					/>
-				</BrowserRouter>,
-			);
-		});
-		return container;
-	};
-
-	it("omits the project filter select when no projects are configured", () => {
-		const container = renderBoardPage(undefined, undefined);
-		expect(container.querySelector("select[aria-label='Filter board by project']")).toBeNull();
-	});
-
-	it("filters board cards by project and updates the URL", async () => {
-		const container = renderBoardPage(undefined, ["Web", "API"]);
-
-		const projectSelect = container.querySelector(
-			"select[aria-label='Filter board by project']",
-		) as HTMLSelectElement | null;
-		expect(projectSelect).toBeTruthy();
-		expect(Array.from(projectSelect?.options ?? []).map((option) => option.textContent)).toEqual([
-			"All projects",
-			"Web",
-			"API",
-		]);
-
-		await setSelectValue(projectSelect as HTMLSelectElement, "Web");
-		expect(new URLSearchParams(window.location.search).get("project")).toBe("Web");
-		const text = container.textContent ?? "";
-		expect(text).toContain("Web task");
-		expect(text).not.toContain("API task");
-		expect(text).not.toContain("Unprojected task");
-	});
-
-	it("clears unsupported project URL values", async () => {
-		const container = renderBoardPage("http://localhost/board?project=mobile", ["Web", "API"]);
-
-		await waitFor(() => new URLSearchParams(window.location.search).get("project") === null);
-
-		const projectSelect = container.querySelector(
-			"select[aria-label='Filter board by project']",
-		) as HTMLSelectElement | null;
-		expect(projectSelect?.value).toBe("");
-		const text = container.textContent ?? "";
-		expect(text).toContain("Web task");
-		expect(text).toContain("API task");
-		expect(text).toContain("Unprojected task");
 	});
 });
