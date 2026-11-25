@@ -116,8 +116,10 @@ export default function TaskList({
 							</h3>
 							{isFinal && onCleanup && <CleanupButton onClick={onCleanup} />}
 						</div>
+						{/* role="list" here and on the subtask levels: Safari's VoiceOver drops the list semantics of a list
+						    without bullets, and the nesting levels tell a screen reader how deep a subtask sits. */}
 						{isOpen && (
-							<ul id={listId}>
+							<ul id={listId} role="list">
 								{topLevelTasks.map((task) => (
 									<TaskRow
 										key={task.id}
@@ -199,7 +201,10 @@ function TaskRow(props: TaskRowProps) {
 	const titleCell = (
 		<div className="flex min-w-0 flex-wrap items-start gap-x-2 gap-y-1 @5xl:flex-nowrap">
 			{isTopLevel && task.parentTaskId && (
-				<ParentTaskLink task={task} parent={nesting.all.parentOf(task)} onOpenTask={onEditTask} />
+				// As tall as the title's first line, so the shorter link lines up with it.
+				<span className="flex h-5 shrink-0 items-center">
+					<ParentTaskLink task={task} parent={nesting.all.parentOf(task)} onOpenTask={onEditTask} />
+				</span>
 			)}
 			<button
 				type="button"
@@ -209,7 +214,7 @@ function TaskRow(props: TaskRowProps) {
 				}}
 				title={task.title}
 				aria-label={`Open ${task.id}: ${task.title}`}
-				className="min-w-0 grow basis-40 rounded-[4px] text-left text-sm font-medium text-ink wrap-anywhere focus-ring @5xl:grow-0 @5xl:basis-auto @5xl:truncate"
+				className="min-w-0 max-w-fit grow basis-40 rounded-[4px] text-left text-sm font-medium text-ink wrap-anywhere focus-ring @5xl:grow-0 @5xl:basis-auto @5xl:truncate"
 			>
 				{task.title}
 			</button>
@@ -267,7 +272,7 @@ function TaskRow(props: TaskRowProps) {
 			</div>
 			{isOpen &&
 				(visibleSubtasks.length > 0 ? (
-					<ul id={subtasksId}>
+					<ul id={subtasksId} role="list">
 						{visibleSubtasks.map((subtask) => (
 							<TaskRow key={subtask.id} {...props} task={subtask} path={subtaskPath(path, subtask)} depth={depth + 1} />
 						))}

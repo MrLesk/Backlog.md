@@ -168,12 +168,12 @@ const groupRows = (container: HTMLElement, status: string): HTMLElement => {
 
 /** The task IDs of the cards on the board: each card's title is the button that opens it. */
 const cardIds = (scope: ParentNode): string[] =>
-	Array.from(scope.querySelectorAll("[role='group'] h4 button[aria-label^='Open ']"), (title) =>
+	Array.from(scope.querySelectorAll("[role='group'] h4 [role='button'][aria-label^='Open ']"), (title) =>
 		idOf(title.getAttribute("aria-label")),
 	);
 
 const cardOf = (container: HTMLElement, taskId: string): HTMLElement => {
-	const title = container.querySelector(`[role='group'] h4 button[aria-label^="Open ${taskId}:"]`);
+	const title = container.querySelector(`[role='group'] h4 [role='button'][aria-label^="Open ${taskId}:"]`);
 	const card = title?.closest<HTMLElement>("[aria-selected]");
 	expect(card, `card of ${taskId}`).toBeTruthy();
 	return card as HTMLElement;
@@ -354,25 +354,91 @@ describe("Nested tasks on the Board", () => {
 		expect(opened).toEqual(["TASK-2"]);
 	});
 
-	it("never opens or selects a card through its subtask bar, its subtask rows or its parent link", async () => {
+	it("runs the bar, a subtask row and the parent link on a plain click, and never opens the card", async () => {
 		const opened: string[] = [];
 		const container = renderPage("/board", { onEditTask: (task) => opened.push(task.id) });
 		const parent = cardOf(container, "TASK-2");
 		const bar = parent.querySelector(":scope > button[aria-expanded]") as HTMLButtonElement;
 
-		// With Ctrl, a click on the card itself would select it.
-		await click(bar, { ctrlKey: true });
+		await click(bar);
 		expect(bar.getAttribute("aria-expanded")).toBe("true");
 		expect(opened).toEqual([]);
-		expect(parent.getAttribute("aria-selected")).toBe("false");
 
 		await click(titleOf(parent, "TASK-2.3").closest("li")?.firstElementChild as Element);
 		expect(opened).toEqual(["TASK-2.3"]);
 
+		await click(cardOf(container, "TASK-2.2").querySelector("button[aria-label^='Parent task TASK-2:']") as Element);
+		expect(opened).toEqual(["TASK-2.3", "TASK-2"]);
+	});
+
+	it("selects a card on a Ctrl-click anywhere on it, also on its bar, a subtask row or its parent link", async () => {
+		const opened: string[] = [];
+		const container = renderPage("/board", { onEditTask: (task) => opened.push(task.id) });
+		const parent = cardOf(container, "TASK-2");
+		const bar = parent.querySelector(":scope > button[aria-expanded]") as HTMLButtonElement;
+
+		await click(bar, { ctrlKey: true });
+		expect(parent.getAttribute("aria-selected")).toBe("true");
+		expect(bar.getAttribute("aria-expanded")).toBe("false");
+
 		await click(cardOf(container, "TASK-2.2").querySelector("button[aria-label^='Parent task']") as Element, {
 			ctrlKey: true,
 		});
-		expect(cardOf(container, "TASK-2.2").getAttribute("aria-selected")).toBe("false");
-		expect(container.querySelector("[role='toolbar'][aria-label='Task selection']")).toBeNull();
+		expect(cardOf(container, "TASK-2.2").getAttribute("aria-selected")).toBe("true");
+
+		// The card is selected, so a Ctrl-click on one of its subtask rows deselects it instead of opening the subtask.
+		await click(bar);
+		await click(titleOf(parent, "TASK-2.3").closest("li")?.firstElementChild as Element, { ctrlKey: true });
+		expect(parent.getAttribute("aria-selected")).toBe("false");
+		expect(opened).toEqual([]);
+	});
+
+	it("selects a card with Ctrl+Enter on its title, and opens it once with Enter or Space", async () => {
+		const opened: string[] = [];
+		const container = renderPage("/board", { onEditTask: (task) => opened.push(task.id) });
+		const title = container.querySelector("h4 [role='button'][aria-label^='Open TASK-1:']") as HTMLElement;
+		const press = async (key: string, init: KeyboardEventInit = {}) => {
+			const event = new window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init });
+			await act(async () => {
+				title.dispatchEvent(event);
+				await Promise.resolve();
+			});
+			return event;
+		};
+
+		await press("Enter", { ctrlKey: true });
+		expect(cardOf(container, "TASK-1").getAttribute("aria-selected")).toBe("true");
+		expect(opened).toEqual([]);
+
+		await press("Enter");
+		expect(opened).toEqual(["TASK-1"]);
+		// Space opens too, and does not scroll the page.
+		expect((await press(" ")).defaultPrevented).toBe(true);
+		expect(opened).toEqual(["TASK-1", "TASK-1"]);
+	});
+
+	it("cancels a drag that starts on a subtask row, so the card around it does not move", async () => {
+		const container = renderPage("/board");
+		const parent = cardOf(container, "TASK-2");
+		await click(parent.querySelector(":scope > button[aria-expanded]") as Element);
+		const dragFrom = async (element: Element) => {
+			const carried: string[] = [];
+			const event = new window.Event("dragstart", { bubbles: true, cancelable: true });
+			Object.defineProperty(event, "dataTransfer", {
+				value: { setData: (_type: string, value: string) => carried.push(value), effectAllowed: "" },
+			});
+			await act(async () => {
+				element.dispatchEvent(event);
+				await Promise.resolve();
+			});
+			return { cancelled: event.defaultPrevented, carried };
+		};
+
+		expect(await dragFrom(titleOf(parent, "TASK-2.1").closest("li")?.firstElementChild as Element)).toEqual({
+			cancelled: true,
+			carried: [],
+		});
+		// A drag from the card's own title still carries the card.
+		expect((await dragFrom(parent.querySelector("h4 [role='button']") as Element)).carried).toContain("TASK-2");
 	});
 });

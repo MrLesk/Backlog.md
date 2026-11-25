@@ -205,7 +205,7 @@ const listedTaskIds = async (container: HTMLElement): Promise<string[]> => {
 
 /** The task IDs of the cards on the board, column by column: each card's title is the button that opens it. */
 const boardTaskIds = (container: HTMLElement): string[] =>
-	Array.from(container.querySelectorAll("[role='group'] h4 button[aria-label^='Open ']"), (title) =>
+	Array.from(container.querySelectorAll("[role='group'] h4 [role='button'][aria-label^='Open ']"), (title) =>
 		idOf(title.getAttribute("aria-label")),
 	);
 

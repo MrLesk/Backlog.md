@@ -40,8 +40,10 @@ export default function SubtaskTree({ parent, path, id, rails = 0, ...level }: S
 			</p>
 		);
 	}
+	// role="list": Safari's VoiceOver drops the list semantics of a list without bullets, and the nesting levels
+	// are what tells a screen reader how deep a subtask sits.
 	return (
-		<ul id={id}>
+		<ul id={id} role="list">
 			{subtasks.map((subtask) => (
 				<SubtaskTreeRow key={subtask.id} task={subtask} path={subtaskPath(path, subtask)} rails={rails} {...level} />
 			))}
@@ -71,7 +73,7 @@ function SubtaskTreeRow({ task, path, rails, ...level }: SubtaskTreeRowProps) {
 			    is a shortcut for the mouse. */}
 			<div
 				onClick={openTask}
-				className="flex min-h-7 cursor-pointer items-stretch rounded-[6px] transition-colors duration-200 hover:bg-hover"
+				className="flex min-h-7 cursor-pointer items-stretch rounded-[6px] pl-1 transition-colors duration-200 hover:bg-hover"
 			>
 				<SubtaskRails count={rails} />
 				<div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 py-1 pr-1">
@@ -79,15 +81,16 @@ function SubtaskTreeRow({ task, path, rails, ...level }: SubtaskTreeRowProps) {
 					<span className="min-w-0 font-mono text-[11.5px] leading-4 font-medium text-ink-3 wrap-anywhere">
 						{task.id}
 					</span>
-					{/* The title and what follows it ask for 7rem: with less room left on the line, they move under the ID,
-					    and on a line of their own they take what there is. */}
-					<span className="flex min-w-0 flex-1 basis-28 items-center gap-x-1.5">
+					{/* The title keeps 7rem for itself: with less room left beside the ID, the title moves under it, and with
+					    less room beside the title, the marker and the ring wrap under the title. It grows only to its own
+					    width, so the marker stays right after it. */}
+					<span className="flex min-w-0 flex-1 basis-28 flex-wrap items-center gap-x-1.5 gap-y-0.5">
 						<button
 							type="button"
 							onClick={openTask}
 							title={task.title}
 							aria-label={`Open ${task.id}: ${task.title}`}
-							className="min-w-0 truncate rounded-[4px] text-left text-[12.5px] leading-5 text-ink focus-ring"
+							className="min-w-0 max-w-fit grow basis-28 truncate rounded-[4px] text-left text-[12.5px] leading-5 text-ink focus-ring"
 						>
 							{task.title}
 						</button>

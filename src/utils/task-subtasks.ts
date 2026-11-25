@@ -1,7 +1,9 @@
 /**
  * Parents and subtasks. A task's parent is the task its parentTaskId names, and its subtasks are the tasks whose
  * parentTaskId names it. Subtasks nest to any depth (BACK-760.1.2 under BACK-760.1 under BACK-760). The CLI's task
- * view, the delete guard, the TUI and the web all read these relations here, so they agree on them.
+ * view, the delete guard, the TUI's task view and the web read these relations here, so they agree on them. The TUI
+ * board still groups subtasks with a lookup of its own (src/ui/board.ts), which drops a grandchild that has its
+ * ancestors' status (GitHub issue #1260); BACK-549 moves the TUI board onto these rules.
  */
 
 import type { Task } from "../types/index.ts";
@@ -20,8 +22,8 @@ export interface TaskHierarchy {
 
 /**
  * The canonical ID of the task's parent, where letter case and zero padding do not matter. A parent ID written
- * without a prefix, as in an old or hand-edited file, takes the prefix of the task's own ID, which a subtask shares
- * with its parent.
+ * without a prefix takes the prefix of the task's own ID, which a subtask shares with its parent. Only archived task
+ * files keep such IDs: reading active tasks and drafts already gives every parent ID a prefix.
  */
 function canonicalParentId(task: Pick<Task, "id" | "parentTaskId">): string | null {
 	if (!task.parentTaskId) return null;

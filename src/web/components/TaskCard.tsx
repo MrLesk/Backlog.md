@@ -141,14 +141,29 @@ const TaskCard: React.FC<TaskCardProps> = ({
     onDragStart?.();
   };
 
-  // Enter and Space click the title button, and the click opens the task through the card. With Ctrl/Cmd or Shift
-  // they select the card instead, as a click with those keys does.
-  const selectWithKeyboard = (event: React.KeyboardEvent) => {
+  // Ctrl/Cmd and Shift select cards on the editable board.
+  const selectsCard = (event: React.MouseEvent | React.KeyboardEvent) =>
+    Boolean(onSelect) && !isFromOtherBranch && (event.ctrlKey || event.metaKey || event.shiftKey);
+
+  // Runs while the click goes down to its target, so a modifier-click anywhere on the card selects it, also on the
+  // parent link, the subtask bar or a subtask row, which then never see the click.
+  const selectOnModifierClick = (event: React.MouseEvent) => {
+    if (!selectsCard(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onSelect?.({ shiftKey: event.shiftKey });
+  };
+
+  // Enter and Space open the task once, and Space does not scroll the page; with Ctrl/Cmd or Shift they select the
+  // card instead, as a click with those keys does.
+  const handleTitleKeyDown = (event: React.KeyboardEvent) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
-    if (onSelect && !isFromOtherBranch && (event.ctrlKey || event.metaKey || event.shiftKey)) {
-      event.preventDefault();
-      onSelect({ shiftKey: event.shiftKey });
+    event.preventDefault();
+    if (selectsCard(event)) {
+      onSelect?.({ shiftKey: event.shiftKey });
+      return;
     }
+    onOpenTask(task);
   };
 
   const handleDragEnd = () => {
@@ -173,9 +188,10 @@ const TaskCard: React.FC<TaskCardProps> = ({
         </div>
       )}
 
-      {/* The card takes the mouse: a click opens the task, or selects the card with Ctrl/Cmd or Shift, and the whole
+      {/* The card takes the mouse: a click opens the task, a Ctrl/Cmd or Shift click selects the card, and the whole
           card drags. The title is its button for the keyboard and screen readers. The parent link, the subtask bar and
-          the subtask rows stop their clicks, so they never open or select the card. */}
+          the subtask rows stop their plain clicks, so those never open the card.
+          The 10px corner radius is also in SubtaskBar, which rounds its fill 9px: this radius minus the 1px border. */}
       <div
         className={`rounded-[10px] border bg-surface transition-all duration-200 ${
           isFromOtherBranch ? 'cursor-not-allowed border-dashed border-line' : 'cursor-pointer border-line hover:border-ink-3'
@@ -184,16 +200,8 @@ const TaskCard: React.FC<TaskCardProps> = ({
         } ${isSelected ? 'border-accent-strong ring-2 ring-accent-strong' : ''}`}
         aria-selected={isSelected}
         {...dragEvents}
-        onClick={(event) => {
-          // Ctrl/Cmd and Shift select cards on the editable board.
-          if (onSelect && !isFromOtherBranch && (event.ctrlKey || event.metaKey || event.shiftKey)) {
-            event.preventDefault();
-            event.stopPropagation();
-            onSelect({ shiftKey: event.shiftKey });
-            return;
-          }
-          onOpenTask(task);
-        }}
+        onClickCapture={selectOnModifierClick}
+        onClick={() => onOpenTask(task)}
       >
         <div className="p-3">
           {/* Header row: the same priority and ID as a row of the list, and the acceptance-criteria ring. A subtask's
@@ -210,14 +218,19 @@ const TaskCard: React.FC<TaskCardProps> = ({
           </div>
 
           <h4 className="mt-1.5 text-sm font-medium leading-snug text-ink">
-            <button
-              type="button"
+            {/* Not a <button>: Firefox does not start a drag that begins on a button inside a draggable element
+                (Mozilla bug 568313), and a card must also drag by its title. A block, not an inline-block, so it adds no
+                baseline gap under the title, and only as wide as its text, so the focus ring stays around the text.
+                A mouse click on it opens the task through the card. */}
+            <span
+              role="button"
+              tabIndex={0}
               aria-label={accessibleLabel}
-              onKeyDown={selectWithKeyboard}
-              className="w-full rounded-[4px] text-left wrap-anywhere focus-ring"
+              onKeyDown={handleTitleKeyDown}
+              className="block w-fit rounded-[4px] wrap-anywhere focus-ring md:line-clamp-2"
             >
-              <span className="md:line-clamp-2">{task.title}</span>
-            </button>
+              {task.title}
+            </span>
           </h4>
 
           <div className="mt-2 flex flex-wrap gap-1 empty:hidden">
@@ -252,7 +265,16 @@ const TaskCard: React.FC<TaskCardProps> = ({
           />
         )}
         {areSubtasksOpen && (
-          <div className="px-2 pt-0.5 pb-1.5">
+          // Draggable only to cancel the drag: the rows stand for other tasks, so a drag that starts on one must not
+          // move this card, which is the next draggable element up.
+          <div
+            draggable
+            onDragStart={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            className="px-2 pt-0.5 pb-1.5"
+          >
             <SubtaskTree
               parent={task}
               path={task.id}

@@ -87,7 +87,7 @@ describe("findTopLevelTasks", () => {
 
 		expect(ids(topLevel)).toEqual(["TASK-1"]);
 		expect(reachableFrom(topLevel, group, hierarchy)).toEqual(["TASK-1", "TASK-1.1", "TASK-1.1.1"]);
-		// A board groups copies of the tasks, which must nest the same way.
+		// Tasks are matched by canonical ID, not by object, so a group of copies nests the same way.
 		expect(
 			ids(
 				findTopLevelTasks(

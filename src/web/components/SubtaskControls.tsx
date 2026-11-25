@@ -101,11 +101,12 @@ export function SubtaskBar({ progress, isOpen, onToggle, controls }: SubtaskTogg
 			aria-label={description}
 			title={description}
 			onClick={stopping(onToggle)}
-			// Closed, the bar is the card's last line, so its fill follows the card's rounded corners.
+			// Closed, the bar is the card's last line, so its fill follows the card's rounded corners: 9px is TaskCard's
+			// 10px corner radius minus its 1px border, so change the two together.
 			className={`flex h-8 w-full items-center gap-1.5 border-t border-line-soft px-3 text-left text-xs font-medium transition-colors duration-200 focus-ring ${isOpen ? "bg-surface-2 text-ink" : "rounded-b-[9px] text-ink-2 hover:bg-hover hover:text-ink"}`}
 		>
 			<SubtasksIcon />
-			<span>{countSubtasks(progress.total)}</span>
+			<span className="whitespace-nowrap">{countSubtasks(progress.total)}</span>
 			<span className="ml-auto font-mono text-[11.5px]">
 				{progress.completed}/{progress.total}
 			</span>
@@ -124,7 +125,7 @@ interface ParentTaskLinkProps {
 
 /** The parent's ID with a chevron, before the ID or title of a subtask shown apart from its parent. */
 export function ParentTaskLink({ task, parent, onOpenTask }: ParentTaskLinkProps) {
-	const className = "inline-flex shrink-0 items-center gap-0.5 font-mono text-xs leading-5 font-medium text-ink-3";
+	const className = "inline-flex shrink-0 items-center gap-0.5 font-mono text-xs leading-4 font-medium text-ink-3";
 	if (!parent) {
 		return (
 			<span className={className}>
