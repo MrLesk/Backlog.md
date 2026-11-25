@@ -161,17 +161,17 @@ interface TaskRowProps {
 	onEditTask: (task: Task) => void;
 }
 
+// A row's vertical padding, and the rails' negative margins that reach into it so the guide lines join from row to
+// row: change the two together.
+const ROW_PADDING = "py-2.5 @5xl:py-2";
+const RAILS_CELL = "-my-2.5 flex self-stretch @5xl:-my-2";
+
 /**
  * The two row grids. A row at the top of its group has priority, ID, status, title and details. A subtask row has
  * priority, one rail per level, then status, ID and title together, and details: the rails take width from the title
  * only, so the details stay in their columns at every depth. Below 64rem the details move to a second line, under
  * the column where the title starts.
  */
-// A row's vertical padding, and the rails' negative margins that reach into it so the guide lines join from row to
-// row: change the two together.
-const ROW_PADDING = "py-2.5 @5xl:py-2";
-const RAILS_CELL = "-my-2.5 flex self-stretch @5xl:-my-2";
-
 const ROW_LAYOUTS = {
 	topLevel: {
 		grid: "grid-cols-[14px_auto_14px_minmax(0,1fr)] @5xl:grid-cols-[14px_auto_14px_minmax(0,1fr)_auto]",

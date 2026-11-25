@@ -76,9 +76,13 @@ function SubtaskTreeRow({ task, path, rails, ...level }: SubtaskTreeRowProps) {
 				className="flex min-h-7 cursor-pointer items-stretch rounded-[6px] pl-1 transition-colors duration-200 hover:bg-hover"
 			>
 				<SubtaskRails count={rails} />
-				<div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 py-1 pr-1">
-					<StatusMark status={task.status} statuses={statuses} />
-					<span className="min-w-0 font-mono text-[11.5px] leading-4 font-medium text-ink-3 wrap-anywhere">
+				{/* The status and the ID are one title line tall (h-5, leading-5), so they stay beside the title's first
+				    line when the marker wraps under the title. */}
+				<div className="flex min-w-0 flex-1 flex-wrap items-start gap-x-1.5 gap-y-0.5 py-1 pr-1">
+					<span className="flex h-5 shrink-0 items-center">
+						<StatusMark status={task.status} statuses={statuses} />
+					</span>
+					<span className="min-w-0 font-mono text-[11.5px] leading-5 font-medium text-ink-3 wrap-anywhere">
 						{task.id}
 					</span>
 					{/* The title keeps 7rem for itself: with less room left beside the ID, the title moves under it, and with

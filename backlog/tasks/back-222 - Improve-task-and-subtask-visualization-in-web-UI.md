@@ -1,11 +1,11 @@
 ---
 id: BACK-222
 title: Show nested tasks together on the Tasks page and in the task view
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2025-08-03'
-updated_date: '2026-11-25T09:53:16Z'
+updated_date: '2026-11-25T10:04:00Z'
 labels:
   - web
 dependencies:
@@ -234,7 +234,7 @@ Checks on the final code (after the review round): bun run check:types and bun r
 
 Not verified: Firefox (the card title is no longer a native button because of Mozilla bug 568313, but no drag was tried there), Safari, Windows and Linux; a drop with a physical mouse (the drops above go through Chrome's drag interception); what a screen reader speaks (names, states and list levels were read from Chrome's accessibility tree); touch.
 
-Modified files: src/utils/task-subtasks.ts, src/test/subtask-progress.test.ts, src/test/task-subtasks.test.ts, src/web/lib/task-nesting.ts, src/web/components/SubtaskControls.tsx, src/web/components/SubtaskTree.tsx, src/web/components/TasksPage.tsx, src/web/components/TaskList.tsx, src/web/components/Board.tsx, src/web/components/TaskColumn.tsx, src/web/components/TaskCard.tsx, src/web/components/TaskDetailsModal.tsx, src/test/task-card-nesting.ts, src/test/web-task-project.test.tsx, src/test/web-task-types.test.tsx, src/test/web-task-details-modal-acceptance-criteria.test.tsx, src/test/web-task-card-dates.test.tsx, src/test/web-task-acceptance-progress.test.tsx, src/test/web-board-batch-move.test.tsx, src/test/web-board-drag-hidden-columns.test.tsx, src/test/web-task-column-sort.test.tsx, src/test/web-tasks-page.test.tsx, src/test/web-nested-tasks.test.tsx, src/test/web-task-details-modal-subtasks.test.tsx, src/test/web-task-details-modal-unsaved-navigation.test.tsx, src/test/web-task-detail-deeplink.test.tsx
+Final review round: both reviewers re-checked their findings on dc44d74f and found them resolved, and the final complexity review with the full context found nothing blocking. One regression of the narrow-width fix was fixed: when a tree row's marker wrapped under its title, the status mark and the ID were centered on both lines. They are now one title line tall (h-5, leading-5); on every row of BACK-3's opened card at 1440 px the status mark, the ID line and the title share the same middle. Also: the List's row-grid doc comment sits on ROW_LAYOUTS again, the titleOf test helper names the card's role="button" title, and the card's comment says that Shift+Enter on the bar, a subtask row or the parent link selects the card, as on its title.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

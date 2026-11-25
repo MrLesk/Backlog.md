@@ -146,7 +146,8 @@ const TaskCard: React.FC<TaskCardProps> = ({
     Boolean(onSelect) && !isFromOtherBranch && (event.ctrlKey || event.metaKey || event.shiftKey);
 
   // Runs while the click goes down to its target, so a modifier-click anywhere on the card selects it, also on the
-  // parent link, the subtask bar or a subtask row, which then never see the click.
+  // parent link, the subtask bar or a subtask row, which then never see the click. A click from the keyboard counts
+  // too: Shift+Enter on one of those controls selects the card, as it does on the card's title.
   const selectOnModifierClick = (event: React.MouseEvent) => {
     if (!selectsCard(event)) return;
     event.preventDefault();

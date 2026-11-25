@@ -134,7 +134,7 @@ const listedIds = (scope: ParentNode): string[] =>
 		idOf(title.getAttribute("aria-label")),
 	);
 
-/** The button that opens a task in a list row, a card or a tree row. */
+/** The button that opens a task in a list row or a tree row. A card's title is a role="button" span: see cardOf. */
 const titleOf = (scope: ParentNode, taskId: string): HTMLButtonElement => {
 	const title = scope.querySelector<HTMLButtonElement>(`button[aria-label^="Open ${taskId}:"]`);
 	expect(title, `title of ${taskId}`).toBeTruthy();
