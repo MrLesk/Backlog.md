@@ -17,7 +17,6 @@ groma:
     - scanner: typescript
       file: src/readme.ts
       symbol: updateReadmeWithBoard
-  group: Terminal UI
   technology: neo-neo-bblessed
 description: Kanban board in the terminal, plus its Markdown export
 ---

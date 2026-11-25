@@ -16,7 +16,6 @@ groma:
     - scanner: typescript
       file: src/web/components/InitializationScreen.tsx
       symbol: InitializationScreen
-  group: Pages
 description: Edit project settings, or initialize a project from the browser
 ---
 

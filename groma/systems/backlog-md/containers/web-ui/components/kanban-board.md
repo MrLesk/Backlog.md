@@ -50,7 +50,6 @@ groma:
     - scanner: typescript
       file: src/web/components/TaskTypeBadge.tsx
       symbol: TaskTypeBadge
-  group: Pages
 description: Drag-and-drop board with status columns and milestone lanes
 ---
 

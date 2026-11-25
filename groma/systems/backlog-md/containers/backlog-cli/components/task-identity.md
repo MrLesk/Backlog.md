@@ -26,7 +26,6 @@ groma:
       file: src/core/duplicate-task-repair.ts
     - scanner: typescript
       file: src/utils/duplicate-detection.ts
-  group: Shared core
 description: Parses, allocates and resolves IDs, and fails closed on ambiguity
 ---
 

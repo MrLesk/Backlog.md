@@ -16,7 +16,6 @@ groma:
       file: src/utils/runtime-cwd.ts
     - scanner: typescript
       file: src/utils/document-path.ts
-  group: Storage
   technology: Node fs, proper-lockfile
 description: Reads and writes the backlog folder, with file locks
 ---

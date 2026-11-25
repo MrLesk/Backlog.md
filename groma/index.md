@@ -7,5 +7,6 @@ okf_version: "0.2"
 - [actors/](<actors/>)
 - [externals/](<externals/>)
 - [flows/](<flows/>)
+- [groups/](<groups/>)
 - [project.md](<project.md>)
 - [systems/](<systems/>)

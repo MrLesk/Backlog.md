@@ -18,7 +18,6 @@ groma:
       file: src/guidelines/mcp/index.ts
     - scanner: typescript
       file: src/guidelines/index.ts
-  group: Command line
 description: Workflow guides that teach agents how to use Backlog.md
 ---
 

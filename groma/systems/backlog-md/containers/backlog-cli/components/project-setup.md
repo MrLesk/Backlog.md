@@ -17,7 +17,6 @@ groma:
       file: src/utils/agent-selection.ts
     - scanner: typescript
       file: src/utils/mcp-client-setup.ts
-  group: Command line
 description: 'Creates and configures a project: backlog init and backlog config'
 ---
 

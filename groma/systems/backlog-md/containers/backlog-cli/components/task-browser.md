@@ -8,7 +8,6 @@ groma:
   code:
     - scanner: typescript
       file: src/ui/task-viewer-with-search.ts
-  group: Terminal UI
   technology: neo-neo-bblessed
 description: Searchable task list and detail pane in the terminal
 ---

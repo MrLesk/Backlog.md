@@ -36,7 +36,6 @@ groma:
       file: src/utils/task-sorting.ts
     - scanner: typescript
       file: src/types/index.ts
-  group: Shared core
 description: Shared domain API every surface uses to read and change Backlog data
 ---
 

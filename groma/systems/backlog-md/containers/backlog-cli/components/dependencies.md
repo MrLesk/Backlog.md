@@ -18,7 +18,6 @@ groma:
       file: src/utils/task-record-index.ts
     - scanner: typescript
       file: src/utils/task-links.ts
-  group: Shared core
 description: Dependency graphs, readiness and subtask summaries for task details
 ---
 

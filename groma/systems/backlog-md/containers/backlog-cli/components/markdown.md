@@ -16,7 +16,6 @@ groma:
       file: src/markdown/structured-sections.ts
     - scanner: typescript
       file: src/markdown/section-titles.ts
-  group: Storage
   technology: gray-matter, YAML
 description: Parses and writes task, doc and decision Markdown with YAML frontmatter
 ---

@@ -43,7 +43,6 @@ groma:
     - scanner: typescript
       file: src/mcp/tools/workflow/index.ts
       symbol: registerWorkflowTools
-  group: MCP
 description: Task, document, milestone and Definition of Done tools for agents
 ---
 

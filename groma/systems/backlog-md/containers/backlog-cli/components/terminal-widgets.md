@@ -47,7 +47,6 @@ groma:
     - scanner: typescript
       file: src/utils/clipboard.ts
       symbol: copyToClipboard
-  group: Terminal UI
   technology: neo-neo-bblessed
 description: Shared screens, lists, popups and status formatting for the terminal UI
 ---

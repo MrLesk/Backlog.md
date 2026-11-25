@@ -26,7 +26,6 @@ groma:
       file: src/completions/command-structure.ts
     - scanner: typescript
       file: src/completions/data-providers.ts
-  group: Command line
   technology: Commander, @clack/prompts
 description: Parses backlog commands and runs them against the core
 ---

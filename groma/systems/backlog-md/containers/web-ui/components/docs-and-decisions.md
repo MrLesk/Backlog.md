@@ -21,7 +21,6 @@ groma:
     - scanner: typescript
       file: src/web/components/AmbiguousIdNotice.tsx
       symbol: AmbiguousIdNotice
-  group: Pages
 description: Read and edit project documents and decision records
 ---
 

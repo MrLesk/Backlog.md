@@ -16,7 +16,6 @@ groma:
     - scanner: typescript
       file: src/web/components/DraftsList.tsx
       symbol: DraftsList
-  group: Pages
 description: All Tasks and Drafts lists with search and filters
 ---
 

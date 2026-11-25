@@ -20,7 +20,6 @@ groma:
       file: src/utils/modified-files.ts
     - scanner: typescript
       file: src/utils/status-filter.ts
-  group: Shared core
   technology: Fuse.js
 description: Fuzzy search and the task filters shared by every surface
 ---

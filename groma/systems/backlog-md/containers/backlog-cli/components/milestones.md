@@ -17,7 +17,6 @@ groma:
       file: src/mcp/tools/milestones/handlers.ts
     - scanner: typescript
       file: src/mcp/utils/milestone-resolution.ts
-  group: Shared core
 description: Milestone records, and grouping tasks by milestone
 ---
 

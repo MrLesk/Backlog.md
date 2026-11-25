@@ -28,7 +28,6 @@ groma:
     - scanner: typescript
       file: src/utils/version.ts
       symbol: getVersion
-  group: Shared core
 description: Project defaults, statuses, priorities, types and config migrations
 ---
 

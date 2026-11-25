@@ -25,7 +25,6 @@ groma:
     - scanner: typescript
       file: src/mcp/resources/workflow/index.ts
       symbol: registerWorkflowResources
-  group: MCP
   technology: MCP TypeScript SDK, stdio
 description: Optional MCP adapter for AI clients, over stdio
 ---

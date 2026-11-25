@@ -18,7 +18,6 @@ groma:
       symbol: MilestoneTaskRow
     - scanner: typescript
       file: src/web/utils/milestones.ts
-  group: Pages
 description: Plan milestones and move tasks between them
 ---
 

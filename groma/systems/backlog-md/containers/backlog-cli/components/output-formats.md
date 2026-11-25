@@ -16,7 +16,6 @@ groma:
       file: src/commands/watch-json.ts
     - scanner: typescript
       file: src/utils/utc-date-display.ts
-  group: Command line
 description: Plain text and versioned JSON output for people, scripts and agents
 ---
 

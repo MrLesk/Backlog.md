@@ -11,7 +11,6 @@ groma:
     - scanner: typescript
       file: src/web/components/Statistics.tsx
       symbol: Statistics
-  group: Pages
 description: Status, priority and project health numbers for the whole project
 ---
 

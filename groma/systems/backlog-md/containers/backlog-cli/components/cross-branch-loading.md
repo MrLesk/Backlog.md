@@ -10,7 +10,6 @@ groma:
       file: src/core/task-loader.ts
     - scanner: typescript
       file: src/core/cross-branch-tasks.ts
-  group: Shared core
 description: Reads task state from other Git branches and remotes
 ---
 

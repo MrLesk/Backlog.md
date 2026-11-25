@@ -12,7 +12,6 @@ groma:
       file: src/utils/config-watcher.ts
     - scanner: typescript
       file: src/utils/task-watcher.ts
-  group: Shared core
   technology: fs.watch
 description: In-memory snapshot of tasks, docs and decisions, kept fresh by file watchers
 ---

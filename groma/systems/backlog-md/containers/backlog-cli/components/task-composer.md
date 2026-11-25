@@ -8,7 +8,6 @@ groma:
   code:
     - scanner: typescript
       file: src/ui/components/task-composer.ts
-  group: Terminal UI
   technology: neo-neo-bblessed
 description: Creates tasks from inside the terminal board
 ---

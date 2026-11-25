@@ -14,7 +14,6 @@ groma:
     - scanner: typescript
       file: src/ui/overview-tui.ts
       symbol: renderOverviewTui
-  group: Shared core
 description: Project statistics for backlog overview and the web statistics page
 ---
 

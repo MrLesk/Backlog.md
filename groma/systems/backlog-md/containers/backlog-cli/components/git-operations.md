@@ -8,7 +8,6 @@ groma:
   code:
     - scanner: typescript
       file: src/git/operations.ts
-  group: Storage
   technology: git CLI
 description: Runs git for auto-commits and cross-branch reads
 ---
