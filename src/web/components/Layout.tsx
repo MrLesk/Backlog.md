@@ -1,10 +1,11 @@
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import SideNavigation from './SideNavigation';
 import Navigation from './Navigation';
 import { DuplicateIdWarning } from './DuplicateIdWarning';
 import type { DuplicateRepairPlan } from '../../core/duplicate-task-repair';
 import { type Task, type Document, type Decision } from '../../types';
+import { useAddressBarLocation } from '../contexts/AddressBarLocationContext';
 
 const DRAWER_MEDIA_QUERY = '(width < 64rem)';
 
@@ -19,7 +20,7 @@ interface LayoutProps {
 	error?: Error | null;
 	onRefreshData: () => Promise<void>;
 	duplicateRepairPlan?: DuplicateRepairPlan | null;
-	/** The open task's page, shown over the current page while a task is open. */
+	/** The open task's page, shown over the page beneath it while a task is open. */
 	taskPage?: ReactNode;
 }
 
@@ -52,7 +53,8 @@ export default function Layout({
 	duplicateRepairPlan = null,
 	taskPage,
 }: LayoutProps) {
-	const location = useLocation();
+	// The address bar, not the page on screen: opening a task from the drawer, or another task from an open one, closes it.
+	const addressBarLocation = useAddressBarLocation();
 	const drawer = useRef<HTMLDialogElement>(null);
 	const pageScroll = useRef<HTMLDivElement>(null);
 	const [useDrawer, setUseDrawer] = useState(() => window.matchMedia?.(DRAWER_MEDIA_QUERY).matches ?? false);
@@ -79,9 +81,10 @@ export default function Layout({
 
 	useEffect(() => {
 		closeDrawer();
-	}, [location.key, closeDrawer]);
+	}, [addressBarLocation.key, closeDrawer]);
 
-	// A task page shares the page path of the list or board beneath it, so opening a task keeps their reading position.
+	// While a task is open, pagePath is that of the page beneath it, so opening and closing a task keep the reading
+	// position of that page.
 	useLayoutEffect(() => {
 		if (pageScroll.current) pageScroll.current.scrollTop = 0;
 	}, [pagePath]);
@@ -104,9 +107,9 @@ export default function Layout({
 	// inside one floating content panel beside it. Narrow screens open the sidebar in a drawer. The drawer sets
 	// its own background and text color, because a dialog does not inherit them from body, and a right edge
 	// against the dimmed page.
-	// While a task is open, its page covers the current page, which stays mounted and inert: nothing in it can be
-	// reached by keyboard, pointer or screen reader, and its scroll position, open groups and selection are as they
-	// were when the task closes.
+	// While a task is open, its page covers the page it was opened from, which stays mounted and inert: nothing in it
+	// can be reached by keyboard, pointer or screen reader, and its scroll position, search, open groups and selection
+	// are as they were when the task closes.
 	return (
 		<div className="h-dvh flex gap-2 overflow-hidden p-2">
 			{useDrawer ? (

@@ -62,7 +62,7 @@ const renderCard = (task: Task): HTMLElement => {
 	act(() => {
 		activeRoot?.render(
 			<MemoryRouter initialEntries={["/board"]}>
-				<TaskCard task={task} onEdit={() => {}} {...STANDALONE_CARD_NESTING} />
+				<TaskCard task={task} onOpenTask={() => {}} {...STANDALONE_CARD_NESTING} />
 			</MemoryRouter>,
 		);
 	});
@@ -81,7 +81,7 @@ const renderList = (...tasks: Task[]): HTMLElement => {
 					statuses={STATUSES}
 					finalGroupOpenByDefault
 					isLoading={false}
-					onEditTask={() => {}}
+					onOpenTask={() => {}}
 				/>
 			</MemoryRouter>,
 		);
@@ -102,7 +102,7 @@ const getHeaderRow = (container: HTMLElement): HTMLElement => {
 const getPriorityName = (element: HTMLElement): string | null | undefined =>
 	element.querySelector("[role='img'][aria-label$='priority']")?.getAttribute("aria-label");
 
-// One row of the list, found through the button that opens its task.
+// One row of the list, found through the link that opens its task.
 const getListRow = (container: HTMLElement, taskId: string): HTMLElement => {
 	const row = container.querySelector<HTMLElement>(`a[aria-label^="Open ${taskId}:"]`)?.closest("li");
 	expect(row).toBeTruthy();
@@ -254,7 +254,7 @@ describe("browser task acceptance criteria progress", () => {
 				<MemoryRouter initialEntries={["/board"]}>
 					<TaskCard
 						task={createTask({ acceptanceCriteriaItems: createCriteria(4, 5) })}
-						onEdit={() => {}}
+						onOpenTask={() => {}}
 						{...STANDALONE_CARD_NESTING}
 					/>
 				</MemoryRouter>,

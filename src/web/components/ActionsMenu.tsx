@@ -20,7 +20,8 @@ interface ActionsMenuProps {
 
 /**
  * A button with three dots that opens a short menu of actions. A click outside closes it, Escape closes it and returns
- * focus to the button, and choosing an action closes it before the action runs.
+ * focus to the button, and choosing an action closes it and returns focus to the button before the action runs, so a
+ * confirmation the action asks for and the person cancels leaves focus on the button.
  */
 export default function ActionsMenu({ label, actions, menuClassName, disabled = false }: ActionsMenuProps) {
 	const [isOpen, setIsOpen] = useState(false);
@@ -73,6 +74,7 @@ export default function ActionsMenu({ label, actions, menuClassName, disabled = 
 							role="menuitem"
 							onClick={() => {
 								setIsOpen(false);
+								buttonRef.current?.focus();
 								action.onSelect();
 							}}
 							className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink transition-colors duration-150 hover:bg-hover focus-ring"

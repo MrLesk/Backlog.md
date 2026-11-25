@@ -177,7 +177,7 @@ describe("Web task type UI", () => {
 			JSDOM.fragment(
 				renderToString(
 					<MemoryRouter initialEntries={["/board"]}>
-						<TaskCard task={task} onEdit={() => {}} {...STANDALONE_CARD_NESTING} />
+						<TaskCard task={task} onOpenTask={() => {}} {...STANDALONE_CARD_NESTING} />
 					</MemoryRouter>,
 				),
 			).querySelector("[data-task-type]");
@@ -185,7 +185,7 @@ describe("Web task type UI", () => {
 			<MemoryRouter initialEntries={["/board"]}>
 				<TaskCard
 					task={createTask({ dueDate: "2026-08-10" })}
-					onEdit={() => {}}
+					onOpenTask={() => {}}
 					dateFormat="dd/mm/yyyy hh:mm"
 					{...STANDALONE_CARD_NESTING}
 				/>

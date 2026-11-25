@@ -111,7 +111,10 @@ describe("Web drafts list", () => {
 			await Promise.resolve();
 		});
 
-		expect(currentLocation).toEqual({ pathname: "/board/DRAFT-2/second-draft", state: { openedInApp: true } });
+		expect(currentLocation).toEqual({
+			pathname: "/board/DRAFT-2/second-draft",
+			state: { background: { pathname: "/drafts", search: "" } },
+		});
 	});
 
 	// App.refreshData fires this event after every save, so a draft edit shows up without a reload.

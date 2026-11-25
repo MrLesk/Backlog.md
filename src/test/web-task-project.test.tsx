@@ -122,7 +122,7 @@ describe("Web task project UI", () => {
 			<MemoryRouter initialEntries={["/board"]}>
 				<TaskCard
 					task={createTask({ project: "Web" })}
-					onEdit={() => {}}
+					onOpenTask={() => {}}
 					availableProjects={["Web"]}
 					{...STANDALONE_CARD_NESTING}
 				/>
@@ -132,7 +132,7 @@ describe("Web task project UI", () => {
 			<MemoryRouter initialEntries={["/board"]}>
 				<TaskCard
 					task={createTask()}
-					onEdit={() => {}}
+					onOpenTask={() => {}}
 					availableProjects={["Web"]}
 					{...STANDALONE_CARD_NESTING}
 				/>
@@ -148,7 +148,7 @@ describe("Web task project UI", () => {
 			<MemoryRouter initialEntries={["/board"]}>
 				<TaskCard
 					task={createTask({ project: "Web" })}
-					onEdit={() => {}}
+					onOpenTask={() => {}}
 					{...STANDALONE_CARD_NESTING}
 				/>
 			</MemoryRouter>,

@@ -114,7 +114,7 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({
             <input
               type="checkbox"
               aria-label={`${label} item ${c.index} done`}
-              className="size-4 shrink-0 accent-ink focus-ring"
+              className="shrink-0 checkbox focus-ring"
               checked={c.checked}
               onChange={(e) => handleToggle(c.index, e.target.checked)}
               disabled={disableToggle}

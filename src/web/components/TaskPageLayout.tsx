@@ -1,6 +1,7 @@
 import { type KeyboardEventHandler, type ReactNode, useEffect, useId, useRef } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { tasksPageOf } from "../lib/task-links.ts";
+import { Link } from "react-router-dom";
+import { useAddressBarLocation } from "../contexts/AddressBarLocationContext.tsx";
+import { pageBeneath } from "../lib/task-links.ts";
 
 interface TaskPageLayoutProps {
 	taskId: string;
@@ -28,9 +29,9 @@ interface TaskPageLayoutProps {
 }
 
 /**
- * The page a task opens as, over the Tasks page: a head row with the breadcrumb, the actions and the close button,
- * which stays in place while the body below it scrolls; then the title and the sections in a reading column beside
- * the properties. It holds no task data: TaskDetails fills it, and App draws it with only its head while the task's
+ * The page a task opens as, over the page it was opened from: a head row with the breadcrumb, the actions and the close
+ * button, which stays in place while the body below it scrolls; then the title and the sections in a reading column
+ * beside the properties. It holds no task data: TaskDetails fills it, and App draws it with only its head while the task's
  * first read is pending.
  */
 export default function TaskPageLayout({
@@ -54,14 +55,18 @@ export default function TaskPageLayout({
 		if (bodyRef.current) bodyRef.current.scrollTop = 0;
 	}, [taskId]);
 
-	// When a control that had focus disappears, as the fields and buttons do when Save or Cancel ends edit mode, the
-	// browser drops focus to the document body, where the page's keys (E, Escape, Cmd/Ctrl+S) no longer reach it. After
-	// every render, focus that was dropped comes back to the page.
+	// The page's keys (E, Escape, Cmd/Ctrl+S) reach it only while focus is inside it. When a control that had focus is
+	// removed (Save and Cancel replace the fields and buttons, a menu or a list of suggestions closes), the browser drops
+	// focus to the document body, so whenever the page's content changes, focus found there comes back to the page.
 	useEffect(() => {
-		if (!document.activeElement || document.activeElement === document.body) {
-			pageRef.current?.focus({ preventScroll: true });
-		}
-	});
+		const page = pageRef.current;
+		if (!page) return;
+		const observer = new window.MutationObserver(() => {
+			if (!document.activeElement || document.activeElement === document.body) page.focus({ preventScroll: true });
+		});
+		observer.observe(page, { childList: true, subtree: true });
+		return () => observer.disconnect();
+	}, []);
 
 	return (
 		<article
@@ -71,7 +76,8 @@ export default function TaskPageLayout({
 			aria-busy={main === undefined}
 			onKeyDownCapture={onKeyDownCapture}
 			onKeyDown={(event) => {
-				// Escape closes the page unless a control inside it, an open list or menu, used the key first.
+				// Escape closes the page only when no control inside it handled the key: a control that uses Escape, such as
+				// an open menu or list of suggestions, calls preventDefault on it.
 				if (event.key !== "Escape" || event.defaultPrevented || closeDisabled) return;
 				event.preventDefault();
 				event.stopPropagation();
@@ -115,19 +121,35 @@ export default function TaskPageLayout({
 	);
 }
 
-/** The way back to the Tasks page beneath, in its layout and with its filters, followed by the open task's ID. */
+// The pages a task can be opened from, by the names the sidebar gives them.
+const PAGE_NAMES: Array<[path: string, name: string]> = [
+	["/tasks", "Tasks"],
+	["/board", "Tasks"],
+	["/milestones", "Milestones"],
+	["/drafts", "Drafts"],
+	["/statistics", "Statistics"],
+	["/documentation", "Documents"],
+	["/decisions", "Decisions"],
+	["/settings", "Settings"],
+];
+
+function pageNameOf(pathname: string): string {
+	return PAGE_NAMES.find(([path]) => pathname === path || pathname.startsWith(`${path}/`))?.[1] ?? "Back";
+}
+
+/** The way back to the page beneath the task, by its name, followed by the open task's ID. */
 function TaskBreadcrumb({ taskId }: { taskId: string }) {
-	const tasksPage = tasksPageOf(useLocation());
+	const page = pageBeneath(useAddressBarLocation());
 
 	return (
 		<nav aria-label="Breadcrumb" className="min-w-0">
 			<ol className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-ink-2">
 				<li>
 					<Link
-						to={`${tasksPage.path}${tasksPage.search}`}
+						to={`${page.pathname}${page.search}`}
 						className="rounded-[4px] transition-colors duration-200 hover:text-ink focus-ring"
 					>
-						Tasks
+						{pageNameOf(page.pathname)}
 					</Link>
 				</li>
 				<li aria-hidden="true" className="flex text-ink-3">
@@ -144,16 +166,20 @@ function TaskBreadcrumb({ taskId }: { taskId: string }) {
 }
 
 /**
- * The reading column and the properties beside it, from a page width of 48rem; below that the properties follow the
- * sections. The task page and the dialog that creates a task both lay out a task this way. The reading column's width
- * is set here and only here.
+ * The reading column and the properties beside it, from a width of 36rem (576px); below that the properties follow the
+ * sections. That keeps two columns in the content panel of a 1024px window with the sidebar open. The properties take
+ * 240 to 340px and the reading column up to 780px. The task page and the dialog that creates a task both lay out a task
+ * this way, and the reading column's width is set here and only here.
  */
 export function TaskColumns({ main, side }: { main: ReactNode; side: ReactNode }) {
 	return (
 		<div className="@container">
-			<div className="flex flex-col gap-8 @3xl:flex-row @3xl:items-start">
-				<div className="flex min-w-0 flex-col gap-[22px] @3xl:max-w-[780px] @3xl:flex-[999_1_480px]">{main}</div>
-				<aside aria-label="Task properties" className="flex min-w-0 flex-col gap-3 @3xl:max-w-[340px] @3xl:flex-[1_1_280px]">
+			<div className="flex flex-col gap-8 @xl:flex-row @xl:items-start">
+				<div className="flex min-w-0 flex-col gap-[22px] @xl:max-w-[780px] @xl:flex-[999_1_480px]">{main}</div>
+				<aside
+					aria-label="Task properties"
+					className="flex min-w-0 flex-col gap-3 @xl:min-w-[240px] @xl:max-w-[340px] @xl:flex-[1_1_280px]"
+				>
 					{side}
 				</aside>
 			</div>

@@ -1225,6 +1225,8 @@ export default function TaskDetails({
     </>
   );
 
+  // The title field has the heading's type. On the page its padding and border sit outside the heading's box (the
+  // negative margins), so the title stays where it was and nothing below it moves when Edit turns it into the field.
   const titleField = (
     <input
       type="text"
@@ -1232,7 +1234,9 @@ export default function TaskDetails({
       value={title}
       onChange={(event) => setTitle(event.target.value)}
       placeholder="Enter task title"
-      className="w-full rounded-control border border-line bg-surface px-2.5 py-1.5 text-xl font-semibold leading-tight tracking-tight text-ink placeholder:font-normal placeholder:text-ink-3 focus-ring"
+      className={`rounded-control border border-line bg-surface px-2.5 py-1.5 text-2xl font-semibold leading-tight tracking-tight text-ink placeholder:font-normal placeholder:text-ink-3 focus-ring ${
+        isCreateMode ? "w-full" : "-mx-[11px] -my-[7px] w-[calc(100%+22px)]"
+      }`}
     />
   );
 
@@ -1463,6 +1467,7 @@ export default function TaskDetails({
           <PropertyRow label="Status">
             {canChangeProperties && !isOpenDraft ? (
               <PropertySelect
+                framed={isCreateMode}
                 label="Task status"
                 value={status}
                 // A record can hold a status the configuration does not list (an archived one, say): it is shown as it is.
@@ -1483,6 +1488,7 @@ export default function TaskDetails({
           <PropertyRow label="Priority">
             {canChangeProperties ? (
               <PropertySelect
+                framed={isCreateMode}
                 label="Task priority"
                 value={priority}
                 choices={[{ value: "", label: "No Priority" }, ...priorityOptions]}
@@ -1502,6 +1508,7 @@ export default function TaskDetails({
           <PropertyRow label="Assignee">
             {canChangeProperties ? (
               <ChipInput
+                framed={isCreateMode}
                 name="assignee"
                 label="Assignee"
                 value={assignee}
@@ -1516,6 +1523,7 @@ export default function TaskDetails({
           <PropertyRow label="Type">
             {canChangeProperties ? (
               <PropertySelect
+                framed={isCreateMode}
                 label="Task type"
                 value={typeSelectionValue}
                 choices={typeChoices}
@@ -1541,6 +1549,7 @@ export default function TaskDetails({
           <PropertyRow label="Labels">
             {canChangeProperties ? (
               <ChipInput
+                framed={isCreateMode}
                 name="labels"
                 label="Labels"
                 suggestions={availableLabels}
@@ -1563,6 +1572,7 @@ export default function TaskDetails({
             <PropertyRow label="Project">
               {canChangeProperties ? (
                 <PropertySelect
+                  framed={isCreateMode}
                   label="Task project"
                   value={projectSelectionValue}
                   choices={projectChoices}
@@ -1579,6 +1589,7 @@ export default function TaskDetails({
           <PropertyRow label="Milestone">
             {canChangeProperties ? (
               <PropertySelect
+                framed={isCreateMode}
                 label="Task milestone"
                 value={milestoneSelectionValue}
                 choices={milestoneChoices}
@@ -1601,7 +1612,7 @@ export default function TaskDetails({
                 aria-label="Due date"
                 value={dueDate}
                 onChange={(event) => setDueDate(event.target.value)}
-                className="-ml-2 h-[26px] rounded-[7px] border border-line bg-surface px-2 font-mono text-xs text-ink focus-ring"
+                className="-ml-2 compact-control border border-line bg-surface px-2 font-mono text-xs text-ink focus-ring"
               />
             </PropertyRow>
           ) : (
@@ -1633,6 +1644,7 @@ export default function TaskDetails({
           <PropertyRow label="Dependencies">
             <div className="flex w-full min-w-0 flex-col gap-1.5">
               <DependencyInput
+                framed={isCreateMode}
                 value={dependencies}
                 onChange={canChangeProperties ? (value) => void handleInlineMetaUpdate({ dependencies: value }) : undefined}
                 availableTasks={availableTasks}
@@ -1642,7 +1654,7 @@ export default function TaskDetails({
               />
               {shownReadiness && (
                 <p className={`flex items-start gap-1.5 text-xs font-medium ${shownReadiness.isReady ? "text-accent-text" : "text-blocked"}`}>
-                  <span aria-hidden="true">{shownReadiness.isReady ? "✓" : "⏳"}</span>
+                  <ReadinessMark isReady={shownReadiness.isReady} />
                   <span>{shownReadiness.isReady ? "Ready to start" : formatReadinessBlockers(shownReadiness)}</span>
                 </p>
               )}
@@ -1769,12 +1781,14 @@ export default function TaskDetails({
       {/* One note for every task that cannot be changed; only the reason differs. */}
       {isReadOnlyRecord && (
         <p className="flex items-center gap-2 rounded-control bg-surface-2 px-3 py-[9px] text-sm text-ink-2">
-          <svg viewBox="0 0 16 16" className="size-4 shrink-0 text-ink-3" aria-hidden="true">
-            <path d="M4.5 5.5v5M11.5 7c0 2.5-3 2-5.5 3.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-            <circle cx="4.5" cy="4" r="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
-            <circle cx="4.5" cy="12" r="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
-            <circle cx="11.5" cy="5.5" r="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
-          </svg>
+          {task.branch && (
+            <svg viewBox="0 0 16 16" className="size-4 shrink-0 text-ink-3" aria-hidden="true">
+              <path d="M4.5 5.5v5M11.5 7c0 2.5-3 2-5.5 3.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              <circle cx="4.5" cy="4" r="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+              <circle cx="4.5" cy="12" r="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+              <circle cx="11.5" cy="5.5" r="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+            </svg>
+          )}
           <span>
             {task.branch ? (
               <>
@@ -1818,9 +1832,9 @@ export default function TaskDetails({
 
 /** The two kinds of buttons of the page head and the create dialog, as drawn: outlined, and ink for the main action. */
 const SECONDARY_BUTTON =
-  "inline-flex h-[26px] items-center gap-1.5 rounded-[7px] border border-line bg-surface px-2.5 text-xs font-medium text-ink transition-colors duration-200 hover:bg-hover focus-ring disabled:opacity-50";
+  "inline-flex compact-control items-center gap-1.5 border border-line bg-surface px-2.5 text-xs font-medium text-ink transition-colors duration-200 hover:bg-hover focus-ring disabled:opacity-50";
 const PRIMARY_BUTTON =
-  "inline-flex h-[26px] items-center rounded-[7px] bg-ink px-2.5 text-xs font-medium text-on-ink transition-opacity duration-200 hover:opacity-90 focus-ring disabled:opacity-50";
+  "inline-flex compact-control items-center bg-ink px-2.5 text-xs font-medium text-on-ink transition-opacity duration-200 hover:opacity-90 focus-ring disabled:opacity-50";
 const TEXT_FIELD =
   "w-full rounded-control border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-3 focus-ring";
 /** The quiet type chip and the label chips of the Tasks page's rows. */
@@ -1837,6 +1851,22 @@ function PropertyRow({ label, children }: { label: string; children: React.React
   );
 }
 
+/** The mark before the readiness verdict, in the verdict's color: a check when ready, an hourglass when blocked. */
+function ReadinessMark({ isReady }: { isReady: boolean }) {
+  return (
+    <svg viewBox="0 0 16 16" className="mt-px size-3.5 shrink-0" aria-hidden="true">
+      <path
+        d={isReady ? "m3.5 8.5 3 3 6-7" : "M4.5 2.5h7M4.5 13.5h7M5.5 2.5c0 3.5 5 3.5 5 5.5s-5 2-5 5.5M10.5 2.5c0 3.5-5 3.5-5 5.5s5 2 5 5.5"}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /** A property's value as text; an empty one reads None. */
 function PropertyText({ value, mono = false }: { value: string; mono?: boolean }) {
   if (!value) return <span className="font-mono text-xs font-normal text-ink-3">None</span>;
@@ -1846,6 +1876,8 @@ function PropertyText({ value, mono = false }: { value: string; mono?: boolean }
 interface PropertySelectProps {
   /** The accessible name of the select, such as "Task status". */
   label: string;
+  /** Shows the field's frame at all times, as the dialog that creates a task does; elsewhere it shows on hover. */
+  framed?: boolean;
   value: string;
   choices: Array<{ value: string; label: string }>;
   onChange: (value: string) => void;
@@ -1861,12 +1893,21 @@ interface PropertySelectProps {
  * invisible, so a click anywhere on it opens the choices and the keyboard and screen readers use the select as usual.
  * Only a change of the choice calls onChange. The filter panel of the Tasks page draws its selects the same way.
  */
-function PropertySelect({ label, value, choices, onChange, disabled, describedBy, invalid, children }: PropertySelectProps) {
+function PropertySelect({ label, framed = false, value, choices, onChange, disabled, describedBy, invalid, children }: PropertySelectProps) {
   return (
-    <span className="relative -ml-2 inline-flex h-[26px] min-w-0 max-w-full items-center gap-[7px] rounded-[7px] border border-transparent px-2 outline-accent-strong transition-colors duration-200 hover:border-line hover:bg-hover has-[select:focus-visible]:outline-2 has-[select:focus-visible]:outline-offset-2 has-[select:disabled]:opacity-60">
+    <span
+      className={`relative -ml-2 inline-flex compact-control min-w-0 items-center gap-[7px] border px-2 outline-accent-strong transition-colors duration-200 hover:border-line hover:bg-hover has-[select:focus-visible]:outline-2 has-[select:focus-visible]:outline-offset-2 has-[select:disabled]:opacity-60 ${
+        framed ? "w-[calc(100%+0.5rem)] border-line bg-surface" : "max-w-full border-transparent"
+      }`}
+    >
       <span aria-hidden="true" className="flex min-w-0 items-center gap-[7px]">
         {children}
       </span>
+      {framed && (
+        <svg viewBox="0 0 16 16" className="ml-auto size-3.5 shrink-0 text-ink-3" aria-hidden="true">
+          <path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
       <select
         aria-label={label}
         aria-describedby={describedBy}
@@ -1909,7 +1950,7 @@ function Checklist({
               checked={item.checked}
               disabled={!canToggle}
               onChange={(event) => onToggle(item.index, event.target.checked)}
-              className="mt-[3px] size-4 accent-ink focus-ring"
+              className="mt-[3px] checkbox focus-ring"
             />
             <span>
               <span className="mr-1.5 font-mono text-xs font-medium text-ink-3">#{item.index}</span>
@@ -1925,7 +1966,7 @@ function Checklist({
 /** Markdown as the page shows it, in the reading column's type and the shared colors. */
 function MarkdownText({ source, theme }: { source: string; theme: "light" | "dark" }) {
   return (
-    <div className="task-markdown max-w-[72ch]" data-color-mode={theme}>
+    <div className="task-markdown" data-color-mode={theme}>
       <MermaidMarkdown source={source} />
     </div>
   );

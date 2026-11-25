@@ -532,7 +532,10 @@ describe("Task view Final summary and comments", () => {
 			expect(container.textContent).toContain("A newer version of this task is available");
 			expect(findInputByValue(container, "Unsaved title")).toBeTruthy();
 			expect(findButton(container, "Save")?.disabled).toBe(true);
-			await act(async () => { window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true })); });
+			// Ctrl+S from the edited field reaches the page's shortcut, which saves nothing while the newer version waits.
+			const saveShortcut = new window.KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true });
+			await act(async () => { findInputByValue(container, "Unsaved title")!.dispatchEvent(saveShortcut); });
+			expect(saveShortcut.defaultPrevented).toBe(true);
 			expect(writes).toBe(1);
 			await act(async () => { clickElement(findButton(container, "Refresh and discard edits")!); });
 			expect(findInputByValue(container, "Newer title")).toBeTruthy();

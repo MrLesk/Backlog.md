@@ -161,6 +161,32 @@ describe("Task page parent and Subtasks", () => {
 		expect(currentPath).toBe("/tasks/TASK-2.1/task-task-21");
 	});
 
+	it.each([
+		["Ctrl", { ctrlKey: true }],
+		["Cmd", { metaKey: true }],
+	] as const)("leaves a %s-click on a subtask's link and on its row to the browser", (_key, modifier) => {
+		const tasks = nestedCorpus();
+		const container = renderPage(tasks[0] as Task, tasks);
+		const link = subtasksSection(container)?.querySelector("a[aria-label^='Open TASK-2.1:']") as HTMLAnchorElement;
+		const row = link.closest("li > div") as HTMLElement;
+		// A listener on the window runs after the app's own handlers: it records whether the app took the click, then
+		// stops jsdom from trying to follow the link, which it cannot do.
+		const preventedByApp: boolean[] = [];
+		window.addEventListener("click", (event) => {
+			preventedByApp.push(event.defaultPrevented);
+			event.preventDefault();
+		});
+
+		for (const target of [link, row]) {
+			act(() => {
+				target.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true, ...modifier }));
+			});
+		}
+
+		expect(preventedByApp).toEqual([false, false]);
+		expect(currentPath).toBe("/tasks/TASK-2");
+	});
+
 	it("links the Parent row to the parent's task route", async () => {
 		const tasks = nestedCorpus();
 		const container = renderPage(tasks[6] as Task, tasks);

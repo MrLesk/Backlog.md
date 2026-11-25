@@ -26,7 +26,7 @@ interface TaskColumnProps {
   /** The configured statuses in workflow order, for the status mark of the column. */
   statuses: string[];
   tasks: Task[];
-  onEditTask: (task: Task) => void;
+  onOpenTask: (task: Task) => void;
   /** Which tasks are subtasks of which, and the subtask levels opened on the board's cards. */
   nesting: TaskNesting;
   subtaskLevels: SubtaskLevels;
@@ -82,7 +82,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   title,
   statuses,
   tasks,
-  onEditTask,
+  onOpenTask,
   nesting,
   subtaskLevels,
   onTaskReorder,
@@ -336,7 +336,7 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
 
             <TaskCard
               task={task}
-              onEdit={onEditTask}
+              onOpenTask={onOpenTask}
               nesting={nesting}
               statuses={statuses}
               subtaskLevels={subtaskLevels}

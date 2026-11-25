@@ -44,7 +44,7 @@ interface TasksPageProps {
 	loadError?: Error | null;
 	hideEmptyColumns: boolean;
 	dateFormat?: string;
-	onEditTask: (task: Task) => void;
+	onOpenTask: (task: Task) => void;
 	onNewTask: () => void;
 	onRefreshData: () => Promise<void>;
 	onTasksUpdated: (tasks: Task[], requestTask: Task) => void;
@@ -87,7 +87,7 @@ export default function TasksPage({
 	loadError,
 	hideEmptyColumns,
 	dateFormat,
-	onEditTask,
+	onOpenTask,
 	onNewTask,
 	onRefreshData,
 	onTasksUpdated,
@@ -166,10 +166,10 @@ export default function TasksPage({
 		if (resolution.status !== "found") return;
 		const timer = setTimeout(() => {
 			setHighlightTaskId(null);
-			onEditTask(resolution.task);
+			onOpenTask(resolution.task);
 		}, 100);
 		return () => clearTimeout(timer);
-	}, [highlightTaskId, tasks, onEditTask]);
+	}, [highlightTaskId, tasks, onOpenTask]);
 
 	// The shared task search narrows the tasks once, for whichever layout shows them. Its index is built only while
 	// there is text to search for.
@@ -285,7 +285,7 @@ export default function TasksPage({
 									finalGroupOpenByDefault={filters.statuses.some((status) => isTerminalStatus(status, statuses))}
 									isLoading={isLoading}
 									dateFormat={dateFormat}
-									onEditTask={onEditTask}
+									onOpenTask={onOpenTask}
 									onCleanup={openCleanup}
 								/>
 							) : (
@@ -293,7 +293,7 @@ export default function TasksPage({
 									tasks={tasks}
 									visibleTasks={visibleTasks}
 									nesting={nesting}
-									onEditTask={onEditTask}
+									onOpenTask={onOpenTask}
 									onRefreshData={onRefreshData}
 									onTasksUpdated={onTasksUpdated}
 									statuses={statuses}

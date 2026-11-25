@@ -1,6 +1,7 @@
 import { type MouseEvent, useId } from "react";
 import type { Task } from "../../types";
 import { readSubtaskLevel, type SubtaskLevels, subtaskPath, type TaskNesting } from "../lib/task-nesting.ts";
+import { taskLinkLabel } from "../lib/task-links.ts";
 import AcceptanceCriteriaProgress from "./AcceptanceCriteriaProgress";
 import StatusMark from "./StatusMark";
 import { NO_MATCHING_SUBTASKS, SubtaskMarker, SubtaskRails } from "./SubtaskControls";
@@ -41,9 +42,20 @@ const ROW_STYLES: Record<SubtaskTreeVariant, { row: string; title: string; id: s
 		id: "text-[11.5px]",
 	},
 	page: {
-		row: "min-h-[38px] border-t border-line-soft px-3",
+		row: "min-h-[38px] px-3",
 		title: "text-[13.5px] font-medium",
 		id: "text-xs",
+	},
+};
+
+// The lists of a tree: the first level, and the levels opened under a row. On the page every row has a hairline
+// between it and the next one: between the rows of one level (divide-y), and above an opened level, which follows its
+// parent's row.
+const LIST_STYLES: Record<SubtaskTreeVariant, { first: string; opened: string }> = {
+	card: { first: "", opened: "" },
+	page: {
+		first: "overflow-hidden rounded-[10px] border border-line divide-y divide-line-soft",
+		opened: "border-t border-line-soft divide-y divide-line-soft",
 	},
 };
 
@@ -53,7 +65,7 @@ const ROW_STYLES: Record<SubtaskTreeVariant, { row: string; title: string; id: s
  */
 export default function SubtaskTree({ parent, path, id, rails = 0, ...level }: SubtaskTreeProps) {
 	const subtasks = level.nesting.visible.subtasksOf(parent);
-	const isPageRoot = level.variant === "page" && rails === 0;
+	const listStyle = LIST_STYLES[level.variant][rails === 0 ? "first" : "opened"];
 	if (subtasks.length === 0) {
 		return (
 			<p id={id} className={`py-1.5 text-xs text-ink-3 ${level.variant === "page" ? "px-3" : ""}`}>
@@ -62,14 +74,9 @@ export default function SubtaskTree({ parent, path, id, rails = 0, ...level }: S
 		);
 	}
 	// role="list": Safari's VoiceOver drops the list semantics of a list without bullets, and the nesting levels
-	// are what tells a screen reader how deep a subtask sits. On the page the whole tree sits in one bordered box, and
-	// its first row needs no hairline above it.
+	// are what tells a screen reader how deep a subtask sits. On the page the whole tree sits in one bordered box.
 	return (
-		<ul
-			id={id}
-			role="list"
-			className={isPageRoot ? "overflow-hidden rounded-[10px] border border-line [&>li:first-child>div]:border-t-0" : undefined}
-		>
+		<ul id={id} role="list" className={listStyle || undefined}>
 			{subtasks.map((subtask) => (
 				<SubtaskTreeRow key={subtask.id} task={subtask} path={subtaskPath(path, subtask)} rails={rails} {...level} />
 			))}
@@ -120,7 +127,7 @@ function SubtaskTreeRow({ task, path, rails, ...level }: SubtaskTreeRowProps) {
 							task={task}
 							draggable={false}
 							title={task.title}
-							aria-label={`Open ${task.id}: ${task.title}`}
+							aria-label={taskLinkLabel(task)}
 							className={`min-w-0 max-w-fit grow basis-28 truncate rounded-[4px] text-left leading-5 text-ink focus-ring ${styles.title}`}
 						>
 							{task.title}

@@ -992,7 +992,7 @@ describe("task detail routes", () => {
 
 		try {
 			const container = await renderApp("/board/BACK-201");
-			const link = container.querySelector('a[aria-label="Open BACK-202 - Graph follower"]');
+			const link = container.querySelector('a[aria-label="Open BACK-202: Graph follower"]');
 			expect(link).toBeTruthy();
 
 			const operation = new FetchOperation("graph link navigation", [
@@ -1466,21 +1466,56 @@ describe("task detail routes", () => {
 		expect(taskPageOf(container)).toBeNull();
 	});
 
-	it("opens a task from another page over the Tasks page and closes back to that page", async () => {
-		const container = await renderApp("/milestones");
-		const row = Array.from(container.querySelectorAll("a")).find((link) => link.textContent?.includes("BACK-101"));
-		expect(row).toBeTruthy();
-		await click(row as HTMLAnchorElement, [expectFetch("milestone task detail", "/api/task/BACK-101")]);
-		// Milestones has no task route of its own: the task opens in the layout used last, the Board by default.
-		assertState(
-			() => window.location.pathname === "/board/BACK-101/fix-labels-caf-docs" && Boolean(taskPageOf(container)),
-			"task page over the Board",
-		);
+	it("opens a task from Milestones over that page, which keeps its search, its open list and focus", async () => {
+		// More unassigned tasks than the Milestones page lists before "Show all".
+		const fillers: Task[] = Array.from({ length: 14 }, (_, index) => ({
+			...(tasks[2] as Task),
+			id: `BACK-${500 + index}`,
+			title: `Filler task ${index + 1}`,
+		}));
+		const fillerResults: SearchResult[] = fillers.map((task) => ({ type: "task", task, score: 1 }));
+		tasks.push(...fillers);
+		searchResults.push(...fillerResults);
 
-		const returnedToMilestones = nextHistoryChange("/milestones");
-		await click(container.querySelector("button[aria-label='Close task']") as HTMLButtonElement);
-		await act(async () => returnedToMilestones);
-		expect(taskPageOf(container)).toBeNull();
+		try {
+			const container = await renderApp("/milestones");
+			const search = container.querySelector("input[aria-label='Search milestones']") as HTMLInputElement;
+			await setInputValue(search, "Filler");
+			const showAll = Array.from(container.querySelectorAll("button")).find(
+				(button) => button.textContent === "Show all 14 tasks ↓",
+			);
+			expect(showAll).toBeTruthy();
+			await click(showAll as HTMLButtonElement);
+			const row = Array.from(container.querySelectorAll("a")).find((link) => link.textContent?.includes("Filler task 14"));
+			expect(row).toBeTruthy();
+			(row as HTMLAnchorElement).focus();
+
+			await click(row as HTMLAnchorElement, [expectFetch("milestone task detail", "/api/task/BACK-513")]);
+			// Milestones has no task route of its own: the task's address is in the layout used last, the Board by default,
+			// and the Milestones page stays beneath it, out of reach.
+			assertState(
+				() => window.location.pathname === "/board/BACK-513/filler-task-14" && Boolean(taskPageOf(container)),
+				"task page over Milestones",
+			);
+			expect(search.isConnected).toBe(true);
+			expect(search.closest("[inert]")).toBeTruthy();
+			const breadcrumb = container.querySelector<HTMLAnchorElement>("nav[aria-label='Breadcrumb'] a");
+			expect(breadcrumb?.textContent).toBe("Milestones");
+			expect(breadcrumb?.getAttribute("href")).toBe("/milestones");
+
+			const returnedToMilestones = nextHistoryChange("/milestones");
+			await click(container.querySelector("button[aria-label='Close task']") as HTMLButtonElement);
+			await act(async () => returnedToMilestones);
+			expect(taskPageOf(container)).toBeNull();
+			// The same page, as it was: the search typed, the whole list shown, and focus on the row that opened the task.
+			expect(search.isConnected).toBe(true);
+			expect(search.value).toBe("Filler");
+			expect(container.textContent).toContain("Show less ↑");
+			expect(container.ownerDocument.activeElement).toBe(row as HTMLAnchorElement);
+		} finally {
+			tasks.splice(tasks.indexOf(fillers[0] as Task), fillers.length);
+			searchResults.splice(searchResults.indexOf(fillerResults[0] as SearchResult), fillerResults.length);
+		}
 	});
 
 	it("archives a routed task with a single history close", async () => {
@@ -1559,6 +1594,14 @@ describe("task detail routes", () => {
 		});
 		expect(window.location.pathname).toBe("/tasks/BACK-001.02/padded-subtask");
 		expect(taskPageOf(container)?.getAttribute("aria-label")).toContain("Padded subtask");
+
+		// The newer route came from outside the app (no history state of its own), so closing its task leaves it for the
+		// Tasks page beneath rather than going back.
+		await click(container.querySelector("button[aria-label='Close task']") as HTMLButtonElement);
+		assertState(
+			() => window.location.pathname === "/tasks" && taskPageOf(container) === null,
+			"race winner close",
+		);
 	});
 
 	it("keeps the page on screen while a task linked from it loads", async () => {

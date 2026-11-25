@@ -41,7 +41,7 @@ const createTask = (dates: Pick<Task, "createdDate" | "updatedDate">): Task => (
 const renderCard = (task: Task, dateFormat?: string): Element => {
 	const html = renderToString(
 		<MemoryRouter initialEntries={["/board"]}>
-			<TaskCard task={task} onEdit={() => {}} dateFormat={dateFormat} {...STANDALONE_CARD_NESTING} />
+			<TaskCard task={task} onOpenTask={() => {}} dateFormat={dateFormat} {...STANDALONE_CARD_NESTING} />
 		</MemoryRouter>,
 	);
 	const rows = JSDOM.fragment(html).querySelector("h4")?.parentElement;

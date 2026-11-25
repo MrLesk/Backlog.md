@@ -43,7 +43,7 @@ const setupDom = () => {
 };
 
 const renderBoard = (
-	onEditTask: (task: Task) => void = () => {},
+	onOpenTask: (task: Task) => void = () => {},
 	extra: {
 		onTasksUpdated?: (tasks: Task[], requestTask: Task) => void;
 		onRefreshData?: () => Promise<void>;
@@ -56,13 +56,13 @@ const renderBoard = (
 	const container = document.getElementById("root");
 	expect(container).toBeTruthy();
 	activeRoot = createRoot(container as HTMLElement);
-	rerenderBoard(onEditTask, extra);
+	rerenderBoard(onOpenTask, extra);
 	return container as HTMLElement;
 };
 
 /** Render again on the live root, the way the app re-renders when a filter changes. */
 const rerenderBoard = (
-	onEditTask: (task: Task) => void = () => {},
+	onOpenTask: (task: Task) => void = () => {},
 	extra: {
 		onTasksUpdated?: (tasks: Task[], requestTask: Task) => void;
 		onRefreshData?: () => Promise<void>;
@@ -75,7 +75,7 @@ const rerenderBoard = (
 		activeRoot?.render(
 			<MemoryRouter initialEntries={["/board"]}>
 				<Board
-					onEditTask={onEditTask}
+					onOpenTask={onOpenTask}
 					tasks={extra.tasks ?? TASKS}
 					visibleTasks={extra.visibleTasks ?? extra.tasks ?? TASKS}
 					nesting={createUnfilteredNesting(extra.tasks ?? TASKS)}
@@ -104,7 +104,7 @@ const renderMilestoneBoard = (tasks: Task[] = MILESTONE_TASKS): HTMLElement => {
 		activeRoot?.render(
 			<MemoryRouter initialEntries={["/board"]}>
 				<Board
-					onEditTask={() => {}}
+					onOpenTask={() => {}}
 					tasks={tasks}
 					visibleTasks={tasks}
 					nesting={createUnfilteredNesting(tasks)}

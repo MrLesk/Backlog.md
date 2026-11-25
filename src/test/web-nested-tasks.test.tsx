@@ -49,7 +49,7 @@ let activeRoot: Root | null = null;
 interface PageOptions {
 	tasks?: Task[];
 	statuses?: string[];
-	onEditTask?: (task: Task) => void;
+	onOpenTask?: (task: Task) => void;
 }
 
 const pageRoutes = (options: PageOptions) => {
@@ -66,7 +66,7 @@ const pageRoutes = (options: PageOptions) => {
 			availableProjects={[]}
 			isLoading={false}
 			hideEmptyColumns={false}
-			onEditTask={options.onEditTask ?? (() => {})}
+			onOpenTask={options.onOpenTask ?? (() => {})}
 			onNewTask={() => {}}
 			onRefreshData={async () => {}}
 			onTasksUpdated={() => {}}
@@ -248,7 +248,7 @@ describe("Nested tasks in the List", () => {
 
 	it("lists a subtask with another status in its own group, linked to its parent, and under the opened parent", async () => {
 		const opened: string[] = [];
-		const container = renderPage("/tasks", { onEditTask: (task) => opened.push(task.id) });
+		const container = renderPage("/tasks", { onOpenTask: (task) => opened.push(task.id) });
 		const doingGroup = groupRows(container, "Doing");
 
 		expect(listedIds(doingGroup)).toEqual(["TASK-2.2"]);
@@ -265,7 +265,7 @@ describe("Nested tasks in the List", () => {
 
 	it("opens a subtask from a click anywhere on its row, never its parent", async () => {
 		const opened: string[] = [];
-		const container = renderPage("/tasks", { onEditTask: (task) => opened.push(task.id) });
+		const container = renderPage("/tasks", { onOpenTask: (task) => opened.push(task.id) });
 		await click(markerOf(container, "TASK-2"));
 
 		const row = titleOf(container, "TASK-2.1").closest("li")?.firstElementChild;
@@ -336,7 +336,7 @@ describe("Nested tasks on the Board", () => {
 
 	it("opens a parent's subtasks inside its card level by level, and each subtask keeps its card and parent link", async () => {
 		const opened: string[] = [];
-		const container = renderPage("/board", { onEditTask: (task) => opened.push(task.id) });
+		const container = renderPage("/board", { onOpenTask: (task) => opened.push(task.id) });
 		const parent = cardOf(container, "TASK-2");
 		const bar = parent.querySelector(":scope > button[aria-expanded]") as HTMLButtonElement;
 
@@ -359,7 +359,7 @@ describe("Nested tasks on the Board", () => {
 
 	it("runs the bar, a subtask row and the parent link on a plain click, and never opens the card", async () => {
 		const opened: string[] = [];
-		const container = renderPage("/board", { onEditTask: (task) => opened.push(task.id) });
+		const container = renderPage("/board", { onOpenTask: (task) => opened.push(task.id) });
 		const parent = cardOf(container, "TASK-2");
 		const bar = parent.querySelector(":scope > button[aria-expanded]") as HTMLButtonElement;
 
@@ -378,7 +378,7 @@ describe("Nested tasks on the Board", () => {
 
 	it("selects a card on a Ctrl-click anywhere on it, also on its bar, a subtask row or its parent link", async () => {
 		const opened: string[] = [];
-		const container = renderPage("/board", { onEditTask: (task) => opened.push(task.id) });
+		const container = renderPage("/board", { onOpenTask: (task) => opened.push(task.id) });
 		const parent = cardOf(container, "TASK-2");
 		const bar = parent.querySelector(":scope > button[aria-expanded]") as HTMLButtonElement;
 
@@ -400,7 +400,7 @@ describe("Nested tasks on the Board", () => {
 
 	it("selects a card with Ctrl+Enter on its title, leaves Enter to the link, and opens it once with Space", async () => {
 		const opened: string[] = [];
-		const container = renderPage("/board", { onEditTask: (task) => opened.push(task.id) });
+		const container = renderPage("/board", { onOpenTask: (task) => opened.push(task.id) });
 		const title = container.querySelector("h4 a[aria-label^='Open TASK-1:']") as HTMLElement;
 		const press = async (key: string, init: KeyboardEventInit = {}) => {
 			const event = new window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init });

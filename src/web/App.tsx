@@ -19,6 +19,7 @@ import { BrowserAccessProvider, useBrowserAccess } from './contexts/BrowserAcces
 import { browserSnapshot } from './lib/browser-snapshot';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { TaskIdIndexProvider } from './contexts/TaskIdIndexContext';
+import { AddressBarLocationProvider } from './contexts/AddressBarLocationContext';
 import {
 	type Decision,
 	type DecisionSearchResult,
@@ -42,7 +43,7 @@ import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from 
 import { getProjectValues } from '../utils/project-config';
 import { getTaskTypeValues } from '../utils/task-type-config';
 import { readRememberedTaskLayout, TASK_LAYOUT_PATHS, type TaskLayout } from './lib/task-view';
-import { readTaskRouteState, type TaskRouteState } from './lib/task-links';
+import { pageBeneath, readTaskRouteState, type TaskRouteState } from './lib/task-links';
 import { reconcileById } from './utils/reconcile';
 import { parseBrowserLoadingState } from '../utils/browser-loading-state';
 
@@ -290,6 +291,9 @@ function AppContent() {
     boardRoute?.params.id;
   const routeBasePath = tasksRouteWithTitle || tasksRoute ? '/tasks' : boardRouteWithTitle || boardRoute ? '/board' : null;
   const routeState = readTaskRouteState(location.state);
+  // The page on screen. While a task is open it is the page beneath the task, which stays mounted and keeps its state;
+  // the task is shown over it.
+  const pageLocation = routeTaskId ? pageBeneath(location) : location;
   const taskRouteError = routeState.taskRouteError;
 
   // Set version data attribute on body
@@ -508,14 +512,14 @@ function AppContent() {
   // or a Board card, and the legacy highlight link.
   const handleOpenTask = useOpenTask();
 
-  // Back to where the task was opened from when it was opened in this tab; a task opened from a link outside the app
-  // closes to the Tasks page beneath it.
+  // Back to the page beneath the task: one step back in history to the page it was opened from, or for a task opened
+  // from outside the app, to the Tasks page beneath it in place of the task.
   const closeTaskPage = () => {
     clearTaskView();
-    if (routeState.openedInApp) {
+    if (routeState.background) {
       navigate(-1);
-    } else if (routeBasePath) {
-      navigate(`${routeBasePath}${location.search}`, { replace: true });
+    } else {
+      navigate(pageBeneath(location), { replace: true });
     }
   };
 
@@ -533,7 +537,7 @@ function AppContent() {
 
     if (!isValidTaskId(routeTaskId)) {
       clearTaskView();
-      navigate(`${routeBasePath}${location.search}`, {
+      navigate(pageBeneath(location), {
         replace: true,
         state: { taskRouteError: `"${routeTaskId}" is not a valid task ID.` } satisfies TaskRouteState,
       });
@@ -546,7 +550,7 @@ function AppContent() {
       return;
     }
     openTaskPage(routeTaskId);
-  }, [clearTaskView, isInitialized, location.search, navigate, openTaskPage, routeBasePath, routeTaskId, sections.tasks]);
+  }, [clearTaskView, isInitialized, location, navigate, openTaskPage, routeBasePath, routeTaskId, sections.tasks]);
 
   useEffect(() => {
     if (taskRouteError) {
@@ -666,8 +670,8 @@ function AppContent() {
 
   /**
    * A detail read that could not be shown. A page that has nothing on screen yet cannot stay open,
-   * and it says why on the way back to the Tasks page. A later read failing leaves what is already
-   * on screen alone: the last successful read is better than an empty page.
+   * and it says why on the way back to the page beneath it. A later read failing leaves what is
+   * already on screen alone: the last successful read is better than an empty page.
    */
   const reportDetailReadFailure = useCallback(
     (taskId: string, error: unknown) => {
@@ -681,12 +685,12 @@ function AppContent() {
             : error instanceof ApiError && error.status === 404
               ? `Task "${taskId}" was not found.`
               : `Task "${taskId}" could not be opened. Try again.`;
-      navigate(`${routeBasePath}${location.search}`, {
+      navigate(pageBeneath(location), {
         replace: true,
         state: { taskRouteError: message } satisfies TaskRouteState,
       });
     },
-    [clearTaskView, location.search, navigate, routeBasePath],
+    [clearTaskView, location, navigate, routeBasePath],
   );
   const reportDetailReadFailureRef = useRef(reportDetailReadFailure);
   useEffect(() => {
@@ -862,41 +866,28 @@ function AppContent() {
       loadError={loadError}
       hideEmptyColumns={config?.hideEmptyColumns ?? false}
       dateFormat={config?.dateFormat}
-      onEditTask={handleOpenTask}
+      onOpenTask={handleOpenTask}
       onNewTask={handleNewTask}
       onRefreshData={refreshData}
       onTasksUpdated={applyReorderedTasks}
     />
   );
 
+  // A task route (/board/:id/:title, /tasks/:id/:title) has no page of its own: the routes render the page beneath the
+  // open task (pageLocation), and the task is shown over it. A deeper path under a layout is not a task link.
+  const invalidTaskLink = (
+    <Navigate
+      to={pageBeneath(location)}
+      replace
+      state={{ taskRouteError: 'That task link is not valid.' } satisfies TaskRouteState}
+    />
+  );
   const taskRoutes = sections.tasks && (
     <>
       <Route path="board" element={tasksPage('board')} />
-      <Route path="board/:id" element={tasksPage('board')} />
-      <Route path="board/:id/:title" element={tasksPage('board')} />
-      <Route
-        path="board/*"
-        element={
-          <Navigate
-            to={{ pathname: '/board', search: location.search }}
-            replace
-            state={{ taskRouteError: 'That task link is not valid.' } satisfies TaskRouteState}
-          />
-        }
-      />
+      <Route path="board/*" element={invalidTaskLink} />
       <Route path="tasks" element={tasksPage('list')} />
-      <Route path="tasks/:id" element={tasksPage('list')} />
-      <Route path="tasks/:id/:title" element={tasksPage('list')} />
-      <Route
-        path="tasks/*"
-        element={
-          <Navigate
-            to={{ pathname: '/tasks', search: location.search }}
-            replace
-            state={{ taskRouteError: 'That task link is not valid.' } satisfies TaskRouteState}
-          />
-        }
-      />
+      <Route path="tasks/*" element={invalidTaskLink} />
       <Route path="statistics" element={<Statistics statuses={statuses} tasks={tasks} isLoading={isLoading} projectName={projectName} dateFormat={config?.dateFormat} />} />
     </>
   );
@@ -952,16 +943,16 @@ function AppContent() {
 
   // The task the route names, which Layout shows over the Tasks page. Until its first read lands only the page's head
   // is drawn, so moving from one task to another never shows the list in between.
-  const openTask = taskView.kind === 'page' ? taskView.value : null;
+  const pageTask = taskView.kind === 'page' ? taskView.value : null;
   const taskPage = sections.tasks && taskView.kind === 'page'
-    ? openTask
+    ? pageTask
       ? (
         <TaskDetails
           // One TaskDetails per task: another task gets a fresh one, so no form state carries over between tasks.
-          key={openTask.id}
-          task={openTask}
+          key={pageTask.id}
+          task={pageTask}
           onClose={closeTaskPage}
-          onArchive={canWrite ? () => handleArchiveTask(openTask.id) : undefined}
+          onArchive={canWrite ? () => handleArchiveTask(pageTask.id) : undefined}
           availableStatuses={statuses}
           {...taskDetailsProps}
         />
@@ -972,13 +963,13 @@ function AppContent() {
   return (
     <ThemeProvider>
       <TaskIdIndexProvider tasks={tasks}>
-        <Routes>
+        <Routes location={pageLocation}>
           <Route
             path="/"
             element={
               <Layout
                 projectName={projectName}
-                pagePath={routeBasePath ?? location.pathname}
+                pagePath={pageLocation.pathname}
                 tasks={tasks}
                 docs={docs}
                 decisions={decisions}
@@ -1068,7 +1059,9 @@ function App() {
     <BrowserAccessProvider snapshot={browserSnapshot}>
       {/* No transitions: the Tasks search field shows the URL, so a URL that renders late loses the keys typed meanwhile. */}
       <Router useTransitions={false}>
-        <AppContent />
+        <AddressBarLocationProvider>
+          <AppContent />
+        </AddressBarLocationProvider>
       </Router>
     </BrowserAccessProvider>
   );

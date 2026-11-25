@@ -63,7 +63,13 @@ const setupDom = () => {
 // The task page, with a button outside it that stands for the rest of the app (the sidebar, say).
 const mountPage = async (
 	pageTask: Task = task,
-	props: { availableStatuses?: string[]; availableLabels?: string[]; onArchive?: () => void; onClose?: () => void } = {},
+	props: {
+		availableStatuses?: string[];
+		availableLabels?: string[];
+		availableTasks?: Task[];
+		onArchive?: () => void;
+		onClose?: () => void;
+	} = {},
 ): Promise<HTMLElement> => {
 	setupDom();
 	const container = document.getElementById("root");
@@ -377,6 +383,22 @@ describe("Task page keyboard shortcuts", () => {
 		expect(closes).toBe(1);
 	});
 
+	it("leaves an Escape that closes the dependency suggestions to them, and closes on the next one", async () => {
+		let closes = 0;
+		const dependency: Task = { ...task, id: "BACK-559", title: "Picked dependency" };
+		const container = await mountPage(task, { availableTasks: [task, dependency], onClose: () => (closes += 1) });
+		const field = container.querySelector("#dependency-input") as HTMLTextAreaElement;
+		await act(async () => setNativeInputValue(field, "Picked"));
+		expect(container.textContent).toContain("Picked dependency");
+
+		await press(field, "Escape");
+		expect(container.textContent).not.toContain("Picked dependency");
+		expect(closes).toBe(0);
+
+		await press(field, "Escape");
+		expect(closes).toBe(1);
+	});
+
 	it("leaves keys pressed outside the task page alone", async () => {
 		let closes = 0;
 		const container = await mountPage(task, { onClose: () => (closes += 1) });
@@ -439,6 +461,22 @@ describe("Task page keyboard shortcuts", () => {
 		} finally {
 			update.mockRestore();
 		}
+	});
+
+	it("leaves focus on More actions when an action from it is cancelled", async () => {
+		const container = await mountPage(task, { onArchive: () => {} });
+		window.confirm = () => false;
+		const menuButton = container.querySelector("button[aria-label='More actions']") as HTMLButtonElement;
+		menuButton.focus();
+		await openMoreActions(container);
+		const archive = Array.from(container.querySelectorAll<HTMLButtonElement>("[role='menuitem']")).find(
+			(item) => item.textContent === "Archive",
+		) as HTMLButtonElement;
+		archive.focus();
+		await click(archive);
+
+		expect(container.querySelector("[role='menu']")).toBeNull();
+		expect(document.activeElement).toBe(menuButton);
 	});
 
 	it("leaves edit mode without a request when Save finds nothing changed", async () => {

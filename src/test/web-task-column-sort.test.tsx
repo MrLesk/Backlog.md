@@ -45,7 +45,7 @@ const renderTaskColumn = (
 					title={options.title ?? "To Do"}
 					statuses={["To Do", "In Progress", options.title ?? "Done"]}
 					tasks={tasks}
-					onEditTask={() => {}}
+					onOpenTask={() => {}}
 					nesting={createUnfilteredNesting(tasks)}
 					subtaskLevels={{ recorded: {}, setOpen: () => {} }}
 					onTaskReorder={onTaskReorder}

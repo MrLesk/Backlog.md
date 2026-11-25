@@ -1,6 +1,7 @@
 import { type MouseEvent, useCallback } from "react";
-import { Link, type LinkProps, useLocation, useNavigate } from "react-router-dom";
+import { Link, type LinkProps, useNavigate } from "react-router-dom";
 import type { Task } from "../../types";
+import { useAddressBarLocation } from "../contexts/AddressBarLocationContext.tsx";
 import { taskLinkTarget } from "../lib/task-links.ts";
 
 type TaskLinkProps = Omit<LinkProps, "to" | "state" | "replace"> & {
@@ -12,18 +13,19 @@ type TaskLinkProps = Omit<LinkProps, "to" | "state" | "replace"> & {
  * Ctrl/Cmd-click, middle-click and the context menu open it in a new tab.
  */
 export default function TaskLink({ task, ...linkProps }: TaskLinkProps) {
-	const target = taskLinkTarget(task, useLocation());
+	const target = taskLinkTarget(task, useAddressBarLocation());
 	return <Link {...linkProps} to={target.to} state={target.state} replace={target.replace} />;
 }
 
 /**
  * Whether a click on a row or a card opens its task. A row or a card opens its task on a plain click anywhere outside
- * its links, as a shortcut for the mouse. A link inside has already answered its own plain click (it marks the click
- * with preventDefault), so the row around it does not open a task a second time. A click with Ctrl, Cmd, Shift or Alt
- * is left to the browser, which opens a link in a new tab, and to the Board, which selects cards with it.
+ * the links inside it, as a shortcut for the mouse: a click on a link belongs to that link alone. A click with Ctrl,
+ * Cmd, Shift or Alt is left to the browser, which opens a link in a new tab, and to the Board, which selects cards with
+ * it.
  */
 export function isTaskOpeningClick(event: MouseEvent): boolean {
-	return !event.defaultPrevented && !(event.ctrlKey || event.metaKey || event.shiftKey || event.altKey);
+	const isOnLink = Boolean((event.target as Element | null)?.closest?.("a"));
+	return !isOnLink && !(event.ctrlKey || event.metaKey || event.shiftKey || event.altKey);
 }
 
 /**
@@ -31,7 +33,7 @@ export function isTaskOpeningClick(event: MouseEvent): boolean {
  * elsewhere on a row or a card, and for links of older versions that name a task in the query.
  */
 export function useOpenTask(): (task: Pick<Task, "id" | "title">) => void {
-	const location = useLocation();
+	const location = useAddressBarLocation();
 	const navigate = useNavigate();
 	return useCallback(
 		(task) => {

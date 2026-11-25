@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, type KeyboardEvent } from 'react';
 import { type Task } from '../../types';
 import { buildTaskIdIndex, resolveTaskReference } from '../utils/task-id-links';
+import { taskLinkLabel } from '../lib/task-links';
 import TaskLink from './TaskLink';
 
 // A long title is cut to the width of the chip; the chip's tooltip holds all of it.
@@ -15,9 +16,11 @@ interface DependencyInputProps {
   suggestableTasks?: Task[];
   currentTaskId?: string;
   label?: string; // optional label; render only if provided
+  /** Shows the field's frame at all times, as the dialog that creates a task does; elsewhere it shows on hover and focus. */
+  framed?: boolean;
 }
 
-const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, availableTasks, suggestableTasks, currentTaskId, label = 'Dependencies' }) => {
+const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, availableTasks, suggestableTasks, currentTaskId, label = 'Dependencies', framed = false }) => {
   const [inputValue, setInputValue] = useState('');
   const [suggestions, setSuggestions] = useState<Task[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -78,7 +81,9 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
     } else if (e.key === 'Backspace' && !inputValue && value.length > 0) {
       // Remove last dependency when backspace on empty input
       onChange(value.slice(0, -1));
-    } else if (e.key === 'Escape') {
+    } else if (e.key === 'Escape' && suggestions.length > 0) {
+      // This Escape closes the suggestions, so the page around the field does not close too.
+      e.preventDefault();
       setSuggestions([]);
       setInputValue('');
     }
@@ -110,7 +115,7 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
         </label>
       ) : null}
       <div className="relative -ml-2 w-[calc(100%+0.5rem)]">
-        <div className="max-h-60 w-full overflow-auto rounded-[7px] border border-transparent px-2 py-0.5 outline-accent-strong transition-colors duration-200 hover:border-line focus-within:border-line focus-within:bg-surface has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-offset-2">
+        <div className={`max-h-60 w-full overflow-auto compact-control border px-2 py-0.5 outline-accent-strong transition-colors duration-200 hover:border-line focus-within:border-line focus-within:bg-surface has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-offset-2 ${framed ? 'border-line bg-surface' : 'border-transparent'}`}>
           {value.length > 0 && (
             <div className="flex flex-wrap gap-1 py-0.5">
               {value.map((taskId, index) => {
@@ -122,7 +127,12 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
                     className="inline-flex min-w-0 max-w-full items-center gap-0.5 rounded-chip bg-surface-2 py-0.5 pr-0.5 pl-1.5 text-xs font-medium text-ink-2"
                   >
                     {dependency ? (
-                      <TaskLink task={dependency} title={display} className={`${CHIP_LABEL_CLASS} rounded-[3px] hover:text-ink hover:underline focus-ring`}>
+                      <TaskLink
+                        task={dependency}
+                        title={display}
+                        aria-label={taskLinkLabel(dependency)}
+                        className={`${CHIP_LABEL_CLASS} rounded-[3px] hover:text-ink hover:underline focus-ring`}
+                      >
                         {display}
                       </TaskLink>
                     ) : (
@@ -154,7 +164,7 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
               value={inputValue}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder={value.length === 0 ? "Add a dependency" : "Add another dependency"}
+              placeholder={value.length === 0 ? "Add a dependency" : "Add another"}
               className="block w-full resize-none bg-transparent py-0.5 text-sm font-normal text-ink outline-none placeholder:font-mono placeholder:text-xs placeholder:text-ink-3"
               rows={1}
             />

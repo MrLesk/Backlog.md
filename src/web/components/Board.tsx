@@ -24,7 +24,7 @@ interface BoardProps {
   visibleTasks: Task[];
   /** Which tasks are subtasks of which, for the parent links and the subtask bars of the cards. */
   nesting: TaskNesting;
-  onEditTask: (task: Task) => void;
+  onOpenTask: (task: Task) => void;
   onRefreshData?: () => Promise<void>;
   onTasksUpdated?: (tasks: Task[], requestTask: Task) => void;
   statuses: string[];
@@ -51,7 +51,7 @@ const Board: React.FC<BoardProps> = ({
   tasks,
   visibleTasks,
   nesting,
-  onEditTask,
+  onOpenTask,
   onRefreshData,
   onTasksUpdated,
   statuses,
@@ -364,7 +364,7 @@ const Board: React.FC<BoardProps> = ({
           title={status}
           statuses={statuses}
           tasks={getTasksForLane(laneKey, status)}
-          onEditTask={onEditTask}
+          onOpenTask={onOpenTask}
           nesting={nesting}
           subtaskLevels={subtaskLevels}
           laneId={laneKey}

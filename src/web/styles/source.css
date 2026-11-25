@@ -221,6 +221,44 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     @apply px-2 lg:px-5;
 }
 
+/* The size of the small controls of a task: the buttons of its head and the fields of its properties, on the task page
+   and in the dialog that creates a task. A control that wraps its content, such as a field of chips, grows taller. */
+@utility compact-control {
+    min-height: 26px;
+    border-radius: 7px;
+}
+
+/* A checkbox drawn the same in both themes: an ink-3 outline on the surface, and once checked an ink box with an
+   on-ink check. The browser's own box would be a gray square on the dark surface. */
+@utility checkbox {
+    appearance: none;
+    display: inline-grid;
+    place-content: center;
+    width: 1rem;
+    height: 1rem;
+    border: 1px solid var(--color-ink-3);
+    border-radius: 4px;
+    background-color: var(--color-surface);
+
+    &::before {
+        content: "";
+        width: 10px;
+        height: 10px;
+        background-color: var(--color-on-ink);
+        clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0, 43% 62%);
+        transform: scale(0);
+    }
+
+    &:checked {
+        border-color: var(--color-ink);
+        background-color: var(--color-ink);
+    }
+
+    &:checked::before {
+        transform: scale(1);
+    }
+}
+
 @layer base {
     /* The page background behind the sidebar and the content panel. It is set on body so the first paint,
        before the app renders, already has the colors of the stored theme, and it fades with the controls
@@ -361,6 +399,11 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
     .task-markdown[data-color-mode] .wmde-markdown :is(h3, h4, h5, h6) {
         font-size: 1.05em !important;
+    }
+
+    /* The reading measure: a line of prose stops at 72 characters, counted in its own 14px text. */
+    .task-markdown[data-color-mode] .wmde-markdown :is(p, li) {
+        max-width: 72ch;
     }
 }
 

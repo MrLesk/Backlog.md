@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-23T20:53:00Z'
-updated_date: '2026-11-25T16:54:00Z'
+updated_date: '2026-11-25T18:15:00Z'
 labels:
   - web
 dependencies:
@@ -15,6 +15,7 @@ references:
   - src/web/components/TaskPageLayout.tsx
   - src/web/lib/task-links.ts
   - src/web/App.tsx
+  - task-details
 modified_files:
   - src/web/lib/task-links.ts
   - src/web/components/TaskLink.tsx
@@ -85,6 +86,13 @@ modified_files:
   - src/test/web-dependency-cleanup-notice.test.tsx
   - src/web/lib/task-nesting.ts
   - src/test/web-task-links.test.ts
+  - src/web/contexts/AddressBarLocationContext.tsx
+  - src/web/components/TasksPage.tsx
+  - src/web/components/Board.tsx
+  - src/test/web-side-navigation-loading.test.tsx
+  - src/test/readiness-surface-agreement.test.ts
+  - src/test/web-statistics-task-links.test.tsx
+  - groma/systems/backlog-md/containers/web-ui/components/task-details.md
 priority: medium
 type: enhancement
 ordinal: 426000
@@ -141,8 +149,9 @@ Decisions
 
 Flows this extends
 - Task routes /tasks/:id[/:title] and /board/:id[/:title]: unchanged. They render the Tasks page in its layout and App shows the task over it, now as a page in the content panel instead of a dialog.
-- handleOpenTask and the links of DependencyInput and the sidebar search: their rule becomes the one link function. On the Tasks page a link pushes the task route with the page's query and remembers the page as the return; from an open task it replaces the route and keeps the original return; from any other page (Milestones, Statistics, Drafts, documents, decisions, settings) it opens the task over the Tasks page in the remembered layout and remembers that page, as sidebar search results do today. Every task, draft included, therefore opens through its route: the dialog's second path for pages without a task route goes.
-- Closing: today's handleCloseModal, renamed: back in history when the person came from somewhere in this tab, else to the list or board with its query (a direct link). Back pops the task route and the route effect closes the page.
+- handleOpenTask and the links of DependencyInput and the sidebar search: their rule becomes the one link function. A link from a page pushes the task route (in the layout of the Tasks page with its query, or in the remembered layout from any other page) and records that page as the page beneath; from an open task it replaces the route and keeps the same page beneath. Every task, draft included, opens through its route: the dialog's second path for pages without a task route goes.
+- The page beneath: App renders the pages with the location of the page beneath an open task (Routes location), so that page, whichever it is (Tasks, Milestones, Statistics, Drafts, documents, decisions, settings), stays mounted and inert under the task and keeps its search, open groups, scroll position and focus. Layout's pagePath and the sidebar's current item follow it; the breadcrumb names it. A direct link or a new tab has no page beneath in its history state and gets the Tasks page of the route's layout.
+- Closing: today's handleCloseModal, renamed: back in history to the page beneath when the task was opened in this tab, else to the Tasks page beneath in place of the task (a direct link). Back pops the task route and the route effect closes the page.
 - Edit mode (E, Save, Cancel, Cmd/Ctrl+S, Escape cancels, the newer-version notice), the read-only rule and its notice, live updates through App's detail reader, creating a task or draft, demote and archive with their confirmations and failure messages: same code paths.
 - No-op guards: selects write only on a change, chips and references add only new values, a toggle changes one item. Save had none (it sent the form when nothing changed and core then wrote nothing): with nothing changed it now leaves edit mode without a request.
 
@@ -186,54 +195,66 @@ Flows this extends
 - bun run check:types, bun run check, focused web tests, the full suite through scripts/run-ci-tests.ts with the CI flags, bun run build and scripts/smoke-compiled-build.ts.
 - The compiled binary on a temporary project outside the repository, headless Chrome, light and dark, 1440, 1280, 768 and 390 px: open from every link place and a direct link; close with the button, the breadcrumb, Escape and Back with layout, filters, scroll position, open groups and focus kept; middle-click and Ctrl/Cmd-click; Board selection and real drops from a card's title link and from a tree row; edit and save with the shortcuts; read-only; a file changed with the CLI while open; create a task and a draft; demote and archive; a sidebar link with unsaved edits; the static export; a keyboard-only pass.
 - codehygiene on the changed files, a cold simplicity review and a final complexity review.
+
+Review round (2026-11-25, design and code reviews)
+- The page beneath stays mounted for every page a task is opened from, not only the Tasks page (see the page beneath above). One function, pageBeneath in src/web/lib/task-links.ts, serves the links, the breadcrumb, closing and the fallback of a task that cannot be opened. Task links read the address bar's location (AddressBarLocationContext), because inside the routes useLocation() names the page beneath.
+- Two columns from a 36rem container, with the properties at 240 to 340 px, so a 1024 px window with the sidebar open keeps them side by side.
+- Focus: More actions returns focus to its button before an action runs, and the page puts focus dropped to the document body back on itself whenever its content changes.
+- The 72-character measure applies to the Markdown text itself; the dependency field's open suggestions take their Escape; rows and cards ignore clicks on any link inside them.
+- Names and wording: onOpenTask for every open handler, one accessible name for task links (taskLinkLabel), the card's own keys documented.
+- Look: the checklists' box drawn from the tokens in both themes, the branch icon only on the branch notice, framed property fields in the create dialog, the title field with the heading's type, a shorter dependency placeholder, readiness marks in the verdict's color, one compact-control class for the 26 px controls, divide-y in the page's subtask tree.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 How it fits together
-- One link rule: src/web/lib/task-links.ts. taskLinkTarget(task, location) builds every task link (List rows, Board cards, subtask trees, parent links and the Parent row, dependency chips and graph nodes, Markdown task links, sidebar search results, Milestones, Statistics and Drafts rows). tasksPageOf(location) names the Tasks page a task opens over, which the breadcrumb also uses. The history state is a boolean, openedInApp: closing goes back one step when it is set, and replaces to the Tasks page beneath for a task opened from outside the app.
-- components/TaskLink.tsx: TaskLink renders that target as a router link; useOpenTask is the same navigation for the shortcuts that are not links; isTaskOpeningClick is the one rule for those shortcuts (a plain click that no link inside has answered).
-- App.tsx: the task view is closed, the create dialog, or the page the route names. The route effect opens a page session; while the first read is pending App draws TaskPageLayout with its head only, so the list never shows between two tasks. TaskDetails is keyed by the task ID, so no form state carries over between tasks. closeTaskPage changes the route; clearTaskView only clears the state.
-- Layout.tsx: TaskPageLayer holds the page over the current page, which stays mounted and inert, and returns focus to whatever opened the task.
-- TaskPageLayout.tsx: head row (breadcrumb, actions, close), Escape closes unless a control inside used the key, focus on open and back on the page when a focused control disappears (Save and Cancel replace fields and buttons).
-- TaskDetails.tsx (renamed from TaskDetailsModal.tsx): the page, or the create dialog when there is no task. Title only in edit mode; Demote to draft and Archive in More actions (ActionsMenu, shared with TaskColumn); Properties, then the References, Modified files and Documentation panels (TaskFileList); one question before leaving unsaved edits, asked by the close button, the subtask row shortcut and a document-level link guard.
+- One link rule: src/web/lib/task-links.ts. taskLinkTarget(task, location) builds every task link (List rows, Board cards, subtask trees, parent links and the Parent row, dependency chips and graph nodes, Markdown task links, sidebar search results, Milestones, Statistics and Drafts rows). A link from a page records that page in the history state as the page beneath (background); a link from an open task replaces it and keeps the same page beneath. pageBeneath(location) is the one answer to "what is under this task": the recorded page, or for a task opened from outside the app (a typed or shared link, a new tab) the Tasks page of the route's layout with its query. The links, the breadcrumb, closing and the fallback of a task that cannot be opened all use it. taskLinkLabel gives every task link the same accessible name.
+- contexts/AddressBarLocationContext.tsx: App renders its routes with the location of the page beneath an open task, so inside them useLocation() names that page. Task links and the drawer read useAddressBarLocation() instead, which is the location in the address bar.
+- components/TaskLink.tsx: TaskLink renders the link target; useOpenTask is the same navigation for the shortcuts that are not links; isTaskOpeningClick is the one rule for those shortcuts (a plain click that is not on a link).
+- App.tsx: the task view is closed, the create dialog, or the page the route names. pageLocation (the page beneath while a task is open) is what the routes render and what Layout's pagePath and the sidebar's current item follow, so the page a task was opened from stays mounted and keeps its state. The route effect opens a page session; while the first read is pending App draws TaskPageLayout with its head only. TaskDetails is keyed by the task ID. closeTaskPage goes back one step in history to the page beneath, or replaces the task with the Tasks page beneath for a task opened from outside the app; clearTaskView only clears the state.
+- Layout.tsx: TaskPageLayer holds the page over the page beneath, which is inert, and returns focus to whatever opened the task.
+- TaskPageLayout.tsx: head row (breadcrumb naming the page beneath, actions, close), Escape closes unless a control inside handled the key (preventDefault), focus on open, and focus dropped to the document body comes back to the page whenever its content changes. TaskColumns: two columns from a 36rem container, properties 240 to 340 px.
+- TaskDetails.tsx (renamed from TaskDetailsModal.tsx): the page, or the create dialog when there is no task, where the property fields show their frames. Title only in edit mode, with the heading's type; Demote to draft and Archive in More actions (ActionsMenu, shared with TaskColumn, returns focus to its button before an action runs); Properties, then the References, Modified files and Documentation panels (TaskFileList); one question before leaving unsaved edits, asked by the close button, the subtask row shortcut and a document-level link guard.
+- styles/source.css: compact-control (the 26 px controls), checkbox (the checklist box in both themes) and the 72-character measure of the task's Markdown text.
 
 Choices made during implementation
-- Drafts open through /board/DRAFT-x; the server resolves DRAFT IDs.
-- A task opened from Milestones, Statistics, Drafts or another page opens over the Tasks page in the layout used last, and closing goes back to that page. That page is not kept mounted under the task the way the Tasks page is.
-- On a Board card, Enter on the title is left to the link and Space opens the task too; with Ctrl/Cmd/Shift both select the card.
+- Drafts open through /tasks/DRAFT-x or /board/DRAFT-x; the server resolves DRAFT IDs.
+- A task opened from another page has its address in the layout used last (/board or /tasks), while that page stays beneath it.
+- On a Board card, Enter on the title is left to the link and Space opens the task too; with Ctrl/Cmd/Shift both select the card. The card is a selectable item with keys of its own; links elsewhere leave their keys to the browser.
 - In edit mode the close button asks before discarding instead of being disabled.
 - Save with nothing changed leaves edit mode without a request.
 - Sidebar search results and dependency graph links follow the one rule, so from an open task they replace it.
-- A Ctrl/Cmd-click on a subtask row outside its link does nothing, as on List rows; the link opens a new tab.
+- A Ctrl/Cmd-click on a List row or a page subtask row outside its link does nothing; the link opens a new tab.
 - The heading shows the form's title, so it changes as soon as Save succeeds.
+- Statistics' task previews are module-level components, so a render of that page keeps their links and closing a task returns focus to the one that opened it.
 
 Known limits and possible follow-ups
 - Escape typed outside the page while it is open (in the sidebar search, say) still reaches the Board's document listener, which clears a Board selection under the page (the Board's existing rule: Escape anywhere clears the selection).
-- Escape in the dependency field with suggestions open also closes the page, as it closed the dialog before.
-- The groma record of the task details still names TaskDetailsModal.tsx; groma files were not edited and need curation.
+- The title field is one line: a title that wraps as a heading becomes one scrolling line in edit mode, so the sections below it move up by the extra lines.
+- The new files (TaskDetails.tsx, TaskPageLayout.tsx, TaskLink.tsx, ActionsMenu.tsx, TaskFileList.tsx, lib/task-links.ts, contexts/AddressBarLocationContext.tsx) have no groma owner yet: giving them one needs a groma scan, and the scan stops responding in this environment (its TypeScript scanner process waits without using CPU; processes left by earlier scans in other worktrees show the same). The task-details record no longer names the deleted TaskDetailsModal.tsx and describes the page.
 
 Reviews
-- Cold simplicity review: two blocking findings, both fixed. Two test files still drove the dialog (ported to the page), and focus fell to the document body when Save or Cancel removed the focused field, so the page's keys stopped working (fixed in TaskPageLayout, with a test that failed before the fix). Also applied: one link-click rule for rows and cards, the history flag as a boolean, tasksPageOf shared by the link rule and the breadcrumb, TaskDetails keyed by task so the task-switch code could go, one constant for the leave question, and dialog wording left in comments and tests.
+- Cold simplicity review: tests that still drove the dialog were ported, focus lost after Save or Cancel was fixed, and the click rule, the boolean history flag, the shared Tasks-page path and the per-task key were simplified.
 - Final complexity review: no blocking findings; the obsolete type request counter and three comments were cleaned up.
+- Design and code reviews (2026-11-25): the page a task is opened from stays mounted beneath it (Milestones lost its search, its open list, its scroll and focus), two columns at 1024 px with the sidebar open, focus after a cancelled More actions item, the 72-character measure of Markdown text, tests for the new-tab rule outside the Board, a vacuous Ctrl+S check and the race test's close step, the Escape of the dependency suggestions, the link-click rule, names, checkboxes, notices, the create dialog's fields, the title field and the shared classes. All applied; see the review round in the plan.
 
 Verification
-- bun run check:types, bun run check, the full suite through scripts/run-ci-tests.ts with the CI flags (3146 pass in the parallel pass, 442 pass in the serial DOM pass, 0 fail), bun run build and scripts/smoke-compiled-build.ts on dist/backlog.
+- bun run check:types, bun run check, the full suite through scripts/run-ci-tests.ts with the CI flags (3146 pass in the parallel pass, 450 pass in the serial DOM pass, 0 fail), bun run build and scripts/smoke-compiled-build.ts on dist/backlog.
+- Regression tests shown failing before their fix and passing after: the Milestones round trip (search, open list and focus kept), More actions focus after a cancelled action, the dependency suggestions taking their Escape, Statistics keeping its task links through a render, and the new-tab rule on List rows and page subtask rows.
 - The compiled binary on a temporary project in headless Chrome:
-  - The page in light and dark at 1440, 1280, 768 and 390 px, with no horizontal overflow at 390.
-  - Real clicks: a plain click on a List or Board title, a List row, a card footer, a subtask link or row on the page and in a card, and a parent link each open the task once. Cmd-click and middle-click open one new tab; Cmd-click on a card or a card's subtask row selects the card; Cmd-click on a List row or a page subtask row outside the link does nothing.
-  - A real drop of a card dragged by its title link moved the task on disk.
-  - Keyboard only: Enter on a row link opens the page with focus on it, E edits, Tab reaches the title field, Cmd+S saves and keeps focus on the page, Escape in the description editor asks before cancelling and returns focus to the page, Escape closes the page and focus returns to the row link.
-  - Opening from Milestones, Statistics and Drafts and closing back to them; the sidebar search result replacing an open task while keeping the filters, then Back to the filtered list and Forward to the task.
-  - Creating a task and a draft in the dialog; Demote to draft and Archive from More actions.
-  - A CLI edit while the page is open: shown at once in preview mode, and the newer-version notice in edit mode.
-  - A task from another branch read-only; the static export (backlog browser export) opening a task as a read-only page.
+  - Milestones: typed "Filler", Show all, scrolled 600 px, opened a task (breadcrumb "Milestones", sidebar on Milestones) and closed it: search, open list, scroll 600 and focus on the row all kept. Statistics: scroll and the same page kept, focus back on the link. Drafts: breadcrumb "Drafts > DRAFT-1", sidebar on Drafts, focus back on the row.
+  - Two columns at 1024, 1100, 1155 and 1280 px with the sidebar open and collapsed (properties 240 to 327 px) and at 768 px; one column at 390 px; no horizontal overflow.
+  - More actions: after cancelling Archive and Demote to draft, focus is on the menu button.
+  - The description and the checklists end at the same 72-character measure (668 px at 1920 px).
+  - Keyboard only from a filtered list: Enter opens, E edits, Tab to the title, Cmd+S saves with focus kept on the page, Escape closes to the filtered list with focus on the row link.
+  - Light and dark screenshots of the task page, the checklists, the create dialog with framed fields, the archived and branch notices and the narrow layouts.
+- Earlier in the task, unchanged by this round and checked again where touched: real clicks, modifier clicks, middle-click and drags on List rows, Board cards and subtask rows; edit, save, live CLI edits, create, demote, archive, read-only branch tasks and the static export.
 
 Contrast, WCAG ratio of the text and mark pairs the page uses (light / dark)
 - ink on surface: 13.51 / 14.84
 - ink-2 on surface: 6.75 / 8.92
-- ink-3 on surface: 5.77 / 5.97
+- ink-3 on surface (also the outline of an unchecked box): 5.77 / 5.97
 - accent-text on surface: 5.76 / 9.60
 - blocked on surface: 6.54 / 7.37
 - ink on surface-2: 11.90 / 13.33
@@ -242,16 +263,16 @@ Contrast, WCAG ratio of the text and mark pairs the page uses (light / dark)
 - ink on hover: 11.59 / 12.07
 - you on you-bg: 5.71 / 8.36
 - blocked on blocked-bg: 5.46 / 6.79
-- on-ink on ink (the Save button): 13.51 / 15.91
+- on-ink on ink (the Save button and a checked box): 13.51 / 15.91
 - ink-3 on paper: 5.27 / 6.40
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-A task now opens as a page in the content panel, over the Tasks page in its layout and with its filters, instead of a dialog. The page has a breadcrumb back to that Tasks page, the title, the sections in a reading column, and beside it Properties followed by References, Modified files and Documentation panels. Every place that opens a task is a real link built by one function (taskLinkTarget in src/web/lib/task-links.ts), so Ctrl/Cmd-click, middle-click and the context menu open new tabs. Closing goes back to where the person came from, and the list or board beneath keeps its scroll position and open groups because it stays mounted under the page. The title changes only in edit mode; Demote to draft and Archive moved into a More actions menu shared with the Board's column menu; creating a task or a draft stays a dialog. Unsaved edits are guarded on every way out except browser Back and Forward, and Save with nothing changed sends no request.
+A task now opens as a page in the content panel, over the page it was opened from, instead of a dialog. That page (the Tasks page in its layout and with its filters, or Milestones, Statistics, Drafts, documents and the rest) stays mounted and inert beneath the task, so closing the task returns to it with its search, open groups, scroll position and focus as they were; a task opened from a direct link has the Tasks page beneath it. The page has a breadcrumb naming the page beneath, the title, the sections in a reading column, and beside it Properties followed by References, Modified files and Documentation panels, in two columns down to a 1024 px window with the sidebar open. Every place that opens a task is a real link built by one rule (src/web/lib/task-links.ts), so Ctrl/Cmd-click, middle-click and the context menu open new tabs. The title changes only in edit mode; Demote to draft and Archive moved into a More actions menu shared with the Board's column menu; creating a task or a draft stays a dialog, with framed fields. Unsaved edits are guarded on every way out except browser Back and Forward, and Save with nothing changed sends no request.
 
-Verified with types, Biome, the full suite through the CI runner, the build and the compiled smoke test, and in the compiled binary in headless Chrome: light and dark at four widths, real clicks, drags and modifier clicks, a keyboard-only pass, live CLI edits, create, demote, archive, read-only branch tasks and the static export. Two cold-review findings were fixed: tests that still drove the dialog, and focus lost after Save or Cancel.
+Verified with types, Biome, the full suite through the CI runner, the build and the compiled smoke test, regression tests shown failing before their fixes, and the compiled binary in headless Chrome: the Milestones, Statistics and Drafts round trips, light and dark at seven widths, real clicks, drags and modifier clicks, a keyboard-only pass, live CLI edits, create, demote, archive, read-only branch tasks and the static export. The design and code review findings of 2026-11-25 are all applied.
 
-Follow-ups, not done: Escape typed outside the page can still clear a Board selection under it through the Board's own Escape rule; Escape in the dependency field with suggestions open closes the page, as it closed the dialog; the groma record of the task details still names TaskDetailsModal.tsx.
+Follow-ups, not done: Escape typed outside the page can still clear a Board selection under it through the Board's own Escape rule; a title that wraps as a heading becomes one scrolling line in edit mode; the new files have no groma owner yet because the groma scan stops responding in this environment (the task-details record itself is updated).
 <!-- SECTION:FINAL_SUMMARY:END -->

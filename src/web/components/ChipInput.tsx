@@ -8,9 +8,11 @@ interface ChipInputProps {
   name: string;
   disabled?: boolean;
   suggestions?: string[];
+  /** Shows the field's frame at all times, as the dialog that creates a task does; elsewhere it shows on hover and focus. */
+  framed?: boolean;
 }
 
-const ChipInput: React.FC<ChipInputProps> = ({ value, onChange, placeholder, label, name, disabled, suggestions }) => {
+const ChipInput: React.FC<ChipInputProps> = ({ value, onChange, placeholder, label, name, disabled, suggestions, framed = false }) => {
   const [inputValue, setInputValue] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -91,7 +93,7 @@ const ChipInput: React.FC<ChipInputProps> = ({ value, onChange, placeholder, lab
       <label htmlFor={inputId} className="sr-only">
         {label || name}
       </label>
-      <div className={`relative -ml-2 w-[calc(100%+0.5rem)] min-h-[26px] rounded-[7px] border border-transparent px-2 py-0.5 outline-accent-strong transition-colors duration-200 hover:border-line focus-within:border-line focus-within:bg-surface has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}>
+      <div className={`relative -ml-2 w-[calc(100%+0.5rem)] compact-control border px-2 py-0.5 outline-accent-strong transition-colors duration-200 hover:border-line focus-within:border-line focus-within:bg-surface has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 ${framed ? 'border-line bg-surface' : 'border-transparent'} ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}>
         <div className="flex w-full flex-wrap items-center gap-1">
           {value.map((item, index) => (
             <span

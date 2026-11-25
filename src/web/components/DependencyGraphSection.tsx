@@ -10,6 +10,7 @@ import {
 } from '../../utils/dependency-graph.ts';
 import { useBrowserAccess } from '../contexts/BrowserAccessContext';
 import { useTaskIdIndex } from '../contexts/TaskIdIndexContext';
+import { taskLinkLabel } from '../lib/task-links';
 import { resolveTaskReference } from '../utils/task-id-links';
 import TaskLink from './TaskLink';
 
@@ -59,7 +60,6 @@ const NodeRow: React.FC<{ entry: DependencyTreeNode; direction: DependencyDirect
   const { canWrite } = useBrowserAccess();
   const tasks = useTaskIdIndex();
   const canOpen = node.state === 'resolved' && (canWrite || Boolean(resolveTaskReference(tasks, node.id)));
-  const label = `${node.id}${node.title ? ` - ${node.title}` : ''}`;
 
   return (
     <div
@@ -72,7 +72,7 @@ const NodeRow: React.FC<{ entry: DependencyTreeNode; direction: DependencyDirect
         <TaskLink
           task={{ id: node.id, title: node.title ?? '' }}
           className="min-w-0 break-words rounded-[4px] text-sm text-ink hover:underline focus-ring"
-          aria-label={`Open ${label}`}
+          aria-label={taskLinkLabel({ id: node.id, title: node.title ?? '' })}
         >
           <span className="font-mono text-xs text-ink-3">{node.id}</span>
           {node.title ? <span className="ml-2">{node.title}</span> : null}

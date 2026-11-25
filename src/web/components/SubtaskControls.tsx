@@ -7,8 +7,8 @@ import TaskLink from "./TaskLink";
  * The parts of nested tasks that the List, the Board and the task page share. SubtaskMarker and SubtaskBar say how
  * many direct subtasks a task has and how many are done, and open and close them in place; ParentTaskLink links to the
  * parent of a task shown apart from it; SubtaskRails draws the guide lines of a nested row. The controls sit inside
- * rows and cards that open their task on a click: the marker and the bar stop their own clicks, and a click a link
- * has answered is one the row ignores (isTaskOpeningClick).
+ * rows and cards that open their task on a click: the marker and the bar stop their own clicks, and a click on a link
+ * is one the row ignores (isTaskOpeningClick).
  */
 
 /** What an opened level says when the filters keep none of its subtasks. */

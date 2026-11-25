@@ -7,13 +7,14 @@ import StoredDate from './StoredDate';
 import { ParentTaskLink, SubtaskBar } from './SubtaskControls';
 import SubtaskTree from './SubtaskTree';
 import TaskBranch from './TaskBranch';
+import { taskLinkLabel } from '../lib/task-links';
 import TaskLink, { isTaskOpeningClick } from './TaskLink';
 import TaskTags from './TaskTags';
 
 interface TaskCardProps {
   task: Task;
   /** Opens the task on a plain click elsewhere on the card; the card's title is a link that opens it by itself. */
-  onEdit: (task: Task) => void;
+  onOpenTask: (task: Task) => void;
   /** Which tasks are subtasks of which: a subtask's card links to its parent, and a parent's card ends in a bar. */
   nesting: TaskNesting;
   /** The configured statuses in workflow order, for the subtasks' status marks and finished count. */
@@ -72,7 +73,7 @@ const buildSelectionDragImage = (source: HTMLElement, count: number): HTMLElemen
 
 const TaskCard: React.FC<TaskCardProps> = ({
   task,
-  onEdit: onOpenTask,
+  onOpenTask,
   nesting,
   statuses,
   subtaskLevels,
@@ -98,8 +99,8 @@ const TaskCard: React.FC<TaskCardProps> = ({
   const isFromOtherBranch = Boolean(task.branch);
   const acceptanceCriteriaProgress = getAcceptanceCriteriaProgressCounts(task);
   const accessibleLabel = acceptanceCriteriaProgress
-    ? `Open ${task.id}: ${task.title}. Acceptance criteria progress: ${acceptanceCriteriaProgress.checked} of ${acceptanceCriteriaProgress.total}`
-    : `Open ${task.id}: ${task.title}`;
+    ? `${taskLinkLabel(task)}. Acceptance criteria progress: ${acceptanceCriteriaProgress.checked} of ${acceptanceCriteriaProgress.total}`
+    : taskLinkLabel(task);
 
   const handleDragStart = (e: React.DragEvent) => {
     // Prevent dragging cross-branch tasks
@@ -157,8 +158,9 @@ const TaskCard: React.FC<TaskCardProps> = ({
     onSelect?.({ shiftKey: event.shiftKey });
   };
 
-  // Enter opens the task, as on any link, and Space does too without scrolling the page. With Ctrl/Cmd or Shift both
-  // select the card instead, as a click with those keys does, so they never open a new tab or window here.
+  // A card is a selectable item with keys of its own, unlike a task link anywhere else, which leaves its keys to the
+  // browser. Enter opens the task, as on any link, and Space does too without scrolling the page. With Ctrl/Cmd or
+  // Shift both select the card instead, as a click with those keys does, so they never open a new tab or window here.
   const handleTitleKeyDown = (event: React.KeyboardEvent) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     if (selectsCard(event)) {
@@ -196,8 +198,8 @@ const TaskCard: React.FC<TaskCardProps> = ({
 
       {/* The card takes the mouse: a click opens the task, a Ctrl/Cmd or Shift click selects the card, and the whole
           card drags. The title is its link for the keyboard and screen readers, and a middle click or its context menu
-          opens the task in a new tab. The links on the card answer their own clicks, and the subtask bar and the
-          subtask rows stop theirs, so none of those opens the card as well.
+          opens the task in a new tab. A click on a link of the card belongs to that link (isTaskOpeningClick), and
+          the subtask bar and the subtask rows stop their clicks, so none of those opens the card as well.
           The 10px corner radius is also in SubtaskBar, which rounds its fill 9px: this radius minus the 1px border. */}
       <div
         className={`rounded-[10px] border bg-surface transition-all duration-200 ${

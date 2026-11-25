@@ -10,6 +10,7 @@ import {
 	type TaskNesting,
 	useSubtaskLevels,
 } from "../lib/task-nesting.ts";
+import { taskLinkLabel } from "../lib/task-links.ts";
 import AcceptanceCriteriaProgress from "./AcceptanceCriteriaProgress";
 import CleanupButton from "./CleanupButton";
 import PriorityBars from "./PriorityBars";
@@ -36,7 +37,7 @@ interface TaskListProps {
 	isLoading: boolean;
 	dateFormat?: string;
 	/** Opens a task on a click elsewhere on its row; the row's title is a link that opens it by itself. */
-	onEditTask: (task: Task) => void;
+	onOpenTask: (task: Task) => void;
 	/** Opens the cleanup dialog; absent without write access. */
 	onCleanup?: () => void;
 }
@@ -56,7 +57,7 @@ export default function TaskList({
 	finalGroupOpenByDefault,
 	isLoading,
 	dateFormat,
-	onEditTask,
+	onOpenTask,
 	onCleanup,
 }: TaskListProps) {
 	// Only the groups a person opened or closed are recorded; every other group follows its default.
@@ -135,7 +136,7 @@ export default function TaskList({
 										projects={projects}
 										idWidth={idWidth}
 										dateFormat={dateFormat}
-										onEditTask={onEditTask}
+										onOpenTask={onOpenTask}
 									/>
 								))}
 							</ul>
@@ -160,7 +161,7 @@ interface TaskRowProps {
 	projects?: string[];
 	idWidth: string;
 	dateFormat?: string;
-	onEditTask: (task: Task) => void;
+	onOpenTask: (task: Task) => void;
 }
 
 // A row's vertical padding, and the rails' negative margins that reach into it so the guide lines join from row to
@@ -191,7 +192,7 @@ const ROW_LAYOUTS = {
  * line and wraps the title.
  */
 function TaskRow(props: TaskRowProps) {
-	const { task, path, depth, nesting, levels, statuses, priorities, projects, idWidth, dateFormat, onEditTask } = props;
+	const { task, path, depth, nesting, levels, statuses, priorities, projects, idWidth, dateFormat, onOpenTask } = props;
 	const subtasksId = useId();
 	const { progress, isOpen } = readSubtaskLevel(task, path, nesting, levels, statuses);
 	const isTopLevel = depth === 0;
@@ -211,7 +212,7 @@ function TaskRow(props: TaskRowProps) {
 			<TaskLink
 				task={task}
 				title={task.title}
-				aria-label={`Open ${task.id}: ${task.title}`}
+				aria-label={taskLinkLabel(task)}
 				className="min-w-0 max-w-fit grow basis-40 rounded-[4px] text-left text-sm font-medium text-ink wrap-anywhere focus-ring @5xl:grow-0 @5xl:basis-auto @5xl:truncate"
 			>
 				{task.title}
@@ -234,7 +235,7 @@ function TaskRow(props: TaskRowProps) {
 			    click on a subtask row below cannot reach it. */}
 			<div
 				onClick={(event) => {
-					if (isTaskOpeningClick(event)) onEditTask(task);
+					if (isTaskOpeningClick(event)) onOpenTask(task);
 				}}
 				className={`grid cursor-pointer items-start gap-x-2.5 gap-y-1 border-t border-line-soft panel-gutter transition-colors duration-200 hover:bg-hover @5xl:items-center ${ROW_PADDING} ${layout.grid}`}
 			>

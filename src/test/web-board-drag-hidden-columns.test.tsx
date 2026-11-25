@@ -51,7 +51,7 @@ const renderBoard = (options: {
 		activeRoot?.render(
 			<MemoryRouter initialEntries={["/board"]}>
 				<Board
-					onEditTask={() => {}}
+					onOpenTask={() => {}}
 					tasks={[draggedTask]}
 					visibleTasks={[draggedTask]}
 					nesting={createUnfilteredNesting([draggedTask])}

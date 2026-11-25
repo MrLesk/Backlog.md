@@ -85,7 +85,7 @@ describe("Task view acceptance criteria display", () => {
 
 		const html = renderToString(
 			<MemoryRouter initialEntries={["/board"]}>
-				<TaskCard task={task} onEdit={() => {}} {...STANDALONE_CARD_NESTING} />
+				<TaskCard task={task} onOpenTask={() => {}} {...STANDALONE_CARD_NESTING} />
 			</MemoryRouter>,
 		);
 

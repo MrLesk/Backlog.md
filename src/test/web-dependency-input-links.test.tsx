@@ -65,6 +65,8 @@ describe("DependencyInput dependency chips", () => {
 		globalThis.document = dom.window.document as Document;
 		globalThis.navigator = dom.window.navigator as Navigator;
 
+		// The board the open task was opened from, which stays beneath it.
+		const boardPage = { pathname: "/board", search: "?lane=milestone" };
 		const observed: { current: { pathname: string; search: string; state: unknown } | null } = { current: null };
 		const goBack: { current: (() => void) | null } = { current: null };
 		const LocationProbe = () => {
@@ -82,7 +84,7 @@ describe("DependencyInput dependency chips", () => {
 				<MemoryRouter
 					initialEntries={[
 						"/board?lane=milestone",
-						{ pathname: "/board/BACK-20", search: "?lane=milestone", state: { openedInApp: true } },
+						{ pathname: "/board/BACK-20", search: "?lane=milestone", state: { background: boardPage } },
 					]}
 					initialIndex={1}
 				>
@@ -104,7 +106,7 @@ describe("DependencyInput dependency chips", () => {
 		expect(observed.current).toEqual({
 			pathname: "/board/BACK-10/task-back-10",
 			search: "?lane=milestone",
-			state: { openedInApp: true },
+			state: { background: boardPage },
 		});
 
 		// It replaced the previous task route, so Back returns to the board, not the previous task.

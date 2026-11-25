@@ -75,7 +75,7 @@ describe("Web dependency graph section", () => {
 
 		expect(html).toContain('href="/tasks/TASK-1/foundation"');
 		expect(html).toContain('href="/tasks/TASK-3/follow-up"');
-		expect(html).toContain('aria-label="Open TASK-1 - Foundation"');
+		expect(html).toContain('aria-label="Open TASK-1: Foundation"');
 		expect(html).toContain('aria-label="Depends on (2)"');
 		expect(html).toContain('aria-label="Dependents (2)"');
 	});
