@@ -38,7 +38,6 @@ const setupDom = () => {
 	globalThis.HTMLTextAreaElement = activeDom.window.HTMLTextAreaElement;
 	globalThis.requestAnimationFrame = (callback: FrameRequestCallback) => window.setTimeout(callback, 0);
 	globalThis.cancelAnimationFrame = (handle: number) => window.clearTimeout(handle);
-	globalThis.CSS = activeDom.window.CSS ?? ({ escape: (value: string) => value.replace(/:/g, "\\:") } as typeof CSS);
 
 	window.matchMedia = () =>
 		({
@@ -94,7 +93,7 @@ const taskPageOf = (container: HTMLElement) => container.querySelector("article"
 // The add field of a file panel, found by its label, such as "Add reference".
 const fieldLabelled = (container: HTMLElement, label: string) => {
 	const element = Array.from(container.querySelectorAll("label")).find((candidate) => candidate.textContent === label);
-	return element ? container.querySelector<HTMLInputElement>(`#${CSS.escape(element.htmlFor)}`) : null;
+	return element ? (container.ownerDocument.getElementById(element.htmlFor) as HTMLInputElement | null) : null;
 };
 
 const openMoreActions = async (container: HTMLElement) => {
