@@ -1,11 +1,11 @@
 ---
 id: BACK-830
 title: Open a task as a page instead of a dialog
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-23T20:53:00Z'
-updated_date: '2026-11-25T18:46:00Z'
+updated_date: '2026-11-25T18:48:00Z'
 labels:
   - web
 dependencies:
@@ -113,7 +113,7 @@ Related: BACK-599 covers task links that lose the list a person came from. BACK-
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 Opening a task shows it as a page in the content panel, over the Tasks page in the layout and with the filters of the URL: a breadcrumb that links to that Tasks page, the title, the sections in the order the dialog uses today in a reading column, and beside it a Properties panel (status, priority, assignee, type, labels, project when configured, milestone, due date, parent, dependencies with the readiness verdict, branch for a task from another branch, created and updated) followed by References, Modified files and Documentation panels.
+- [x] #1 Opening a task shows it as a page in the content panel, over the page it was opened from (the Tasks page in its layout and with the filters of the URL for the list, the board or a direct link): a breadcrumb that links to that page, the title, the sections in the order the dialog uses today in a reading column, and beside it a Properties panel (status, priority, assignee, type, labels, project when configured, milestone, due date, parent, dependencies with the readiness verdict, branch for a task from another branch, created and updated) followed by References, Modified files and Documentation panels.
 - [x] #2 Every place that opens a task is a real link to the task route, built by one function: List rows, Board cards, subtask rows in the List, in a card and on the task page, parent links and the Parent row, dependency links, Markdown task links, sidebar search results, and the task rows of Milestones, Statistics and Drafts. A link keeps the Tasks page's query and where the person came from, and a link followed from an open task replaces it.
 - [x] #3 A task link behaves like a browser link: a plain click opens the task in the app, and Ctrl/Cmd-click, middle-click and the link's context menu open it in a new tab. On the Board, Ctrl/Cmd/Shift-click and Ctrl/Cmd/Shift+Enter keep selecting cards, a middle-click or the context menu opens a new tab, and a drag that starts on a card's title still moves the card.
 - [x] #4 Closing the page with the close button, the Escape key outside edit mode or the browser Back button returns to where the person came from: the list or board with its layout, filters, scroll position and open groups, or the Milestones, Statistics, Drafts or other page the task was opened from. A task opened from a direct link closes to the Tasks page.
