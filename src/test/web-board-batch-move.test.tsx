@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import type { Milestone, Task } from "../types/index.ts";
 import Board from "../web/components/Board.tsx";
 import { apiClient, type MoveTasksPayload } from "../web/lib/api.ts";
+import { createUnfilteredNesting } from "../web/lib/task-nesting.ts";
 
 const STATUSES = ["To Do", "In Progress", "Done"];
 
@@ -75,6 +76,7 @@ const rerenderBoard = (
 				onEditTask={onEditTask}
 				tasks={extra.tasks ?? TASKS}
 				visibleTasks={extra.visibleTasks ?? extra.tasks ?? TASKS}
+				nesting={createUnfilteredNesting(extra.tasks ?? TASKS)}
 				statuses={STATUSES}
 				isLoading={false}
 				milestoneEntities={[]}
@@ -101,6 +103,7 @@ const renderMilestoneBoard = (tasks: Task[] = MILESTONE_TASKS): HTMLElement => {
 				onEditTask={() => {}}
 				tasks={tasks}
 				visibleTasks={tasks}
+				nesting={createUnfilteredNesting(tasks)}
 				statuses={STATUSES}
 				isLoading={false}
 				milestoneEntities={[MILESTONE]}

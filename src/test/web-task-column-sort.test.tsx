@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import type { Task } from "../types/index.ts";
 import TaskColumn from "../web/components/TaskColumn.tsx";
 import type { ReorderTaskPayload } from "../web/lib/api.ts";
+import { createUnfilteredNesting } from "../web/lib/task-nesting.ts";
 
 const createTask = (overrides: Partial<Task>): Task => ({
 	id: "TASK-1",
@@ -43,6 +44,8 @@ const renderTaskColumn = (
 				statuses={["To Do", "In Progress", options.title ?? "Done"]}
 				tasks={tasks}
 				onEditTask={() => {}}
+				nesting={createUnfilteredNesting(tasks)}
+				subtaskLevels={{ recorded: {}, setOpen: () => {} }}
 				onTaskReorder={onTaskReorder}
 				onCleanup={options.onCleanup}
 				priorityOrder={options.priorityOrder}

@@ -5,6 +5,7 @@ import type { Task } from "../types/index.ts";
 import TaskCard from "../web/components/TaskCard";
 import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
 import { ThemeProvider } from "../web/contexts/ThemeContext";
+import { STANDALONE_CARD_NESTING } from "./task-card-nesting.ts";
 
 const setupDom = () => {
 	const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost" });
@@ -73,7 +74,7 @@ describe("Web task popup acceptance criteria display", () => {
 			acceptanceCriteriaItems: [{ index: 7, text: "Hidden criterion", checked: false }],
 		};
 
-		const html = renderToString(<TaskCard task={task} onEdit={() => {}} />);
+		const html = renderToString(<TaskCard task={task} onEdit={() => {}} {...STANDALONE_CARD_NESTING} />);
 
 		expect(html).toContain("Board card task");
 		expect(html).not.toContain("Hidden criterion");

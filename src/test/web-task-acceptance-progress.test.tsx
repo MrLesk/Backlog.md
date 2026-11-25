@@ -5,6 +5,8 @@ import { createRoot, type Root } from "react-dom/client";
 import type { Task } from "../types/index.ts";
 import TaskCard from "../web/components/TaskCard.tsx";
 import TaskList from "../web/components/TaskList.tsx";
+import { createUnfilteredNesting } from "../web/lib/task-nesting.ts";
+import { STANDALONE_CARD_NESTING } from "./task-card-nesting.ts";
 
 const createCriteria = (checked: number, total: number) =>
 	Array.from({ length: total }, (_, index) => ({
@@ -57,7 +59,7 @@ const setupDom = (): HTMLElement => {
 const renderCard = (task: Task): HTMLElement => {
 	const container = setupDom();
 	act(() => {
-		activeRoot?.render(<TaskCard task={task} onEdit={() => {}} />);
+		activeRoot?.render(<TaskCard task={task} onEdit={() => {}} {...STANDALONE_CARD_NESTING} />);
 	});
 	return container;
 };
@@ -69,6 +71,7 @@ const renderList = (...tasks: Task[]): HTMLElement => {
 		activeRoot?.render(
 			<TaskList
 				tasks={tasks}
+				nesting={createUnfilteredNesting(tasks)}
 				statuses={STATUSES}
 				finalGroupOpenByDefault
 				isLoading={false}
@@ -153,9 +156,9 @@ describe("browser task acceptance criteria progress", () => {
 
 	it("includes card progress in the accessible name", () => {
 		const container = renderCard(createTask({ acceptanceCriteriaItems: createCriteria(4, 7) }));
-		const card = container.querySelector("[role='button']");
+		const title = container.querySelector("h4 [role='button']");
 
-		expect(card?.getAttribute("aria-label")).toBe("Open task-1: Task summary. Acceptance criteria progress: 4 of 7");
+		expect(title?.getAttribute("aria-label")).toBe("Open task-1: Task summary. Acceptance criteria progress: 4 of 7");
 	});
 
 	it.each(statusCases)("renders the card ring in the %s status (%s)", (_position, status, checked, total) => {
@@ -244,6 +247,7 @@ describe("browser task acceptance criteria progress", () => {
 				<TaskCard
 					task={createTask({ acceptanceCriteriaItems: createCriteria(4, 5) })}
 					onEdit={() => {}}
+					{...STANDALONE_CARD_NESTING}
 				/>,
 			);
 		});

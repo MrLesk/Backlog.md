@@ -2,6 +2,7 @@ import React from 'react';
 import { type Task } from '../../types';
 import { compareTaskIds, sortByPriority } from '../../utils/task-sorting';
 import type { ReorderTaskPayload } from '../lib/api';
+import type { SubtaskLevels, TaskNesting } from '../lib/task-nesting';
 import { parseStoredUtcDate } from '../../utils/utc-timestamp.ts';
 import CleanupButton from './CleanupButton';
 import StatusMark from './StatusMark';
@@ -13,6 +14,9 @@ interface TaskColumnProps {
   statuses: string[];
   tasks: Task[];
   onEditTask: (task: Task) => void;
+  /** Which tasks are subtasks of which, and the subtask levels opened on the board's cards. */
+  nesting: TaskNesting;
+  subtaskLevels: SubtaskLevels;
   onTaskReorder?: (payload: ReorderTaskPayload) => void;
   dragSourceStatus?: string | null;
   dragSourceLane?: string | null;
@@ -66,6 +70,8 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   statuses,
   tasks,
   onEditTask,
+  nesting,
+  subtaskLevels,
   onTaskReorder,
   dragSourceStatus,
   dragSourceLane,
@@ -374,6 +380,9 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
             <TaskCard
               task={task}
               onEdit={onEditTask}
+              nesting={nesting}
+              statuses={statuses}
+              subtaskLevels={subtaskLevels}
               isSelected={selectedTaskIds?.includes(task.id) ?? false}
               selectionCount={selectedTaskIds?.length ?? 0}
               isSelectionDragging={isSelectionDragging}

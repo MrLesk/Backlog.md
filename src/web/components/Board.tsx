@@ -13,6 +13,7 @@ import { collectArchivedMilestoneKeys } from '../utils/milestones';
 import { createStatusResolver, getTerminalStatus } from '../../utils/terminal-status';
 import { resolveTaskById } from '../../utils/task-id';
 import { useBrowserAccess } from '../contexts/BrowserAccessContext';
+import { type TaskNesting, useSubtaskLevels } from '../lib/task-nesting';
 import TaskColumn from './TaskColumn';
 import { BoardLoadingSkeleton } from './BoardLoadingSkeleton';
 
@@ -21,6 +22,8 @@ interface BoardProps {
   tasks: Task[];
   /** The tasks the filters of the page keep. Columns and lane counts show these. */
   visibleTasks: Task[];
+  /** Which tasks are subtasks of which, for the parent links and the subtask bars of the cards. */
+  nesting: TaskNesting;
   onEditTask: (task: Task) => void;
   onRefreshData?: () => Promise<void>;
   onTasksUpdated?: (tasks: Task[], requestTask: Task) => void;
@@ -47,6 +50,7 @@ const SELECTION_CONTROL_CLASS =
 const Board: React.FC<BoardProps> = ({
   tasks,
   visibleTasks,
+  nesting,
   onEditTask,
   onRefreshData,
   onTasksUpdated,
@@ -75,6 +79,8 @@ const Board: React.FC<BoardProps> = ({
   const [hiddenColumnsRevealed, setHiddenColumnsRevealed] = useState(false);
   const revealHiddenColumnsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({});
+  // The subtask levels opened on the cards, kept here so filters and lanes do not reset them.
+  const subtaskLevels = useSubtaskLevels();
   const terminalStatus = getTerminalStatus(statuses);
   const resolveStatus = useMemo(() => createStatusResolver(statuses), [statuses]);
   const canonicalizeMilestone = useMemo(
@@ -359,6 +365,8 @@ const Board: React.FC<BoardProps> = ({
           statuses={statuses}
           tasks={getTasksForLane(laneKey, status)}
           onEditTask={onEditTask}
+          nesting={nesting}
+          subtaskLevels={subtaskLevels}
           laneId={laneKey}
           targetMilestone={targetMilestone}
           priorityOrder={availablePriorities}
