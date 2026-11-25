@@ -1,9 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
 import { renderToString } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import { ThemeProvider } from "../web/contexts/ThemeContext";
-import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
+import TaskDetails from "../web/components/TaskDetails";
 
 const setupDom = () => {
 	const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost" });
@@ -27,7 +28,7 @@ const setupDom = () => {
 	}
 };
 
-describe("Web task popup documentation display", () => {
+describe("Task page documentation display", () => {
 	it("renders documentation entries when present", () => {
 		setupDom();
 
@@ -43,9 +44,11 @@ describe("Web task popup documentation display", () => {
 		};
 
 		const html = renderToString(
-			<ThemeProvider>
-				<TaskDetailsModal task={task} isOpen={true} onClose={() => {}} />
-			</ThemeProvider>,
+			<MemoryRouter>
+				<ThemeProvider>
+					<TaskDetails task={task} onClose={() => {}} />
+				</ThemeProvider>
+			</MemoryRouter>,
 		);
 
 		expect(html).toContain("Documentation");
@@ -68,9 +71,11 @@ describe("Web task popup documentation display", () => {
 		};
 
 		const html = renderToString(
-			<ThemeProvider>
-				<TaskDetailsModal task={task} isOpen={true} onClose={() => {}} />
-			</ThemeProvider>,
+			<MemoryRouter>
+				<ThemeProvider>
+					<TaskDetails task={task} onClose={() => {}} />
+				</ThemeProvider>
+			</MemoryRouter>,
 		);
 
 		expect(html).not.toContain("Documentation");

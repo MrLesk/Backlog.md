@@ -17,6 +17,7 @@ import StatusMark from "./StatusMark";
 import StoredDate from "./StoredDate";
 import { NO_MATCHING_SUBTASKS, ParentTaskLink, SubtaskMarker, SubtaskRails } from "./SubtaskControls";
 import TaskBranch from "./TaskBranch";
+import TaskLink, { isTaskOpeningClick } from "./TaskLink";
 import TaskTags from "./TaskTags";
 
 interface TaskListProps {
@@ -34,6 +35,7 @@ interface TaskListProps {
 	finalGroupOpenByDefault: boolean;
 	isLoading: boolean;
 	dateFormat?: string;
+	/** Opens a task on a click elsewhere on its row; the row's title is a link that opens it by itself. */
 	onEditTask: (task: Task) => void;
 	/** Opens the cleanup dialog; absent without write access. */
 	onCleanup?: () => void;
@@ -203,21 +205,17 @@ function TaskRow(props: TaskRowProps) {
 			{isTopLevel && task.parentTaskId && (
 				// As tall as the title's first line, so the shorter link lines up with it.
 				<span className="flex h-5 shrink-0 items-center">
-					<ParentTaskLink task={task} parent={nesting.all.parentOf(task)} onOpenTask={onEditTask} />
+					<ParentTaskLink task={task} parent={nesting.all.parentOf(task)} />
 				</span>
 			)}
-			<button
-				type="button"
-				onClick={(event) => {
-					event.stopPropagation();
-					onEditTask(task);
-				}}
+			<TaskLink
+				task={task}
 				title={task.title}
 				aria-label={`Open ${task.id}: ${task.title}`}
 				className="min-w-0 max-w-fit grow basis-40 rounded-[4px] text-left text-sm font-medium text-ink wrap-anywhere focus-ring @5xl:grow-0 @5xl:basis-auto @5xl:truncate"
 			>
 				{task.title}
-			</button>
+			</TaskLink>
 			{progress && (
 				<SubtaskMarker
 					progress={progress}
@@ -231,11 +229,13 @@ function TaskRow(props: TaskRowProps) {
 
 	return (
 		<li>
-			{/* The title button is the keyboard and screen reader path to the task; a click anywhere else on the row is a
-			    shortcut for the mouse. The click is on the row, not the li, so a click on a subtask row below cannot
-			    reach it. */}
+			{/* The title link is the keyboard and screen reader path to the task, and the way to open it in a new tab; a
+			    plain click anywhere else on the row is a shortcut for the mouse. The click is on the row, not the li, so a
+			    click on a subtask row below cannot reach it. */}
 			<div
-				onClick={() => onEditTask(task)}
+				onClick={(event) => {
+					if (isTaskOpeningClick(event)) onEditTask(task);
+				}}
 				className={`grid cursor-pointer items-start gap-x-2.5 gap-y-1 border-t border-line-soft panel-gutter transition-colors duration-200 hover:bg-hover @5xl:items-center ${ROW_PADDING} ${layout.grid}`}
 			>
 				{/* The marks and the ID are one title line tall, so they stay beside the first line of a title that wraps. */}

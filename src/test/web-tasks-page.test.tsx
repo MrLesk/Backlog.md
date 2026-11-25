@@ -198,14 +198,14 @@ const listedTaskIds = async (container: HTMLElement): Promise<string[]> => {
 	for (const header of Array.from(container.querySelectorAll("h3 button[aria-expanded='false']"))) {
 		await click(header);
 	}
-	return Array.from(container.querySelectorAll("li button[aria-label^='Open ']"), (title) =>
+	return Array.from(container.querySelectorAll("li a[aria-label^='Open ']"), (title) =>
 		idOf(title.getAttribute("aria-label")),
 	);
 };
 
 /** The task IDs of the cards on the board, column by column: each card's title is the button that opens it. */
 const boardTaskIds = (container: HTMLElement): string[] =>
-	Array.from(container.querySelectorAll("[role='group'] h4 [role='button'][aria-label^='Open ']"), (title) =>
+	Array.from(container.querySelectorAll("[role='group'] h4 a[aria-label^='Open ']"), (title) =>
 		idOf(title.getAttribute("aria-label")),
 	);
 
@@ -451,7 +451,7 @@ describe("Tasks page list", () => {
 		});
 
 		expect(groupHeaders(container)).toEqual([{ name: "Done1", open: "true" }]);
-		expect(container.querySelector("li button[aria-label^='Open TASK-4:']")).toBeTruthy();
+		expect(container.querySelector("li a[aria-label^='Open TASK-4:']")).toBeTruthy();
 	});
 
 	it("names the status and priority marks of a row and shows the branch of a task from another branch", () => {
@@ -463,7 +463,7 @@ describe("Tasks page list", () => {
 			priorities: ORDER_FIXTURE_PRIORITIES,
 		});
 		const row = (id: string) =>
-			container.querySelector(`li button[aria-label^='Open ${id}:']`)?.closest("li") as HTMLElement;
+			container.querySelector(`li a[aria-label^='Open ${id}:']`)?.closest("li") as HTMLElement;
 		const markNames = (id: string) =>
 			Array.from(row(id).querySelectorAll("[role='img']"), (mark) => mark.getAttribute("aria-label"));
 

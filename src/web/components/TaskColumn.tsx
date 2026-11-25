@@ -4,9 +4,22 @@ import { compareTaskIds, sortByPriority } from '../../utils/task-sorting';
 import type { ReorderTaskPayload } from '../lib/api';
 import type { SubtaskLevels, TaskNesting } from '../lib/task-nesting';
 import { parseStoredUtcDate } from '../../utils/utc-timestamp.ts';
+import ActionsMenu from './ActionsMenu';
 import CleanupButton from './CleanupButton';
 import StatusMark from './StatusMark';
 import TaskCard from './TaskCard';
+
+const SORT_BY_PRIORITY_ICON = 'M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12';
+const SORT_BY_OLDEST_ICON =
+  'M8 7V3m8 4V3M5 11h14M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2zm5-7v4m0 0l-2-2m2 2l2-2';
+const SORT_BY_NEWEST_ICON =
+  'M8 7V3m8 4V3M5 11h14M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2zm5 11v-4m0 0l-2 2m2-2l2 2';
+
+const SortIcon = ({ path }: { path: string }) => (
+  <svg className="size-4 text-ink-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={path} />
+  </svg>
+);
 
 interface TaskColumnProps {
   title: string;
@@ -94,31 +107,14 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
   const [dropPosition, setDropPosition] = React.useState<{ index: number; position: 'before' | 'after' | 'self' } | null>(null);
-  const [showMenu, setShowMenu] = React.useState(false);
-  const menuRef = React.useRef<HTMLDivElement>(null);
-  const menuButtonRef = React.useRef<HTMLButtonElement>(null);
   // The space around and between the cards; dragging over it, rather than over a card, clears the insertion point.
   const cardListRef = React.useRef<HTMLDivElement>(null);
-  const columnActionsId = React.useId();
   const headingId = React.useId();
   const canDropTask = Boolean(onTaskReorder || onBatchMove);
   const canReorderColumn = Boolean(onTaskReorder) && tasks.length > 1 && tasks.every(task => !task.branch);
 
-  React.useEffect(() => {
-    if (!showMenu) return;
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setShowMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showMenu]);
-
   const emitColumnReorder = (orderedTaskIds: string[]) => {
     if (!onTaskReorder || !canReorderColumn) {
-      setShowMenu(false);
       return;
     }
 
@@ -134,8 +130,6 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
         ...(targetMilestone !== undefined ? { targetMilestone } : {}),
       });
     }
-
-    setShowMenu(false);
   };
 
   const handleSortByPriority = () => {
@@ -287,16 +281,6 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
     };
   };
 
-  // Escape closes the column menu and returns focus to its button.
-  const closeMenuOnEscape = (event: React.KeyboardEvent) => {
-    if (event.key !== 'Escape' || !showMenu) return;
-    event.stopPropagation();
-    setShowMenu(false);
-    menuButtonRef.current?.focus();
-  };
-
-  const menuItemClass =
-    'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink transition-colors duration-150 hover:bg-hover focus-ring';
   const isDropTarget = isDragOver && (dragSourceStatus !== title || (dragSourceLane ?? null) !== (laneId ?? null));
 
   return (
@@ -316,51 +300,24 @@ const TaskColumn: React.FC<TaskColumnProps> = ({
         <span className="ml-auto flex items-center gap-0.5">
           {onCleanup && tasks.length > 0 && <CleanupButton onClick={onCleanup} />}
           {canReorderColumn && (
-            <div ref={menuRef} onKeyDown={closeMenuOnEscape}>
-              <button
-                type="button"
-                ref={menuButtonRef}
-                onClick={() => setShowMenu(!showMenu)}
-                className="inline-flex size-6 items-center justify-center rounded-[6px] text-ink-2 transition-colors duration-200 hover:bg-hover hover:text-ink focus-ring"
-                title="Column actions"
-                aria-label="Column actions"
-                aria-haspopup="menu"
-                aria-expanded={showMenu}
-                aria-controls={columnActionsId}
-              >
-                <svg className="size-3.5" viewBox="0 0 16 16" aria-hidden="true">
-                  <path d="M3.5 8h.01M8 8h.01M12.5 8h.01" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
-                </svg>
-              </button>
-
-              {/* As wide as the column header it opens under, so the board's scroll area never cuts it off. */}
-              {showMenu && (
-                <div
-                  id={columnActionsId}
-                  role="menu"
-                  className="absolute inset-x-0 top-full z-50 rounded-control border border-line bg-surface py-1 shadow-lg"
-                >
-                  <button type="button" role="menuitem" onClick={handleSortByPriority} className={menuItemClass}>
-                    <svg className="size-4 text-ink-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
-                    </svg>
-                    Sort by Priority
-                  </button>
-                  <button type="button" role="menuitem" onClick={() => handleSortByCreatedDate('asc')} className={menuItemClass}>
-                    <svg className="size-4 text-ink-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3M5 11h14M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2zm5-7v4m0 0l-2-2m2 2l2-2" />
-                    </svg>
-                    Sort by Creation Date (oldest first)
-                  </button>
-                  <button type="button" role="menuitem" onClick={() => handleSortByCreatedDate('desc')} className={menuItemClass}>
-                    <svg className="size-4 text-ink-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3M5 11h14M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2zm5 11v-4m0 0l-2 2m2-2l2 2" />
-                    </svg>
-                    Sort by Creation Date (newest first)
-                  </button>
-                </div>
-              )}
-            </div>
+            <ActionsMenu
+              label="Column actions"
+              // As wide as the column header it opens under, so the board's scroll area never cuts it off.
+              menuClassName="absolute inset-x-0 top-full"
+              actions={[
+                { label: 'Sort by Priority', icon: <SortIcon path={SORT_BY_PRIORITY_ICON} />, onSelect: handleSortByPriority },
+                {
+                  label: 'Sort by Creation Date (oldest first)',
+                  icon: <SortIcon path={SORT_BY_OLDEST_ICON} />,
+                  onSelect: () => handleSortByCreatedDate('asc'),
+                },
+                {
+                  label: 'Sort by Creation Date (newest first)',
+                  icon: <SortIcon path={SORT_BY_NEWEST_ICON} />,
+                  onSelect: () => handleSortByCreatedDate('desc'),
+                },
+              ]}
+            />
           )}
         </span>
       </div>

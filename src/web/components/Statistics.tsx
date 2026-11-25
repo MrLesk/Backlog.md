@@ -6,6 +6,7 @@ import { isTerminalStatus } from '../../utils/terminal-status';
 import { formatPriorityLabel } from '../../utils/priority-config';
 import LoadingSpinner from './LoadingSpinner';
 import StoredDate from './StoredDate';
+import TaskLink from './TaskLink';
 
 interface StatisticsData extends Omit<TaskStatistics, 'statusCounts' | 'priorityCounts'> {
 	statusCounts: Record<string, number>;
@@ -16,7 +17,6 @@ interface StatisticsProps {
 	statuses: string[];
 	tasks?: Task[];
 	isLoading?: boolean;
-	onEditTask?: (task: Task) => void;
 	projectName?: string;
 	dateFormat?: string;
 }
@@ -25,7 +25,6 @@ const Statistics: React.FC<StatisticsProps> = ({
 	statuses,
 	tasks: _tasks,
 	isLoading: externalLoading,
-	onEditTask,
 	projectName,
 	dateFormat,
 }) => {
@@ -138,16 +137,14 @@ const Statistics: React.FC<StatisticsProps> = ({
 		);
 	}
 
-	const TaskPreview = ({ task, showDate, onClick }: { task: Task; showDate: 'created' | 'updated'; onClick?: () => void }) => {
+	// A link to the task, so it opens like a task anywhere else and can open in a new tab.
+	const TaskPreview = ({ task, showDate }: { task: Task; showDate: 'created' | 'updated' }) => {
 		const displayDate = showDate === 'created' ? task.createdDate : task.updatedDate || task.createdDate;
 
 		return (
-			<div 
-				key={task.id} 
-				className={`flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg transition-colors duration-200 ${
-					onClick ? 'hover:bg-gray-100 dark:hover:bg-gray-600/50 cursor-pointer' : ''
-				}`}
-				onClick={onClick}
+			<TaskLink
+				task={task}
+				className="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg transition-colors duration-200 hover:bg-gray-100 dark:hover:bg-gray-600/50 focus-ring"
 			>
 				<StatusIcon status={task.status} />
 				<div className="flex-1 min-w-0">
@@ -156,7 +153,7 @@ const Statistics: React.FC<StatisticsProps> = ({
 						{task.id} • {showDate === 'created' ? 'Created' : 'Updated'} <StoredDate value={displayDate} dateFormat={dateFormat} />
 					</p>
 				</div>
-			</div>
+			</TaskLink>
 		);
 	};
 
@@ -417,7 +414,6 @@ const Statistics: React.FC<StatisticsProps> = ({
 								<TaskPreview 
 									task={task} 
 									showDate="created" 
-									onClick={onEditTask ? () => onEditTask(task) : undefined}
 								/>
 							))}
 						</div>
@@ -435,7 +431,6 @@ const Statistics: React.FC<StatisticsProps> = ({
 								<TaskPreview 
 									task={task} 
 									showDate="updated" 
-									onClick={onEditTask ? () => onEditTask(task) : undefined}
 								/>
 							))}
 						</div>
@@ -498,7 +493,6 @@ const Statistics: React.FC<StatisticsProps> = ({
 												key={task.id}
 												task={task} 
 												showDate="updated" 
-												onClick={onEditTask ? () => onEditTask(task) : undefined}
 											/>
 										))}
 										{statistics.projectHealth.staleTasks.length > 3 && (
@@ -525,7 +519,6 @@ const Statistics: React.FC<StatisticsProps> = ({
 												key={task.id}
 												task={task} 
 												showDate="created" 
-												onClick={onEditTask ? () => onEditTask(task) : undefined}
 											/>
 										))}
 										{statistics.projectHealth.blockedTasks.length > 3 && (

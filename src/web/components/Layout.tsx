@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import SideNavigation from './SideNavigation';
 import Navigation from './Navigation';
@@ -19,6 +19,24 @@ interface LayoutProps {
 	error?: Error | null;
 	onRefreshData: () => Promise<void>;
 	duplicateRepairPlan?: DuplicateRepairPlan | null;
+	/** The open task's page, shown over the current page while a task is open. */
+	taskPage?: ReactNode;
+}
+
+/**
+ * The layer that holds the task page over the current page. It returns keyboard focus to whatever opened the task,
+ * a row, a card or a link, when the task closes.
+ */
+function TaskPageLayer({ children }: { children: ReactNode }) {
+	// Read while the layer first renders, before the page beneath becomes inert and loses its focus.
+	const [opener] = useState(() => document.activeElement as HTMLElement | null);
+	useEffect(
+		() => () => {
+			if (opener?.isConnected) opener.focus();
+		},
+		[opener],
+	);
+	return <div className="absolute inset-0 bg-surface">{children}</div>;
 }
 
 export default function Layout({
@@ -32,10 +50,11 @@ export default function Layout({
 	error,
 	onRefreshData,
 	duplicateRepairPlan = null,
+	taskPage,
 }: LayoutProps) {
 	const location = useLocation();
 	const drawer = useRef<HTMLDialogElement>(null);
-	const main = useRef<HTMLElement>(null);
+	const pageScroll = useRef<HTMLDivElement>(null);
 	const [useDrawer, setUseDrawer] = useState(() => window.matchMedia?.(DRAWER_MEDIA_QUERY).matches ?? false);
 
 	const openDrawer = useCallback(() => {
@@ -62,9 +81,9 @@ export default function Layout({
 		closeDrawer();
 	}, [location.key, closeDrawer]);
 
-	// A task dialog shares its board or list's page path and reading position.
+	// A task page shares the page path of the list or board beneath it, so opening a task keeps their reading position.
 	useLayoutEffect(() => {
-		if (main.current) main.current.scrollTop = 0;
+		if (pageScroll.current) pageScroll.current.scrollTop = 0;
 	}, [pagePath]);
 
 	const sideNavigation = (
@@ -85,6 +104,9 @@ export default function Layout({
 	// inside one floating content panel beside it. Narrow screens open the sidebar in a drawer. The drawer sets
 	// its own background and text color, because a dialog does not inherit them from body, and a right edge
 	// against the dimmed page.
+	// While a task is open, its page covers the current page, which stays mounted and inert: nothing in it can be
+	// reached by keyboard, pointer or screen reader, and its scroll position, open groups and selection are as they
+	// were when the task closes.
 	return (
 		<div className="h-dvh flex gap-2 overflow-hidden p-2">
 			{useDrawer ? (
@@ -103,8 +125,11 @@ export default function Layout({
 			<div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden rounded-panel border border-line bg-surface transition-colors duration-200">
 				<Navigation projectName={projectName} loadingMessage={loadingMessage} onOpenMenu={useDrawer ? openDrawer : undefined} />
 				<DuplicateIdWarning plan={duplicateRepairPlan} onRepaired={onRefreshData} />
-				<main ref={main} className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
-					<Outlet context={{ tasks, docs, decisions, isLoading, error, onRefreshData }} />
+				<main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+					<div ref={pageScroll} inert={Boolean(taskPage)} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+						<Outlet context={{ tasks, docs, decisions, isLoading, error, onRefreshData }} />
+					</div>
+					{taskPage && <TaskPageLayer>{taskPage}</TaskPageLayer>}
 				</main>
 			</div>
 		</div>

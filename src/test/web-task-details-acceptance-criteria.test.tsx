@@ -1,9 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
 import { renderToString } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import TaskCard from "../web/components/TaskCard";
-import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
+import TaskDetails from "../web/components/TaskDetails";
 import { ThemeProvider } from "../web/contexts/ThemeContext";
 import { STANDALONE_CARD_NESTING } from "./task-card-nesting.ts";
 
@@ -29,7 +30,7 @@ const setupDom = () => {
 	}
 };
 
-describe("Web task popup acceptance criteria display", () => {
+describe("Task view acceptance criteria display", () => {
 	it("renders existing acceptance criteria numbers in preview", () => {
 		setupDom();
 
@@ -48,16 +49,24 @@ describe("Web task popup acceptance criteria display", () => {
 		};
 
 		const html = renderToString(
-			<ThemeProvider>
-				<TaskDetailsModal task={task} isOpen={true} onClose={() => {}} />
-			</ThemeProvider>,
+			<MemoryRouter>
+				<ThemeProvider>
+					<TaskDetails task={task} onClose={() => {}} />
+				</ThemeProvider>
+			</MemoryRouter>,
 		);
 
-		expect(html).toContain("Acceptance Criteria (1/2)");
-		expect(html).toContain("#1");
-		expect(html).toContain("First criterion");
-		expect(html).toContain("#3");
-		expect(html).toContain("Third criterion");
+		const rendered = new JSDOM(html).window.document;
+		const section = Array.from(rendered.querySelectorAll("section")).find(
+			(candidate) => candidate.querySelector("h3")?.textContent === "Acceptance criteria",
+		);
+		const progress = section?.querySelector("[role='progressbar']");
+		expect(progress?.getAttribute("aria-valuenow")).toBe("1");
+		expect(progress?.getAttribute("aria-valuemax")).toBe("2");
+		expect(Array.from(section?.querySelectorAll("li") ?? [], (item) => item.textContent)).toEqual([
+			"#1First criterion",
+			"#3Third criterion",
+		]);
 	});
 
 	it("does not add acceptance criteria details to board cards", () => {
@@ -74,7 +83,11 @@ describe("Web task popup acceptance criteria display", () => {
 			acceptanceCriteriaItems: [{ index: 7, text: "Hidden criterion", checked: false }],
 		};
 
-		const html = renderToString(<TaskCard task={task} onEdit={() => {}} {...STANDALONE_CARD_NESTING} />);
+		const html = renderToString(
+			<MemoryRouter initialEntries={["/board"]}>
+				<TaskCard task={task} onEdit={() => {}} {...STANDALONE_CARD_NESTING} />
+			</MemoryRouter>,
+		);
 
 		expect(html).toContain("Board card task");
 		expect(html).not.toContain("Hidden criterion");

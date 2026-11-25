@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import TaskColumn from "../web/components/TaskColumn.tsx";
 import type { ReorderTaskPayload } from "../web/lib/api.ts";
@@ -39,17 +40,19 @@ const renderTaskColumn = (
 	activeRoot = createRoot(container as HTMLElement);
 	act(() => {
 		activeRoot?.render(
-			<TaskColumn
-				title={options.title ?? "To Do"}
-				statuses={["To Do", "In Progress", options.title ?? "Done"]}
-				tasks={tasks}
-				onEditTask={() => {}}
-				nesting={createUnfilteredNesting(tasks)}
-				subtaskLevels={{ recorded: {}, setOpen: () => {} }}
-				onTaskReorder={onTaskReorder}
-				onCleanup={options.onCleanup}
-				priorityOrder={options.priorityOrder}
-			/>,
+			<MemoryRouter initialEntries={["/board"]}>
+				<TaskColumn
+					title={options.title ?? "To Do"}
+					statuses={["To Do", "In Progress", options.title ?? "Done"]}
+					tasks={tasks}
+					onEditTask={() => {}}
+					nesting={createUnfilteredNesting(tasks)}
+					subtaskLevels={{ recorded: {}, setOpen: () => {} }}
+					onTaskReorder={onTaskReorder}
+					onCleanup={options.onCleanup}
+					priorityOrder={options.priorityOrder}
+				/>
+			</MemoryRouter>,
 		);
 	});
 	return container as HTMLElement;

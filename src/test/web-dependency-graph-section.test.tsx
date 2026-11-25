@@ -6,7 +6,7 @@ import type { Task } from "../types/index.ts";
 import { buildDependencyGraph, type DependencyGraph } from "../utils/dependency-graph.ts";
 import { toTaskDetail } from "../core/task-detail.ts";
 import { DependencyGraphSection } from "../web/components/DependencyGraphSection";
-import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
+import TaskDetails from "../web/components/TaskDetails";
 import { ThemeProvider } from "../web/contexts/ThemeContext";
 
 const STATUSES = ["To Do", "In Progress", "Done"] as const;
@@ -127,14 +127,14 @@ describe("Web dependency graph section", () => {
 	});
 });
 
-describe("Web task details modal dependency graph", () => {
+describe("Task page dependency graph", () => {
 	const corpus = [
 		makeTask("TASK-1", "Foundation", [], "Done"),
 		makeTask("TASK-2", "Selected", ["TASK-1", "TASK-404"]),
 		makeTask("TASK-3", "Follow up", ["TASK-2"]),
 	];
 
-	function renderModal(task: Task) {
+	function renderPage(task: Task) {
 		setupDom();
 		if (!globalThis.window.matchMedia) {
 			globalThis.window.matchMedia = (() => ({
@@ -157,11 +157,10 @@ describe("Web task details modal dependency graph", () => {
 		}) as typeof fetch;
 		try {
 			const html = renderToString(
-				<MemoryRouter>
+				<MemoryRouter initialEntries={[`/tasks/${task.id}`]}>
 					<ThemeProvider>
-						<TaskDetailsModal
+						<TaskDetails
 							task={task}
-							isOpen={true}
 							onClose={() => {}}
 							availableTasks={corpus}
 							availableStatuses={[...STATUSES]}
@@ -179,18 +178,18 @@ describe("Web task details modal dependency graph", () => {
 		const selected = corpus[1] as Task;
 		const detail = toTaskDetail(selected, { tasks: corpus, archivedTasks: [], statuses: STATUSES });
 
-		const { html, requests } = renderModal(detail);
+		const { html, requests } = renderPage(detail);
 
-		expect(html).toContain("Dependency Graph");
+		expect(html).toContain("Dependency graph");
 		expect(html).toContain("Depends on");
 		expect(html).toContain("Dependents");
-		expect(html).toContain('href="/tasks/TASK-1"');
+		expect(html).toContain('href="/tasks/TASK-1/foundation"');
 		// The graph arrives with the task, so opening it costs no extra round trip at all.
 		expect(requests.filter((url) => url.includes("dependency-graph"))).toEqual([]);
 	});
 
 	it("shows no graph section for a plain task record", () => {
-		const { html } = renderModal(corpus[1] as Task);
-		expect(html).not.toContain("Dependency Graph");
+		const { html } = renderPage(corpus[1] as Task);
+		expect(html).not.toContain("Dependency graph");
 	});
 });

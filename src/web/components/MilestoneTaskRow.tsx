@@ -1,12 +1,12 @@
 import React from "react";
 import type { Task } from "../../types";
+import TaskLink from "./TaskLink";
 
 interface MilestoneTaskRowProps {
 	task: Task;
 	isDone: boolean;
 	statusBadgeClass: string;
 	priorityBadgeClass: string;
-	onEditTask: (task: Task) => void;
 	drag?: {
 		start: (event: React.DragEvent, task: Task) => void;
 		end: (event: React.DragEvent) => void;
@@ -29,15 +29,15 @@ const MilestoneTaskRow: React.FC<MilestoneTaskRowProps> = ({
 	isDone,
 	statusBadgeClass,
 	priorityBadgeClass,
-	onEditTask,
 	drag,
 }) => (
-	<button
-		type="button"
-		draggable={drag ? true : undefined}
+	// A link to the task. Where the milestone can change, the row is also what drags the task to another milestone, so
+	// it carries the task's ID instead of the link's address.
+	<TaskLink
+		task={task}
+		draggable={Boolean(drag)}
 		onDragStart={drag ? (event) => drag.start(event, task) : undefined}
 		onDragEnd={drag?.end}
-		onClick={() => onEditTask(task)}
 		className="group flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 md:grid md:grid-cols-[auto_auto_minmax(0,1fr)_auto_auto] md:gap-3"
 	>
 		<span className="flex w-6 justify-center opacity-40 transition-opacity empty:hidden group-hover:opacity-100 md:empty:flex">
@@ -61,7 +61,7 @@ const MilestoneTaskRow: React.FC<MilestoneTaskRowProps> = ({
 				<span className="hidden text-xs text-gray-300 dark:text-gray-600 md:inline">—</span>
 			)}
 		</span>
-	</button>
+	</TaskLink>
 );
 
 export default MilestoneTaskRow;

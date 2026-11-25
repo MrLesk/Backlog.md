@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
-import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
+import TaskDetails from "../web/components/TaskDetails";
 import { apiClient } from "../web/lib/api";
 import { TaskIdIndexProvider } from "../web/contexts/TaskIdIndexContext.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext";
@@ -61,21 +61,20 @@ const setupDom = () => {
 
 type SubmittedPayloads = Partial<Task>[];
 
-type ModalProps = {
+type RenderProps = {
 	task?: Task;
 	defaultAssignee?: string[];
 	onSubmit?: (taskData: Partial<Task>) => Promise<void>;
 };
 
-const renderInto = async ({ task, defaultAssignee, onSubmit }: ModalProps): Promise<void> => {
+const renderInto = async ({ task, defaultAssignee, onSubmit }: RenderProps): Promise<void> => {
 	await act(async () => {
 		activeRoot?.render(
 			<MemoryRouter initialEntries={["/"]}>
 				<ThemeProvider>
 					<TaskIdIndexProvider tasks={[existingTask]}>
-						<TaskDetailsModal
+						<TaskDetails
 							task={task}
-							isOpen={true}
 							onClose={() => {}}
 							onSubmit={onSubmit}
 							defaultAssignee={defaultAssignee}
@@ -88,7 +87,7 @@ const renderInto = async ({ task, defaultAssignee, onSubmit }: ModalProps): Prom
 	});
 };
 
-const renderModal = async (props: ModalProps): Promise<HTMLElement> => {
+const renderTaskDetails = async (props: RenderProps): Promise<HTMLElement> => {
 	setupDom();
 	const container = document.getElementById("root");
 	activeRoot = createRoot(container as HTMLElement);
@@ -102,7 +101,7 @@ const mountCreateModal = async (defaultAssignee?: string[]) => {
 	const onSubmit = async (taskData: Partial<Task>) => {
 		submitted.push(taskData);
 	};
-	const container = await renderModal({ defaultAssignee, onSubmit });
+	const container = await renderTaskDetails({ defaultAssignee, onSubmit });
 	/** Re-render as App does after a refresh, with a config array that is a new reference. */
 	const rerenderWithFreshConfig = (nextDefaultAssignee?: string[]) =>
 		renderInto({ defaultAssignee: nextDefaultAssignee ? [...nextDefaultAssignee] : undefined, onSubmit });
@@ -181,7 +180,7 @@ afterEach(() => {
 	activeDom = null;
 });
 
-describe("Task details modal assignee on create", () => {
+describe("Create dialog assignee", () => {
 	it("applies the configured default when the prefilled chips are left alone", async () => {
 		const { container, submitted } = await mountCreateModal(["@alice", "@bob"]);
 
@@ -276,7 +275,7 @@ describe("Task details modal assignee on create", () => {
 	});
 });
 
-describe("Task details modal assignee outside create", () => {
+describe("Task page assignee", () => {
 	it("leaves an existing task's empty assignee alone and still clears explicitly", async () => {
 		const updates: Partial<Task>[] = [];
 		const originalUpdateTask = apiClient.updateTask;
@@ -289,7 +288,7 @@ describe("Task details modal assignee outside create", () => {
 		}) as typeof apiClient.updateTask;
 
 		try {
-			const container = await renderModal({
+			const container = await renderTaskDetails({
 				task: { ...existingTask, assignee: ["@dave"] },
 				defaultAssignee: ["@alice"],
 			});

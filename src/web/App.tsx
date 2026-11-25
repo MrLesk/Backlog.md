@@ -8,7 +8,9 @@ import DraftsList from './components/DraftsList';
 import Settings from './components/Settings';
 import Statistics from './components/Statistics';
 import MilestonesPage from './components/MilestonesPage';
-import TaskDetailsModal from './components/TaskDetailsModal';
+import TaskDetails from './components/TaskDetails';
+import TaskPageLayout from './components/TaskPageLayout';
+import { useOpenTask } from './components/TaskLink';
 import InitializationScreen from './components/InitializationScreen';
 import LoadingSpinner from './components/LoadingSpinner';
 import { HealthIndicator } from './components/HealthIndicator';
@@ -39,22 +41,10 @@ import { getWebVersion } from './utils/version';
 import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from './utils/milestones';
 import { getProjectValues } from '../utils/project-config';
 import { getTaskTypeValues } from '../utils/task-type-config';
-import { createUrlPath } from './utils/urlHelpers';
-import { readRememberedTaskLayout, TASK_LAYOUT_PATHS, type TaskLayout, taskLayoutOfPath } from './lib/task-view';
+import { readRememberedTaskLayout, TASK_LAYOUT_PATHS, type TaskLayout } from './lib/task-view';
+import { readTaskRouteState, type TaskRouteState } from './lib/task-links';
 import { reconcileById } from './utils/reconcile';
 import { parseBrowserLoadingState } from '../utils/browser-loading-state';
-
-type TaskRouteNavigationState = {
-  taskModalFrom?: string;
-  taskRouteError?: string;
-};
-
-const getTaskRouteNavigationState = (value: unknown): TaskRouteNavigationState => {
-  if (!value || typeof value !== 'object') {
-    return {};
-  }
-  return value as TaskRouteNavigationState;
-};
 
 const buildMilestoneAliasMap = (milestones: Milestone[], archivedMilestones: Milestone[]): Map<string, string> => {
   const aliasMap = new Map<string, string>();
@@ -188,25 +178,23 @@ const canonicalizeMilestone = (value: string | null | undefined, aliasMap?: Map<
 };
 
 /**
- * What the task modal is showing, as one value.
+ * What the task view is showing, as one value: nothing, the dialog that creates a task or a draft, or the task page.
  *
- * A detail entry carries the session it was opened in, the record it is open on, and whatever has
- * been read for it. Every entry path - a clicked task, a routed task, a draft, a graph link -
- * starts a new session before any read begins, and a detail response may change the modal only
- * while its session and id are still the ones on screen. There is no ticket to take, nothing to
- * reconcile against the task list, and a response belonging to a modal the reader has left cannot
- * land on the one they are looking at.
+ * The task page shows the task its route names (/tasks/:id or /board/:id); every link to a task goes through that
+ * route. A page entry carries the session it was opened in, the task it is open on, and whatever has been read for
+ * it. Every route change to a task starts a new session before any read begins, and a detail response may change
+ * the page only while its session and id are still the ones on screen. There is no ticket to take, nothing to
+ * reconcile against the task list, and a response belonging to a task the reader has left cannot land on the one
+ * they are looking at.
  */
-type TaskModalState =
+type TaskViewState =
   | { kind: 'closed' }
   | { kind: 'create'; isDraft: boolean }
   | {
-      kind: 'detail';
+      kind: 'page';
       session: number;
       id: string;
-      isDraft: boolean;
-      /** Opened by the task route, so a failed first read reports back through it. */
-      fromRoute: boolean;
+      /** Null until the first read lands; the page shows its head meanwhile. */
       value: Task | TaskDetail | null;
     };
 
@@ -216,12 +204,11 @@ function AppContent() {
     || (sections.docs && '/documentation')
     || (sections.decisions && '/decisions')
     || '/milestones';
-  const [modal, setModal] = useState<TaskModalState>({ kind: 'closed' });
-  // Each entry into the modal takes the next session number, so a response can name the modal it
-  // was read for.
-  const modalSessionRef = useRef(0);
-  const modalRef = useRef<TaskModalState>(modal);
-  modalRef.current = modal;
+  const [taskView, setTaskView] = useState<TaskViewState>({ kind: 'closed' });
+  // Each task page the route opens takes the next session number, so a response can name the page it was read for.
+  const pageSessionRef = useRef(0);
+  const taskViewRef = useRef<TaskViewState>(taskView);
+  taskViewRef.current = taskView;
   // Advanced by every completed data refresh, whether or not the records visibly changed.
   const [dataVersion, setDataVersion] = useState(0);
   const detailReadGenerationRef = useRef(0);
@@ -229,31 +216,19 @@ function AppContent() {
   const acknowledgeTaskUpdate = useCallback((updated: Task) => {
     // A read started before this successful write cannot replace its acknowledged record.
     detailReadGenerationRef.current += 1;
-    setModal(current => current.kind === 'detail' && current.id === updated.id
+    setTaskView(current => current.kind === 'page' && current.id === updated.id
       ? { ...current, value: updated } : current);
     setDataVersion(version => version + 1);
   }, []);
 
-  const openDetailModal = useCallback(
-    (id: string, options: { isDraft?: boolean; fromRoute?: boolean; record?: Task | TaskDetail } = {}) => {
-      modalSessionRef.current += 1;
-      setModal({
-        kind: 'detail',
-        session: modalSessionRef.current,
-        id,
-        isDraft: options.isDraft ?? false,
-        fromRoute: options.fromRoute ?? false,
-        value: options.record ?? null,
-      });
-    },
-    [],
-  );
+  // Only the route effect below calls this: a task page opens by navigation (TaskLink, useOpenTask), and this state
+  // follows the route.
+  const openTaskPage = useCallback((id: string) => {
+    pageSessionRef.current += 1;
+    setTaskView({ kind: 'page', session: pageSessionRef.current, id, value: null });
+  }, []);
 
-  // What the rest of the app reads. A detail modal is on screen once it has a record to show: a
-  // routed task therefore appears when its first read lands, exactly as it did before.
-  const editingTask = modal.kind === 'detail' ? modal.value : null;
-  const showModal = modal.kind === 'create' || (modal.kind === 'detail' && modal.value !== null);
-  const isDraftMode = modal.kind === 'closed' ? false : modal.isDraft;
+  const isCreatingDraft = taskView.kind === 'create' && taskView.isDraft;
   const [statuses, setStatuses] = useState<string[]>([]);
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
   const [projectName, setProjectName] = useState<string>('');
@@ -314,8 +289,8 @@ function AppContent() {
     boardRouteWithTitle?.params.id ??
     boardRoute?.params.id;
   const routeBasePath = tasksRouteWithTitle || tasksRoute ? '/tasks' : boardRouteWithTitle || boardRoute ? '/board' : null;
-  const routeNavigationState = getTaskRouteNavigationState(location.state);
-  const taskRouteError = routeNavigationState.taskRouteError;
+  const routeState = readTaskRouteState(location.state);
+  const taskRouteError = routeState.taskRouteError;
 
   // Set version data attribute on body
   React.useEffect(() => {
@@ -515,101 +490,63 @@ function AppContent() {
   }, [showReconnectToast]);
 
   const handleNewTask = () => {
-    setModal({ kind: 'create', isDraft: false });
+    setTaskView({ kind: 'create', isDraft: false });
   };
 
   const handleNewDraft = () => {
     // Create a draft task (same as new task but with status 'Draft')
-    setModal({ kind: 'create', isDraft: true });
+    setTaskView({ kind: 'create', isDraft: true });
   };
 
-  const openTaskModal = useCallback(
-    (task: Task) => {
-      openDetailModal(task.id, { record: task });
-    },
-    [openDetailModal],
-  );
-
-  const openDraftModal = useCallback(
-    (draft: Task) => {
-      openDetailModal(draft.id, { record: draft, isDraft: true });
-    },
-    [openDetailModal],
-  );
-
-  const clearTaskModal = useCallback(() => {
-    setModal({ kind: 'closed' });
+  // Clears the task view without touching the URL: closes the create dialog, and follows a route that no longer
+  // names a task. Closing an open task page is closeTaskPage, which changes the route.
+  const clearTaskView = useCallback(() => {
+    setTaskView({ kind: 'closed' });
   }, []);
 
-  const handleOpenTask = useCallback((task: Task) => {
-    const layout = taskLayoutOfPath(location.pathname);
-    const basePath = layout ? TASK_LAYOUT_PATHS[layout] : null;
+  // Opens a task where its link goes, for the Tasks page's shortcuts that are not links: a click elsewhere on a List row
+  // or a Board card, and the legacy highlight link.
+  const handleOpenTask = useOpenTask();
 
-    if (!basePath) {
-      // Pages without a task route (milestones, statistics) open the modal directly, so they must
-      // read the detail themselves. Otherwise they would show the compact list record, silently
-      // without its dependency graph, while the board and the task list show the full detail.
-      // Opened with the list record; the detail reader below upgrades it in place.
-      openTaskModal(task);
-      return;
-    }
-
-    const returnPath = `${basePath}${location.search}`;
-    const isReplacingTaskRoute = routeBasePath === basePath && Boolean(routeTaskId);
-    const taskModalFrom = isReplacingTaskRoute ? routeNavigationState.taskModalFrom : returnPath;
-    navigate(`${createUrlPath(basePath, task.id, task.title)}${location.search}`, {
-      replace: isReplacingTaskRoute,
-      state: taskModalFrom ? ({ taskModalFrom } satisfies TaskRouteNavigationState) : undefined,
-    });
-  }, [
-    location.pathname,
-    location.search,
-    navigate,
-    openTaskModal,
-    routeBasePath,
-    routeNavigationState.taskModalFrom,
-    routeTaskId,
-  ]);
-
-  const handleCloseModal = () => {
-    clearTaskModal();
-    if (routeBasePath && routeTaskId) {
-      if (routeNavigationState.taskModalFrom) {
-        navigate(-1);
-      } else {
-        navigate(`${routeBasePath}${location.search}`, { replace: true });
-      }
+  // Back to where the task was opened from when it was opened in this tab; a task opened from a link outside the app
+  // closes to the Tasks page beneath it.
+  const closeTaskPage = () => {
+    clearTaskView();
+    if (routeState.openedInApp) {
+      navigate(-1);
+    } else if (routeBasePath) {
+      navigate(`${routeBasePath}${location.search}`, { replace: true });
     }
   };
 
   // The task route says which task is open; the reader below is what reads it. Opening the session
   // here rather than after a response is what stops an older task's read from answering for this
-  // one: from this moment the modal names a different session.
+  // one: from this moment the page names a different session.
   useEffect(() => {
-    const current = modalRef.current;
+    const current = taskViewRef.current;
     if (!sections.tasks || !routeTaskId || !routeBasePath || isInitialized !== true) {
-      if (!routeTaskId && current.kind === 'detail' && current.fromRoute) {
-        clearTaskModal();
+      if (!routeTaskId && current.kind === 'page') {
+        clearTaskView();
       }
       return;
     }
 
     if (!isValidTaskId(routeTaskId)) {
-      clearTaskModal();
+      clearTaskView();
       navigate(`${routeBasePath}${location.search}`, {
         replace: true,
-        state: { taskRouteError: `"${routeTaskId}" is not a valid task ID.` } satisfies TaskRouteNavigationState,
+        state: { taskRouteError: `"${routeTaskId}" is not a valid task ID.` } satisfies TaskRouteState,
       });
       return;
     }
 
     // Re-running for an unrelated reason (a filter in the query string, say) must not restart the
     // task the route already opened.
-    if (current.kind === 'detail' && current.fromRoute && current.id === routeTaskId) {
+    if (current.kind === 'page' && current.id === routeTaskId) {
       return;
     }
-    openDetailModal(routeTaskId, { fromRoute: true });
-  }, [clearTaskModal, isInitialized, location.search, navigate, openDetailModal, routeBasePath, routeTaskId, sections.tasks]);
+    openTaskPage(routeTaskId);
+  }, [clearTaskView, isInitialized, location.search, navigate, openTaskPage, routeBasePath, routeTaskId, sections.tasks]);
 
   useEffect(() => {
     if (taskRouteError) {
@@ -728,14 +665,14 @@ function AppContent() {
 	}, []);
 
   /**
-   * A detail read that could not be shown. A session that has nothing on screen yet cannot stay
-   * open, and one opened from a link says why on the way back. A later read failing leaves what is
-   * already on screen alone: the last successful read is better than an empty modal.
+   * A detail read that could not be shown. A page that has nothing on screen yet cannot stay open,
+   * and it says why on the way back to the Tasks page. A later read failing leaves what is already
+   * on screen alone: the last successful read is better than an empty page.
    */
   const reportDetailReadFailure = useCallback(
-    (taskId: string, error: unknown, fromRoute: boolean) => {
-      clearTaskModal();
-      if (!fromRoute || !routeBasePath) return;
+    (taskId: string, error: unknown) => {
+      clearTaskView();
+      if (!routeBasePath) return;
       const message =
         error instanceof ApiError && error.status === 409
           ? `Task "${taskId}" is ambiguous. Repair duplicate task IDs before opening this link.`
@@ -746,10 +683,10 @@ function AppContent() {
               : `Task "${taskId}" could not be opened. Try again.`;
       navigate(`${routeBasePath}${location.search}`, {
         replace: true,
-        state: { taskRouteError: message } satisfies TaskRouteNavigationState,
+        state: { taskRouteError: message } satisfies TaskRouteState,
       });
     },
-    [clearTaskModal, location.search, navigate, routeBasePath],
+    [clearTaskView, location.search, navigate, routeBasePath],
   );
   const reportDetailReadFailureRef = useRef(reportDetailReadFailure);
   useEffect(() => {
@@ -757,20 +694,19 @@ function AppContent() {
   }, [reportDetailReadFailure]);
 
   /**
-   * The one rule for detail reads: the modal shows the read for (session, task id, refresh
-   * generation), and a response may change it only while that key is still what the modal is
-   * waiting for. Each entry path opens a session before any read starts, every refresh generation
+   * The one rule for detail reads: the page shows the read for (session, task id, refresh
+   * generation), and a response may change it only while that key is still what the page is
+   * waiting for. Each route change opens a session before any read starts, every refresh generation
    * reads once, and React's cleanup retires the read a newer key replaced.
    *
-   * Navigating to another task, closing the modal, a refresh arriving, a task opened from a page
-   * without a task route, and a draft opened from its own list are the same event under that rule,
-   * so none of them can answer for another. Nothing here consults the task list, which is why a
-   * draft - never part of that corpus - refreshes like everything else, and why a dependency
-   * completing somewhere the browser cannot see still reaches the modal: the refresh generation
+   * Navigating to another task, closing the page and a refresh arriving are the same event under
+   * that rule, so none of them can answer for another. Nothing here consults the task list, which is
+   * why a draft - never part of that corpus - refreshes like everything else, and why a dependency
+   * completing somewhere the browser cannot see still reaches the page: the refresh generation
    * advances, and the detail read is authoritative about what changed.
    */
-  const detailSession = modal.kind === 'detail' ? modal.session : null;
-  const detailId = modal.kind === 'detail' ? modal.id : null;
+  const detailSession = taskView.kind === 'page' ? taskView.session : null;
+  const detailId = taskView.kind === 'page' ? taskView.id : null;
   useEffect(() => {
     if (detailSession === null || detailId === null) return;
     const generation = ++detailReadGenerationRef.current;
@@ -779,18 +715,18 @@ function AppContent() {
       .fetchTask(detailId)
       .then(detail => {
         if (!active || generation !== detailReadGenerationRef.current) return;
-        setModal(current =>
-          generation === detailReadGenerationRef.current && current.kind === 'detail' && current.session === detailSession && current.id === detailId
+        setTaskView(current =>
+          generation === detailReadGenerationRef.current && current.kind === 'page' && current.session === detailSession && current.id === detailId
             ? { ...current, value: detail }
             : current,
         );
       })
       .catch(error => {
         if (!active || generation !== detailReadGenerationRef.current) return;
-        const current = modalRef.current;
-        if (current.kind !== 'detail' || current.session !== detailSession || current.id !== detailId) return;
+        const current = taskViewRef.current;
+        if (current.kind !== 'page' || current.session !== detailSession || current.id !== detailId) return;
         if (current.value !== null) return;
-        reportDetailReadFailureRef.current(detailId, error, current.fromRoute);
+        reportDetailReadFailureRef.current(detailId, error);
       });
 
     return () => {
@@ -840,18 +776,18 @@ function AppContent() {
   });
 
   const handleCreateTask = async (taskData: Partial<Task>) => {
-    const finalTaskData = isDraftMode ? { ...taskData, status: 'Draft' } : taskData;
+    const finalTaskData = isCreatingDraft ? { ...taskData, status: 'Draft' } : taskData;
     const createdTask = await apiClient.createTask(finalTaskData as Omit<Task, "id" | "createdDate">);
-    setTaskConfirmation({ task: createdTask, isDraft: isDraftMode });
+    setTaskConfirmation({ task: createdTask, isDraft: isCreatingDraft });
     setTimeout(() => setTaskConfirmation(null), 4000);
-    handleCloseModal();
+    clearTaskView();
     await refreshData();
   };
 
   // Archiving and demoting vacate the task ID, so any dependent that referenced it was changed
   // too. Report that the same way a created task is confirmed instead of changing files silently.
   // The ID list arrives over the wire, so a response that omits it reports nothing rather than
-  // throwing in the middle of the flow that was about to close the dialog.
+  // throwing in the middle of the flow that was about to close the task page.
   const reportDependencyCleanup = (taskId: string, cleanedTaskIds: string[] | undefined) => {
     const message = formatDependencyCleanupMessage(taskId, cleanedTaskIds ?? []);
     if (!message) return;
@@ -868,14 +804,14 @@ function AppContent() {
   const handleArchiveTask = async (taskId: string) => {
     try {
       await apiClient.archiveTask(taskId);
-      handleCloseModal();
+      closeTaskPage();
       await refreshData();
     } catch (error) {
       console.error('Failed to archive task:', error);
       // The task reached the archive and the commit after it failed. Close and refresh so the view
-      // shows what happened, and say so: a dialog left open on an archived task invites a retry.
+      // shows what happened, and say so: a page left open on an archived task invites a retry.
       if (readMovedFailureState(error, 'archiveState')) {
-        handleCloseModal();
+        closeTaskPage();
         try {
           window.alert('The task was archived, but committing the change failed. Check the repository before retrying.');
         } catch {
@@ -884,7 +820,7 @@ function AppContent() {
         await refreshData();
         return;
       }
-      // Any other failure is core's answer about the task the dialog still shows; the dialog reports it.
+      // Any other failure is core's answer about the task the page still shows; the page reports it.
       throw error;
     }
   };
@@ -944,7 +880,7 @@ function AppContent() {
           <Navigate
             to={{ pathname: '/board', search: location.search }}
             replace
-            state={{ taskRouteError: 'That task link is not valid.' } satisfies TaskRouteNavigationState}
+            state={{ taskRouteError: 'That task link is not valid.' } satisfies TaskRouteState}
           />
         }
       />
@@ -957,11 +893,11 @@ function AppContent() {
           <Navigate
             to={{ pathname: '/tasks', search: location.search }}
             replace
-            state={{ taskRouteError: 'That task link is not valid.' } satisfies TaskRouteNavigationState}
+            state={{ taskRouteError: 'That task link is not valid.' } satisfies TaskRouteState}
           />
         }
       />
-      <Route path="statistics" element={<Statistics statuses={statuses} tasks={tasks} isLoading={isLoading} onEditTask={handleOpenTask} projectName={projectName} dateFormat={config?.dateFormat} />} />
+      <Route path="statistics" element={<Statistics statuses={statuses} tasks={tasks} isLoading={isLoading} projectName={projectName} dateFormat={config?.dateFormat} />} />
     </>
   );
 
@@ -976,7 +912,6 @@ function AppContent() {
               statuses={statuses}
               milestoneEntities={milestoneEntities}
               archivedMilestones={archivedMilestones}
-              onEditTask={handleOpenTask}
               onRefreshData={refreshMilestoneData}
               dateFormat={config?.dateFormat}
             />
@@ -998,6 +933,42 @@ function AppContent() {
     </>
   );
 
+  // What the task page and the create dialog take from the data App holds.
+  const taskDetailsProps = {
+    onSaved: refreshData,
+    onTaskUpdated: acknowledgeTaskUpdate,
+    onDependencyCleanup: reportDependencyCleanup,
+    availableLabels,
+    availableTasks: tasks,
+    availablePriorities: config?.priorities,
+    availableTypes,
+    availableProjects,
+    milestoneEntities,
+    archivedMilestoneEntities: archivedMilestones,
+    definitionOfDoneDefaults: config?.definitionOfDone ?? [],
+    defaultAssignee: config?.defaultAssignee,
+    dateFormat: config?.dateFormat,
+  };
+
+  // The task the route names, which Layout shows over the Tasks page. Until its first read lands only the page's head
+  // is drawn, so moving from one task to another never shows the list in between.
+  const openTask = taskView.kind === 'page' ? taskView.value : null;
+  const taskPage = sections.tasks && taskView.kind === 'page'
+    ? openTask
+      ? (
+        <TaskDetails
+          // One TaskDetails per task: another task gets a fresh one, so no form state carries over between tasks.
+          key={openTask.id}
+          task={openTask}
+          onClose={closeTaskPage}
+          onArchive={canWrite ? () => handleArchiveTask(openTask.id) : undefined}
+          availableStatuses={statuses}
+          {...taskDetailsProps}
+        />
+      )
+      : <TaskPageLayout taskId={taskView.id} onClose={closeTaskPage} />
+    : undefined;
+
   return (
     <ThemeProvider>
       <TaskIdIndexProvider tasks={tasks}>
@@ -1016,6 +987,7 @@ function AppContent() {
                 error={loadError}
                 onRefreshData={refreshData}
                 duplicateRepairPlan={duplicateRepairPlan}
+                taskPage={taskPage}
               />
             }
           >
@@ -1025,7 +997,7 @@ function AppContent() {
             />
             {taskRoutes}
             {canWrite && (
-              <Route path="drafts" element={<DraftsList onEditTask={openDraftModal} onNewDraft={handleNewDraft} dateFormat={config?.dateFormat} />} />
+              <Route path="drafts" element={<DraftsList onNewDraft={handleNewDraft} dateFormat={config?.dateFormat} />} />
             )}
             {projectRecordRoutes}
             <Route path="settings" element={<Settings />} />
@@ -1051,29 +1023,13 @@ function AppContent() {
         </div>
       )}
 
-      {sections.tasks && (
-        <TaskDetailsModal
-          task={editingTask || undefined}
-          isOpen={showModal}
-          onClose={handleCloseModal}
-          onSaved={refreshData}
-          onTaskUpdated={acknowledgeTaskUpdate}
-          onSubmit={canWrite ? handleCreateTask : undefined}
-          onArchive={canWrite && editingTask ? () => handleArchiveTask(editingTask.id) : undefined}
-          onDependencyCleanup={reportDependencyCleanup}
-          availableStatuses={isDraftMode ? ['Draft', ...statuses] : statuses}
-          availableLabels={availableLabels}
-          availableTasks={tasks}
-          onNavigateToTask={handleOpenTask}
-          availablePriorities={config?.priorities}
-          availableTypes={availableTypes}
-          availableProjects={availableProjects}
-          milestoneEntities={milestoneEntities}
-          archivedMilestoneEntities={archivedMilestones}
-          isDraftMode={isDraftMode}
-          definitionOfDoneDefaults={config?.definitionOfDone ?? []}
-          defaultAssignee={config?.defaultAssignee}
-          dateFormat={config?.dateFormat}
+      {canWrite && taskView.kind === 'create' && (
+        <TaskDetails
+          onClose={clearTaskView}
+          onSubmit={handleCreateTask}
+          isDraftMode={taskView.isDraft}
+          availableStatuses={taskView.isDraft ? ['Draft', ...statuses] : statuses}
+          {...taskDetailsProps}
         />
       )}
 

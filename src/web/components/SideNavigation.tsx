@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef, memo, type ComponentType, type ReactNode } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { Tooltip } from 'react-tooltip';
 import {
 	type Decision,
@@ -12,7 +12,8 @@ import {
 } from '../../types';
 import { useBrowserAccess } from '../contexts/BrowserAccessContext';
 import ErrorBoundary from './ErrorBoundary';
-import { createRecordUrlPath, createUrlPath } from '../utils/urlHelpers';
+import { createRecordUrlPath } from '../utils/urlHelpers';
+import TaskLink from './TaskLink';
 import { getWebVersion } from '../utils/version';
 import { apiClient } from '../lib/api';
 import { parseSearchCommandQuery } from '../utils/search-command-query';
@@ -335,12 +336,6 @@ const SideNavigation = memo(function SideNavigation({
 	const [isDecisionsCollapsed, setIsDecisionsCollapsed] = useSectionCollapse('decisionsCollapsed', decisions.length, Boolean(onCloseDrawer));
 	const [version, setVersion] = useState<string>('');
 	const location = useLocation();
-	const navigate = useNavigate();
-
-	// Create handlers - just navigate to new pages
-	const handleCreateDocument = useCallback(() => {
-		navigate('/documentation/new');
-	}, [navigate]);
 
 	useEffect(() => {
 		localStorage.setItem('sideNavCollapsed', JSON.stringify(desktopCollapsed));
@@ -560,30 +555,10 @@ const SideNavigation = memo(function SideNavigation({
 								: result.type === 'document'
 									? (result as DocumentSearchResult).document
 									: (result as DecisionSearchResult).decision;
-							const getResultLink = () => {
-								if (result.type === 'document') {
-									return createRecordUrlPath('/documentation', item);
-								}
-								if (result.type === 'decision') {
-									return createRecordUrlPath('/decisions', item);
-								}
-								const taskPath = createUrlPath(tasksPath, item.id, item.title);
-								return taskLayoutOfPath(location.pathname) ? `${taskPath}${location.search}` : taskPath;
-							};
-
 							const ResultIcon = SEARCH_RESULT_ICONS[result.type];
-
-							return (
-								<NavLink
-									key={`${result.type}-${item.id}-${index}`}
-									to={getResultLink()}
-									state={
-										result.type === 'task'
-											? { taskModalFrom: `${location.pathname}${location.search}` }
-											: undefined
-									}
-									className="flex items-center space-x-3 px-3 py-2 text-sm rounded-control transition-colors duration-200 hover:bg-hover text-ink focus-ring"
-								>
+							const className = "flex items-center space-x-3 px-3 py-2 text-sm rounded-control transition-colors duration-200 hover:bg-hover text-ink focus-ring";
+							const content = (
+								<>
 									<span className="text-ink-3"><ResultIcon /></span>
 									<div className="flex-1 min-w-0">
 										<div className="font-medium truncate">
@@ -598,6 +573,22 @@ const SideNavigation = memo(function SideNavigation({
 											{`${Math.round((1 - result.score) * 100)}%`}
 										</div>
 									)}
+								</>
+							);
+							const key = `${result.type}-${item.id}-${index}`;
+							// A task result is a task link like any other (taskLinkTarget): it opens the task over the Tasks page, or in
+							// place of the task that is open.
+							return result.type === 'task' ? (
+								<TaskLink key={key} task={item} className={className}>
+									{content}
+								</TaskLink>
+							) : (
+								<NavLink
+									key={key}
+									to={createRecordUrlPath(result.type === 'document' ? '/documentation' : '/decisions', item)}
+									className={className}
+								>
+									{content}
 								</NavLink>
 							);
 						})}
@@ -703,16 +694,18 @@ const SideNavigation = memo(function SideNavigation({
 									</button>
 								</div>
 									{canWrite && (
-										<button
-											onClick={handleCreateDocument}
+										// A link, so a task with unsaved edits asks before this leaves it, as it does for every link.
+										<Link
+											to="/documentation/new"
 											className="rounded-control p-1 text-ink-3 hover:bg-hover hover:text-ink transition-colors duration-200 focus-ring"
 											title="Create new document"
+											aria-label="Create new document"
 										>
 											<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
 											<circle cx="12" cy="12" r="10" />
 										</svg>
-									</button>
+									</Link>
 									)}
 							</div>
 							

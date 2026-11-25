@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
-import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
+import TaskDetails from "../web/components/TaskDetails";
 import { TaskIdIndexProvider } from "../web/contexts/TaskIdIndexContext.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext";
 import { setNativeInputValue } from "./react-dom-input.ts";
@@ -69,7 +69,7 @@ const setupDom = () => {
 	htmlElementPrototype.detachEvent = () => {};
 };
 
-const renderModal = async (availableTasks: Task[]): Promise<HTMLElement> => {
+const renderCreateDialog = async (availableTasks: Task[]): Promise<HTMLElement> => {
 	setupDom();
 	const container = document.getElementById("root") as HTMLElement;
 	activeRoot = createRoot(container);
@@ -78,8 +78,7 @@ const renderModal = async (availableTasks: Task[]): Promise<HTMLElement> => {
 			<MemoryRouter initialEntries={["/"]}>
 				<ThemeProvider>
 					<TaskIdIndexProvider tasks={availableTasks}>
-						<TaskDetailsModal
-							isOpen={true}
+						<TaskDetails
 							onClose={() => {}}
 							onSubmit={async () => {}}
 							availableTasks={availableTasks}
@@ -111,7 +110,7 @@ const typeIntoDependencyInput = async (container: HTMLElement, value: string) =>
 
 const suggestionIds = (container: HTMLElement): string[] => {
 	const textarea = container.querySelector("#dependency-input") as HTMLTextAreaElement | null;
-	const wrapper = textarea?.closest(".relative.w-full");
+	const wrapper = textarea?.closest(".relative");
 	const buttons = wrapper?.querySelectorAll('div[class*="absolute"] button') ?? [];
 	return Array.from(buttons).map((button) => button.querySelector(".font-medium")?.textContent ?? "");
 };
@@ -127,9 +126,9 @@ afterEach(() => {
 	activeDom = null;
 });
 
-describe("Task details modal dependency picker", () => {
+describe("Task details dependency picker", () => {
 	it("only suggests tasks the local working copy can validate as dependencies", async () => {
-		const container = await renderModal([crossBranchTask, localTask]);
+		const container = await renderCreateDialog([crossBranchTask, localTask]);
 		await flushReact();
 
 		await typeIntoDependencyInput(container, "task");
@@ -143,7 +142,7 @@ describe("Task details modal dependency picker", () => {
 			id: "BACK-010",
 			title: "Local task (padded duplicate)",
 		};
-		const container = await renderModal([crossBranchTask, localTask, paddedDuplicate]);
+		const container = await renderCreateDialog([crossBranchTask, localTask, paddedDuplicate]);
 		await flushReact();
 
 		await typeIntoDependencyInput(container, "task");

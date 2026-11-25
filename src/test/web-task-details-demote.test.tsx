@@ -2,8 +2,9 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
-import { TaskDetailsModal } from "../web/components/TaskDetailsModal.tsx";
+import TaskDetails from "../web/components/TaskDetails.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext.tsx";
 import { ApiError, apiClient } from "../web/lib/api.ts";
 
@@ -54,33 +55,46 @@ function setupDom(): HTMLElement {
 	return container;
 }
 
-async function renderModal(
-	task: Task,
+// Renders the task page for `task`, or nothing for null: the page closed.
+async function renderPage(
+	task: Task | null,
 	props: {
 		isDraftMode?: boolean;
-		isOpen?: boolean;
 		onClose?: () => void;
 		onSaved?: () => Promise<void> | void;
 	} = {},
 ): Promise<void> {
 	await act(async () => {
 		root?.render(
-			<ThemeProvider>
-				<TaskDetailsModal
-					task={task}
-					isOpen={props.isOpen ?? true}
-					isDraftMode={props.isDraftMode}
-					onClose={props.onClose ?? (() => {})}
-					onSaved={props.onSaved}
-				/>
-			</ThemeProvider>,
+			<MemoryRouter initialEntries={[task ? `/tasks/${task.id}` : "/tasks"]}>
+				<ThemeProvider>
+					{task && (
+						<TaskDetails
+							task={task}
+							isDraftMode={props.isDraftMode}
+							onClose={props.onClose ?? (() => {})}
+							onSaved={props.onSaved}
+							onArchive={() => {}}
+						/>
+					)}
+				</ThemeProvider>
+			</MemoryRouter>,
 		);
 		await Promise.resolve();
 	});
 }
 
-function findDemoteButton(container: HTMLElement): HTMLButtonElement | undefined {
-	return Array.from(container.querySelectorAll("button")).find((button) => button.title === "Move task to drafts");
+const moreActionsButton = (container: HTMLElement) =>
+	container.querySelector<HTMLButtonElement>("button[aria-label='More actions']");
+
+// The Demote to draft action of the More actions menu, which this opens; undefined when the task does not offer it.
+async function findDemoteAction(container: HTMLElement): Promise<HTMLButtonElement | undefined> {
+	const menuButton = moreActionsButton(container);
+	if (!menuButton) return undefined;
+	if (menuButton.getAttribute("aria-expanded") !== "true") await click(menuButton);
+	return Array.from(container.querySelectorAll<HTMLButtonElement>("[role='menuitem']")).find(
+		(item) => item.textContent === "Demote to draft",
+	);
 }
 
 async function click(element: Element): Promise<void> {
@@ -109,12 +123,12 @@ afterEach(() => {
 	dom = null;
 });
 
-describe("Web task demotion", () => {
+describe("Web task demotion from the task page", () => {
 	it("shows the action for a local active task", async () => {
 		const container = setupDom();
-		await renderModal(localTask);
+		await renderPage(localTask);
 
-		expect(findDemoteButton(container)).toBeTruthy();
+		expect(await findDemoteAction(container)).toBeTruthy();
 	});
 
 	it("hides the action when demotion is not applicable", async () => {
@@ -126,16 +140,16 @@ describe("Web task demotion", () => {
 		];
 
 		for (const candidate of inapplicable) {
-			await renderModal(candidate.task, { isDraftMode: candidate.isDraftMode });
-			expect(findDemoteButton(container), candidate.task.id).toBeUndefined();
+			await renderPage(candidate.task, { isDraftMode: candidate.isDraftMode });
+			expect(await findDemoteAction(container), candidate.task.id).toBeUndefined();
 		}
 	});
 
 	it("shows the action for an active task whose configured prefix is DRAFT", async () => {
 		const container = setupDom();
-		await renderModal({ ...localTask, id: "DRAFT-419" });
+		await renderPage({ ...localTask, id: "DRAFT-419" });
 
-		expect(findDemoteButton(container)).toBeTruthy();
+		expect(await findDemoteAction(container)).toBeTruthy();
 	});
 
 	it("requires confirmation before calling the API", async () => {
@@ -149,8 +163,8 @@ describe("Web task demotion", () => {
 		window.confirm = () => false;
 
 		try {
-			await renderModal(localTask);
-			await click(findDemoteButton(container) as HTMLButtonElement);
+			await renderPage(localTask);
+			await click((await findDemoteAction(container)) as HTMLButtonElement);
 			expect(apiCalls).toBe(0);
 		} finally {
 			apiClient.demoteTask = originalDemoteTask;
@@ -169,13 +183,13 @@ describe("Web task demotion", () => {
 		window.addEventListener("drafts-updated", () => events.push("drafts"), { once: true });
 
 		try {
-			await renderModal(localTask, {
+			await renderPage(localTask, {
 				onSaved: async () => {
 					events.push("saved");
 				},
 				onClose: () => events.push("closed"),
 			});
-			await click(findDemoteButton(container) as HTMLButtonElement);
+			await click((await findDemoteAction(container)) as HTMLButtonElement);
 			await waitFor(() => events.includes("closed"));
 
 			expect(events).toEqual(["api:BACK-419", "drafts", "saved", "closed"]);
@@ -184,7 +198,7 @@ describe("Web task demotion", () => {
 		}
 	});
 
-	it("keeps the modal open and reports an API failure", async () => {
+	it("keeps the page open and reports an API failure", async () => {
 		const container = setupDom();
 		let closeCalls = 0;
 		const originalDemoteTask = apiClient.demoteTask.bind(apiClient);
@@ -194,12 +208,12 @@ describe("Web task demotion", () => {
 		window.confirm = () => true;
 
 		try {
-			await renderModal(localTask, { onClose: () => closeCalls++ });
-			await click(findDemoteButton(container) as HTMLButtonElement);
+			await renderPage(localTask, { onClose: () => closeCalls++ });
+			await click((await findDemoteAction(container)) as HTMLButtonElement);
 			await waitFor(() => container.textContent?.includes("Demotion failed") ?? false);
 
 			expect(closeCalls).toBe(0);
-			expect(findDemoteButton(container)?.disabled).toBe(false);
+			expect(moreActionsButton(container)?.disabled).toBe(false);
 			expect(container.querySelector("[role='alert']")?.textContent).toContain("Demotion failed");
 		} finally {
 			apiClient.demoteTask = originalDemoteTask;
@@ -223,8 +237,8 @@ describe("Web task demotion", () => {
 		};
 
 		try {
-			await renderModal(localTask, { onClose: () => closeCalls++ });
-			await click(findDemoteButton(container) as HTMLButtonElement);
+			await renderPage(localTask, { onClose: () => closeCalls++ });
+			await click((await findDemoteAction(container)) as HTMLButtonElement);
 			await waitFor(() => closeCalls === 1);
 
 			expect(alertMessage).toContain("dependent tasks may still reference it");
@@ -234,7 +248,7 @@ describe("Web task demotion", () => {
 		}
 	});
 
-	it("ignores a deferred demotion after the modal closes and reopens for another task", async () => {
+	it("ignores a deferred demotion after the page closes and opens for another task", async () => {
 		const container = setupDom();
 		let resolveRequest: (() => void) | undefined;
 		let markStarted: (() => void) | undefined;
@@ -264,19 +278,19 @@ describe("Web task demotion", () => {
 		};
 
 		try {
-			await renderModal(localTask, callbacks);
-			await click(findDemoteButton(container) as HTMLButtonElement);
+			await renderPage(localTask, callbacks);
+			await click((await findDemoteAction(container)) as HTMLButtonElement);
 			await requestStarted;
 
-			expect(findDemoteButton(container)?.disabled).toBe(true);
-			expect((container.querySelector("button[aria-label='Close modal']") as HTMLButtonElement | null)?.disabled).toBe(
+			expect(moreActionsButton(container)?.disabled).toBe(true);
+			expect((container.querySelector("button[aria-label='Close task']") as HTMLButtonElement | null)?.disabled).toBe(
 				true,
 			);
 
-			await renderModal(localTask, { ...callbacks, isOpen: false });
+			await renderPage(null, callbacks);
 			const replacement = { ...localTask, id: "DRAFT-420", title: "Replacement task" };
-			await renderModal(replacement, callbacks);
-			expect(findDemoteButton(container)?.disabled).toBe(false);
+			await renderPage(replacement, callbacks);
+			expect(moreActionsButton(container)?.disabled).toBe(false);
 
 			resolveRequest?.();
 			await act(async () => {
@@ -287,7 +301,7 @@ describe("Web task demotion", () => {
 			expect(closeCalls).toBe(0);
 			expect(saveCalls).toBe(0);
 			expect(draftEvents).toBe(0);
-			expect(container.textContent).toContain("DRAFT-420 — Replacement task");
+			expect(container.querySelector("article")?.getAttribute("aria-label")).toBe("DRAFT-420: Replacement task");
 		} finally {
 			resolveRequest?.();
 			window.removeEventListener("drafts-updated", onDraftsUpdated);

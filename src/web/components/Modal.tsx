@@ -122,15 +122,15 @@ const Modal: React.FC<ModalProps> = ({
 		>
 			<div
 				ref={dialogRef}
-				className={`bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 shadow-2xl ${maxWidthClass} w-full max-h-[96dvh] overflow-y-auto overscroll-contain sm:max-h-[94vh] transition-colors duration-200`}
+				className={`bg-surface text-ink rounded-panel border border-line shadow-2xl ${maxWidthClass} w-full max-h-[96dvh] overflow-y-auto overscroll-contain outline-none sm:max-h-[94vh] transition-colors duration-200`}
 				onClick={(event) => event.stopPropagation()}
 				role="dialog"
 				tabIndex={-1}
 				aria-modal="true"
 				aria-labelledby="modal-title"
 			>
-				<div className="sticky top-0 z-10 flex flex-wrap items-start gap-2 px-4 py-3 sm:gap-3 sm:px-6 sm:pt-4 border-b border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-800/95 backdrop-blur supports-[backdrop-filter]:bg-white/75 supports-[backdrop-filter]:dark:bg-gray-800/75">
-					<h2 id="modal-title" className={`min-w-0 flex-1 wrap-anywhere text-base font-semibold text-gray-900 dark:text-gray-100 ${actions ? "basis-full sm:basis-auto" : ""}`}>
+				<div className="sticky top-0 z-10 flex flex-wrap items-start gap-2 px-4 py-3 sm:gap-3 sm:px-6 sm:pt-4 border-b border-line-soft bg-surface">
+					<h2 id="modal-title" className={`min-w-0 flex-1 wrap-anywhere text-base font-semibold text-ink ${actions ? "basis-full sm:basis-auto" : ""}`}>
 						{title}
 					</h2>
 					<div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
@@ -139,7 +139,7 @@ const Modal: React.FC<ModalProps> = ({
 							type="button"
 							onClick={onClose}
 							disabled={disableEscapeClose}
-							className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded p-1 transition-colors duration-200 text-2xl leading-none size-11 sm:size-8 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+							className="text-ink-2 hover:text-ink hover:bg-hover rounded-control p-1 transition-colors duration-200 text-2xl leading-none size-11 sm:size-8 flex items-center justify-center focus-ring disabled:cursor-not-allowed disabled:opacity-50"
 							aria-label="Close modal"
 						>
 							×

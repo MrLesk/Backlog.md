@@ -328,6 +328,40 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         --color-prettylights-syntax-markup-list: #fbbf24 !important;
         --color-prettylights-syntax-markup-code-bg: #334155 !important;
     }
+
+    /* A task's Markdown, on the task page and in the dialog that creates a task, takes the shared colors in both
+       themes instead of the library's: no canvas of its own, ink text and teal links. Documents and decisions keep the
+       colors above until their own slices. The [data-color-mode] in the selectors outranks the dark theme rule above,
+       which matches on the same attribute. */
+    .task-markdown[data-color-mode] .wmde-markdown,
+    .task-markdown .w-md-editor[data-color-mode],
+    .task-markdown .w-md-editor[data-color-mode] .wmde-markdown {
+        --color-canvas-default: var(--color-surface) !important;
+        --color-canvas-subtle: var(--color-surface-2) !important;
+        --color-fg-default: var(--color-ink) !important;
+        --color-fg-muted: var(--color-ink-2) !important;
+        --color-fg-subtle: var(--color-ink-3) !important;
+        --color-border-default: var(--color-line) !important;
+        --color-border-muted: var(--color-line-soft) !important;
+        --color-neutral-muted: var(--color-surface-2) !important;
+        --color-accent-fg: var(--color-accent-text) !important;
+        --color-accent-emphasis: var(--color-accent-strong) !important;
+    }
+
+    /* The reading column's type: 14px text, as the sections around it, and headings that stay below the task's title.
+       !important, as above: the library's stylesheet is not in a layer, so it outranks these rules otherwise. */
+    .task-markdown[data-color-mode] .wmde-markdown {
+        font-size: 14px !important;
+        line-height: 1.6 !important;
+    }
+
+    .task-markdown[data-color-mode] .wmde-markdown :is(h1, h2) {
+        font-size: 1.25em !important;
+    }
+
+    .task-markdown[data-color-mode] .wmde-markdown :is(h3, h4, h5, h6) {
+        font-size: 1.05em !important;
+    }
 }
 
 @layer components {

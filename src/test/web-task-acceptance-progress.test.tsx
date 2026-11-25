@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import TaskCard from "../web/components/TaskCard.tsx";
 import TaskList from "../web/components/TaskList.tsx";
@@ -59,7 +60,11 @@ const setupDom = (): HTMLElement => {
 const renderCard = (task: Task): HTMLElement => {
 	const container = setupDom();
 	act(() => {
-		activeRoot?.render(<TaskCard task={task} onEdit={() => {}} {...STANDALONE_CARD_NESTING} />);
+		activeRoot?.render(
+			<MemoryRouter initialEntries={["/board"]}>
+				<TaskCard task={task} onEdit={() => {}} {...STANDALONE_CARD_NESTING} />
+			</MemoryRouter>,
+		);
 	});
 	return container;
 };
@@ -69,14 +74,16 @@ const renderList = (...tasks: Task[]): HTMLElement => {
 	const container = setupDom();
 	act(() => {
 		activeRoot?.render(
-			<TaskList
-				tasks={tasks}
-				nesting={createUnfilteredNesting(tasks)}
-				statuses={STATUSES}
-				finalGroupOpenByDefault
-				isLoading={false}
-				onEditTask={() => {}}
-			/>,
+			<MemoryRouter initialEntries={["/tasks"]}>
+				<TaskList
+					tasks={tasks}
+					nesting={createUnfilteredNesting(tasks)}
+					statuses={STATUSES}
+					finalGroupOpenByDefault
+					isLoading={false}
+					onEditTask={() => {}}
+				/>
+			</MemoryRouter>,
 		);
 	});
 	return container;
@@ -97,7 +104,7 @@ const getPriorityName = (element: HTMLElement): string | null | undefined =>
 
 // One row of the list, found through the button that opens its task.
 const getListRow = (container: HTMLElement, taskId: string): HTMLElement => {
-	const row = container.querySelector<HTMLElement>(`button[aria-label^="Open ${taskId}:"]`)?.closest("li");
+	const row = container.querySelector<HTMLElement>(`a[aria-label^="Open ${taskId}:"]`)?.closest("li");
 	expect(row).toBeTruthy();
 	return row as HTMLElement;
 };
@@ -156,7 +163,7 @@ describe("browser task acceptance criteria progress", () => {
 
 	it("includes card progress in the accessible name", () => {
 		const container = renderCard(createTask({ acceptanceCriteriaItems: createCriteria(4, 7) }));
-		const title = container.querySelector("h4 [role='button']");
+		const title = container.querySelector("h4 a");
 
 		expect(title?.getAttribute("aria-label")).toBe("Open task-1: Task summary. Acceptance criteria progress: 4 of 7");
 	});
@@ -244,11 +251,13 @@ describe("browser task acceptance criteria progress", () => {
 
 		act(() => {
 			activeRoot?.render(
-				<TaskCard
-					task={createTask({ acceptanceCriteriaItems: createCriteria(4, 5) })}
-					onEdit={() => {}}
-					{...STANDALONE_CARD_NESTING}
-				/>,
+				<MemoryRouter initialEntries={["/board"]}>
+					<TaskCard
+						task={createTask({ acceptanceCriteriaItems: createCriteria(4, 5) })}
+						onEdit={() => {}}
+						{...STANDALONE_CARD_NESTING}
+					/>
+				</MemoryRouter>,
 			);
 		});
 

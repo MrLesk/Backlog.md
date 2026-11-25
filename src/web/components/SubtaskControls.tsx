@@ -1,12 +1,14 @@
 import type { MouseEvent } from "react";
 import type { Task } from "../../types";
 import type { SubtaskProgress } from "../../utils/task-subtasks.ts";
+import TaskLink from "./TaskLink";
 
 /**
- * The parts of nested tasks that the List, the Board and the task dialog share. SubtaskMarker and SubtaskBar say how
- * many direct subtasks a task has and how many are done, and open and close them in place; ParentTaskLink opens the
+ * The parts of nested tasks that the List, the Board and the task page share. SubtaskMarker and SubtaskBar say how
+ * many direct subtasks a task has and how many are done, and open and close them in place; ParentTaskLink links to the
  * parent of a task shown apart from it; SubtaskRails draws the guide lines of a nested row. The controls sit inside
- * rows and cards that open their task on a click, so each one stops its own click.
+ * rows and cards that open their task on a click: the marker and the bar stop their own clicks, and a click a link
+ * has answered is one the row ignores (isTaskOpeningClick).
  */
 
 /** What an opened level says when the filters keep none of its subtasks. */
@@ -120,11 +122,10 @@ interface ParentTaskLinkProps {
 	task: Task;
 	/** Its parent, or null when the page does not hold it (archived or missing): the ID is then shown as text. */
 	parent: Task | null;
-	onOpenTask: (task: Task) => void;
 }
 
-/** The parent's ID with a chevron, before the ID or title of a subtask shown apart from its parent. */
-export function ParentTaskLink({ task, parent, onOpenTask }: ParentTaskLinkProps) {
+/** The parent's ID with a chevron, before the ID or title of a subtask shown apart from its parent: a link to it. */
+export function ParentTaskLink({ task, parent }: ParentTaskLinkProps) {
 	const className = "inline-flex shrink-0 items-center gap-0.5 font-mono text-xs leading-4 font-medium text-ink-3";
 	if (!parent) {
 		return (
@@ -135,17 +136,18 @@ export function ParentTaskLink({ task, parent, onOpenTask }: ParentTaskLinkProps
 			</span>
 		);
 	}
+	// draggable={false}: on a Board card, a drag that starts on the link still moves the card.
 	return (
-		<button
-			type="button"
+		<TaskLink
+			task={parent}
+			draggable={false}
 			aria-label={`Parent task ${parent.id}: ${parent.title}`}
 			title={`Parent task ${parent.id}: ${parent.title}`}
-			onClick={stopping(() => onOpenTask(parent))}
 			className={`${className} rounded-[4px] transition-colors duration-200 hover:text-ink focus-ring`}
 		>
 			{parent.id}
 			<Chevron isOpen={false} />
-		</button>
+		</TaskLink>
 	);
 }
 

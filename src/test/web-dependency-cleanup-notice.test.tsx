@@ -222,7 +222,7 @@ const waitFor = async (predicate: () => boolean, description: string) => {
 
 const click = async (element: Element) => {
 	await act(async () => {
-		element.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+		element.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
 		await Promise.resolve();
 	});
 };
@@ -244,44 +244,51 @@ const renderTaskList = async (): Promise<HTMLElement> => {
 	return container;
 };
 
-const findButton = (container: HTMLElement, matches: (text: string) => boolean): HTMLButtonElement => {
-	const button = Array.from(container.querySelectorAll("button")).find((element) =>
-		matches(element.textContent ?? ""),
-	);
-	expect(button).toBeTruthy();
-	return button as HTMLButtonElement;
-};
+/** The open task's page, over the list. */
+const taskPageOf = (container: HTMLElement) => container.querySelector("article");
 
-/** Open a task's details from the list and press its archive action. */
-const openTaskModal = async (container: HTMLElement, title: string) => {
+/** Open a task's page from its link in the list. */
+const openTaskPage = async (container: HTMLElement, title: string) => {
 	await waitFor(() => (container.textContent ?? "").includes(title), `${title} in the list`);
-	await click(findButton(container, (text) => text === title));
-	await waitFor(() => container.querySelector("[role='dialog']") !== null, `${title} details modal`);
+	const link = Array.from(container.querySelectorAll("a")).find((element) => element.textContent === title);
+	expect(link).toBeTruthy();
+	await click(link as HTMLAnchorElement);
+	await waitFor(() => taskPageOf(container) !== null, `${title} task page`);
 };
 
-// Closing the modal pops the history entry the task route pushed, so the list is only ready for
-// the next open once that has landed.
-const waitForModalClosed = async (container: HTMLElement, title: string) => {
+// Closing the page goes back to the history entry of the list, so the list is only ready for the next open once that
+// has landed.
+const waitForPageClosed = async (container: HTMLElement, title: string) => {
 	await waitFor(
-		() => container.querySelector("[role='dialog']") === null && window.location.pathname === "/tasks",
-		`${title} details modal closed`,
+		() => taskPageOf(container) === null && window.location.pathname === "/tasks",
+		`${title} task page closed`,
 	);
 	await settle();
 };
 
-const archiveFromModal = async (container: HTMLElement, title: string) => {
-	await openTaskModal(container, title);
-	await click(findButton(container, (text) => text.includes("Archive Task")));
-	await waitForModalClosed(container, title);
+/** Chooses an action from the page's More actions menu, such as "Archive" or "Demote to draft". */
+const chooseMoreAction = async (container: HTMLElement, label: string) => {
+	await click(container.querySelector("button[aria-label='More actions']") as HTMLButtonElement);
+	const item = Array.from(container.querySelectorAll("[role='menuitem']")).find(
+		(element) => element.textContent === label,
+	);
+	expect(item).toBeTruthy();
+	await click(item as HTMLButtonElement);
 };
 
-/** Starts the demotion; the modal stays open until the refresh that follows it has landed. */
-const demoteFromModal = async (container: HTMLElement, title: string, beforeDemote: () => void = () => {}) => {
-	await openTaskModal(container, title);
-	// Let the detail read land first, as it has by the time a person reaches for the button.
+const archiveFromPage = async (container: HTMLElement, title: string) => {
+	await openTaskPage(container, title);
+	await chooseMoreAction(container, "Archive");
+	await waitForPageClosed(container, title);
+};
+
+/** Starts the demotion; the page stays open until the refresh that follows it has landed. */
+const demoteFromPage = async (container: HTMLElement, title: string, beforeDemote: () => void = () => {}) => {
+	await openTaskPage(container, title);
+	// Let the detail read land first, as it has by the time a person reaches for the menu.
 	await settle();
 	beforeDemote();
-	await click(findButton(container, (text) => text.includes("Demote to draft")));
+	await chooseMoreAction(container, "Demote to draft");
 };
 
 afterEach(() => {
@@ -322,7 +329,7 @@ describe("dependency cleanup notice", () => {
 		// The refresh that follows the demotion never resolves during this check, so the notice can
 		// only be on screen if it was recorded from the demote response itself.
 		let releaseSearch = () => {};
-		await demoteFromModal(container, "Demote target", () => {
+		await demoteFromPage(container, "Demote target", () => {
 			searchHold = new Promise<void>((resolve) => {
 				releaseSearch = resolve;
 			});
@@ -334,7 +341,7 @@ describe("dependency cleanup notice", () => {
 
 		searchHold = null;
 		releaseSearch();
-		await waitForModalClosed(container, "Demote target");
+		await waitForPageClosed(container, "Demote target");
 		expect(container.textContent).toContain("Removed references to TASK-1 from TASK-2");
 	});
 
@@ -345,19 +352,19 @@ describe("dependency cleanup notice", () => {
 
 		captureNoticeTimers();
 
-		await demoteFromModal(container, "First target");
+		await demoteFromPage(container, "First target");
 		await waitFor(
 			() => (container.textContent ?? "").includes("Removed references to TASK-1 from TASK-3"),
 			"first cleanup notice",
 		);
-		await waitForModalClosed(container, "First target");
+		await waitForPageClosed(container, "First target");
 
-		await demoteFromModal(container, "Second target");
+		await demoteFromPage(container, "Second target");
 		await waitFor(
 			() => (container.textContent ?? "").includes("Removed references to TASK-2 from TASK-4"),
 			"second cleanup notice",
 		);
-		await waitForModalClosed(container, "Second target");
+		await waitForPageClosed(container, "Second target");
 
 		// Exactly one expiry per notice, and the first one now falls due.
 		expect(noticeTimers).toHaveLength(2);
@@ -375,14 +382,14 @@ describe("dependency cleanup notice", () => {
 		cleanedTaskIds = { "TASK-1": ["TASK-2"] };
 		const container = await renderTaskList();
 
-		await archiveFromModal(container, "Archive target");
+		await archiveFromPage(container, "Archive target");
 
 		expect(container.textContent).not.toContain("Archive target");
 		expect(container.textContent).toContain("Dependent one");
 		expect(container.textContent).not.toContain("Removed references");
 	});
 
-	it("shows core's refusal in the task dialog when the archive endpoint answers 400", async () => {
+	it("shows core's refusal on the task page when the archive endpoint answers 400", async () => {
 		tasks = [makeTask("TASK-1", "Archive target")];
 		const container = await renderTaskList();
 		archiveRefusal =
@@ -391,18 +398,18 @@ describe("dependency cleanup notice", () => {
 		console.error = () => {};
 
 		try {
-			await openTaskModal(container, "Archive target");
-			await click(findButton(container, (text) => text.includes("Archive Task")));
+			await openTaskPage(container, "Archive target");
+			await chooseMoreAction(container, "Archive");
 			await waitFor(
-				() => container.querySelector("[role='dialog'] [role='alert']")?.textContent === archiveRefusal,
-				"the refusal in the dialog's alert",
+				() => taskPageOf(container)?.querySelector("[role='alert']")?.textContent === archiveRefusal,
+				"the refusal in the page's alert",
 			);
 		} finally {
 			console.error = originalConsoleError;
 		}
 
-		// Nothing was archived, so the dialog stays open on the task the refusal is about.
-		expect(container.querySelector("[role='dialog']")?.textContent).toContain("Archive target");
+		// Nothing was archived, so the page stays open on the task the refusal is about.
+		expect(taskPageOf(container)?.textContent).toContain("Archive target");
 		expect(tasks.map((task) => task.id)).toEqual(["TASK-1"]);
 	});
 
@@ -420,7 +427,7 @@ describe("dependency cleanup notice", () => {
 		console.error = () => {};
 
 		try {
-			await archiveFromModal(container, "Archive target");
+			await archiveFromPage(container, "Archive target");
 			await waitFor(() => archiveRecoveryEvents.includes("alert"), "archive recovery warning");
 			await settle();
 		} finally {

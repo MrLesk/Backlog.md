@@ -20,7 +20,8 @@ const taskFixtures = (...ids: string[]): Task[] =>
 
 const availableTasks = taskFixtures("BACK-10");
 
-function renderChips(dependencies: string[], tasks: Task[] = availableTasks, path = "/"): Document {
+// Chips are rendered on an open task, so a chip links to the task route of that task's layout.
+function renderChips(dependencies: string[], tasks: Task[] = availableTasks, path = "/tasks/BACK-20"): Document {
 	const html = renderToString(
 		<MemoryRouter initialEntries={[path]}>
 			<DependencyInput value={dependencies} onChange={() => {}} availableTasks={tasks} />
@@ -30,9 +31,9 @@ function renderChips(dependencies: string[], tasks: Task[] = availableTasks, pat
 }
 
 describe("DependencyInput dependency chips", () => {
-	it("links a dependency chip to the task it references", () => {
+	it("links a dependency chip to the task it references, through the List from a task opened there", () => {
 		const rendered = renderChips(["BACK-10"]);
-		const link = rendered.querySelector('a[href="/tasks/BACK-10"]');
+		const link = rendered.querySelector('a[href="/tasks/BACK-10/task-back-10"]');
 
 		expect(link).toBeTruthy();
 		expect(link?.textContent).toBe("BACK-10 - Task BACK-10");
@@ -40,27 +41,22 @@ describe("DependencyInput dependency chips", () => {
 
 	it("keeps the reader on the board: chips clicked from /board link within /board", () => {
 		const rendered = renderChips(["BACK-10"], availableTasks, "/board/BACK-20");
-		const link = rendered.querySelector('a[href="/board/BACK-10"]');
+		const link = rendered.querySelector('a[href="/board/BACK-10/task-back-10"]');
 
 		expect(link).toBeTruthy();
-		expect(rendered.querySelector('a[href="/tasks/BACK-10"]')).toBeNull();
-	});
-
-	it("links chips through /tasks when reading from the task list", () => {
-		const rendered = renderChips(["BACK-10"], availableTasks, "/tasks/BACK-20");
-		const link = rendered.querySelector('a[href="/tasks/BACK-10"]');
-
-		expect(link).toBeTruthy();
+		expect(rendered.querySelector('a[href^="/tasks/"]')).toBeNull();
 	});
 
 	it("carries the page's query string so URL-backed board filters survive", () => {
 		const rendered = renderChips(["BACK-10"], availableTasks, "/board/BACK-20?lane=milestone&milestone=v2");
 
 		// JSDOM's selector engine cannot match attribute values containing "&", so read the href directly.
-		expect(rendered.querySelector("a")?.getAttribute("href")).toBe("/board/BACK-10?lane=milestone&milestone=v2");
+		expect(rendered.querySelector("a")?.getAttribute("href")).toBe(
+			"/board/BACK-10/task-back-10?lane=milestone&milestone=v2",
+		);
 	});
 
-	it("replaces an open task route and preserves its taskModalFrom return context", async () => {
+	it("replaces an open task route and keeps how that task was opened", async () => {
 		const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", {
 			url: "http://localhost",
 		});
@@ -86,7 +82,7 @@ describe("DependencyInput dependency chips", () => {
 				<MemoryRouter
 					initialEntries={[
 						"/board?lane=milestone",
-						{ pathname: "/board/BACK-20", search: "?lane=milestone", state: { taskModalFrom: "/board?lane=milestone" } },
+						{ pathname: "/board/BACK-20", search: "?lane=milestone", state: { openedInApp: true } },
 					]}
 					initialIndex={1}
 				>
@@ -97,18 +93,18 @@ describe("DependencyInput dependency chips", () => {
 			await Promise.resolve();
 		});
 
-		const chip = container.querySelector('a[href="/board/BACK-10?lane=milestone"]') as HTMLAnchorElement | null;
+		const chip = container.querySelector('a[href="/board/BACK-10/task-back-10?lane=milestone"]') as HTMLAnchorElement | null;
 		expect(chip).toBeTruthy();
 		await act(async () => {
 			chip?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
 			await Promise.resolve();
 		});
 
-		// The chip navigation lands on the dependency with the original return context intact.
+		// The chip navigation lands on the dependency, which still closes back to where the first task was opened from.
 		expect(observed.current).toEqual({
-			pathname: "/board/BACK-10",
+			pathname: "/board/BACK-10/task-back-10",
 			search: "?lane=milestone",
-			state: { taskModalFrom: "/board?lane=milestone" },
+			state: { openedInApp: true },
 		});
 
 		// It replaced the previous task route, so Back returns to the board, not the previous task.
@@ -125,7 +121,7 @@ describe("DependencyInput dependency chips", () => {
 
 	it("resolves dependencies that differ in case or zero padding", () => {
 		const rendered = renderChips(["back-010"]);
-		const link = rendered.querySelector('a[href="/tasks/BACK-10"]');
+		const link = rendered.querySelector('a[href="/tasks/BACK-10/task-back-10"]');
 
 		expect(link).toBeTruthy();
 		expect(link?.textContent).toBe("BACK-10 - Task BACK-10");

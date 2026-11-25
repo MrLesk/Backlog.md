@@ -1,4 +1,5 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { JSDOM } from "jsdom";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { Milestone, Task } from "../types/index.ts";
@@ -19,6 +20,18 @@ const makeTask = (overrides: Partial<Task>): Task => ({
 	...overrides,
 });
 
+// A task row links to the task in the Tasks page layout used last, which the browser keeps in localStorage.
+let storageWindow: JSDOM["window"] | null = null;
+beforeEach(() => {
+	storageWindow = new JSDOM("", { url: "http://localhost" }).window;
+	globalThis.localStorage = storageWindow.localStorage;
+});
+afterEach(() => {
+	delete (globalThis as { localStorage?: Storage }).localStorage;
+	storageWindow?.close();
+	storageWindow = null;
+});
+
 const renderMilestonesPage = (tasks: Task[]) =>
 	renderToString(
 		<MemoryRouter>
@@ -27,7 +40,6 @@ const renderMilestonesPage = (tasks: Task[]) =>
 				statuses={statuses}
 				milestoneEntities={milestones}
 				archivedMilestones={[]}
-				onEditTask={() => {}}
 			/>
 		</MemoryRouter>,
 	);

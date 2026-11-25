@@ -1,44 +1,10 @@
 import React, { useState, useRef, useEffect, useMemo, type KeyboardEvent } from 'react';
-import { Link, useLocation } from 'react-router-dom';
 import { type Task } from '../../types';
 import { buildTaskIdIndex, resolveTaskReference } from '../utils/task-id-links';
+import TaskLink from './TaskLink';
 
-const CHIP_LABEL_CLASS = 'truncate max-w-[16rem] sm:max-w-[20rem] md:max-w-[24rem]';
-
-// Chip links open the task detail in place, mirroring App's handleEditTask navigation:
-// stay on the board when reading from it (canonical /tasks everywhere else, which also
-// keeps external deep links working), carry the page's query string so URL-backed
-// filters survive, and replace an already-open task route while preserving its
-// original taskModalFrom return context so closing the target does not walk back
-// through this task. Kept as a subcomponent so the router context is only required
-// where a link actually renders, and so PR #960's useTaskHref hook can replace the
-// derivation once it lands.
-const TaskChipLink: React.FC<{ taskId: string; display: string }> = ({ taskId, display }) => {
-  const location = useLocation();
-  const basePath = location.pathname.startsWith('/board')
-    ? '/board'
-    : location.pathname.startsWith('/tasks')
-      ? '/tasks'
-      : null;
-  const search = basePath ? location.search : '';
-  const isReplacingTaskRoute = basePath !== null && location.pathname.startsWith(`${basePath}/`);
-  const currentTaskModalFrom =
-    location.state && typeof location.state === 'object'
-      ? (location.state as { taskModalFrom?: string }).taskModalFrom
-      : undefined;
-  const taskModalFrom = isReplacingTaskRoute ? currentTaskModalFrom : basePath ? `${basePath}${search}` : undefined;
-  return (
-    <Link
-      to={`${basePath ?? '/tasks'}/${taskId}${search}`}
-      replace={isReplacingTaskRoute}
-      state={taskModalFrom ? { taskModalFrom } : undefined}
-      className={`${CHIP_LABEL_CLASS} hover:underline`}
-      title={display}
-    >
-      {display}
-    </Link>
-  );
-};
+// A long title is cut to the width of the chip; the chip's tooltip holds all of it.
+const CHIP_LABEL_CLASS = 'min-w-0 truncate';
 
 interface DependencyInputProps {
   value: string[];
@@ -132,85 +98,82 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
   };
 
   if (!onChange && value.length === 0) {
-    return <p className="text-sm text-gray-500 dark:text-gray-400">No dependencies</p>;
+    return <p className="font-mono text-xs font-normal text-ink-3">None</p>;
   }
 
+  // A quiet field, as the property values beside it: its frame shows on hover and focus.
   return (
-    <div>
+    <div className="w-full">
       {label ? (
-        <label htmlFor={onChange ? inputId : undefined} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 transition-colors duration-200">
+        <label htmlFor={onChange ? inputId : undefined} className="mb-1 block text-sm font-medium text-ink">
           {label}
         </label>
       ) : null}
-      <div className="relative w-full">
-        <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-md focus-within:ring-2 focus-within:ring-blue-500 dark:focus-within:ring-blue-400 focus-within:border-transparent transition-colors duration-200 max-h-60 overflow-auto pr-2">
-          {/* Display selected dependencies */}
+      <div className="relative -ml-2 w-[calc(100%+0.5rem)]">
+        <div className="max-h-60 w-full overflow-auto rounded-[7px] border border-transparent px-2 py-0.5 outline-accent-strong transition-colors duration-200 hover:border-line focus-within:border-line focus-within:bg-surface has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-offset-2">
           {value.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-2">
+            <div className="flex flex-wrap gap-1 py-0.5">
               {value.map((taskId, index) => {
                 const dependency = resolveDependency(taskId);
                 const display = dependency ? `${dependency.id} - ${dependency.title}` : taskId;
                 return (
-                <span
-                  key={index}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 text-sm bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 rounded-md transition-colors duration-200 min-w-0 max-w-full"
-                >
-                  {dependency ? (
-                    <TaskChipLink taskId={dependency.id} display={display} />
-                  ) : (
-                    <span className={CHIP_LABEL_CLASS} title={display}>{display}</span>
-                  )}
-                  {onChange && (
-                    <button
-                      type="button"
-                      onClick={() => onChange(value.filter((_, i) => i !== index))}
-	                      className="hover:bg-blue-200 dark:hover:bg-blue-800 rounded-sm p-0.5 transition-colors duration-200"
-                      aria-label={`Remove ${taskId}`}
-                    >
-                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                        <path
-                          fillRule="evenodd"
-                          d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    </button>
-                  )}
-                </span>
+                  <span
+                    key={index}
+                    className="inline-flex min-w-0 max-w-full items-center gap-0.5 rounded-chip bg-surface-2 py-0.5 pr-0.5 pl-1.5 text-xs font-medium text-ink-2"
+                  >
+                    {dependency ? (
+                      <TaskLink task={dependency} title={display} className={`${CHIP_LABEL_CLASS} rounded-[3px] hover:text-ink hover:underline focus-ring`}>
+                        {display}
+                      </TaskLink>
+                    ) : (
+                      <span className={CHIP_LABEL_CLASS} title={display}>{display}</span>
+                    )}
+                    {onChange && (
+                      <button
+                        type="button"
+                        onClick={() => onChange(value.filter((_, i) => i !== index))}
+                        className="rounded-[3px] p-0.5 text-ink-3 transition-colors duration-200 hover:bg-hover hover:text-ink focus-ring"
+                        aria-label={`Remove ${taskId}`}
+                      >
+                        <svg className="size-3" viewBox="0 0 16 16" aria-hidden="true">
+                          <path d="m4.5 4.5 7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                        </svg>
+                      </button>
+                    )}
+                  </span>
                 );
               })}
             </div>
           )}
-          
-          {/* Input field */}
+
           {onChange && (
             <textarea
               ref={textareaRef}
               id={inputId}
+              aria-label={label || 'Add dependency'}
               value={inputValue}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder={value.length === 0 ? "Type task ID or title, then press Enter or comma" : "Add more dependencies..."}
-              className="w-full outline-none text-sm bg-transparent resize-none text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+              placeholder={value.length === 0 ? "Add a dependency" : "Add another dependency"}
+              className="block w-full resize-none bg-transparent py-0.5 text-sm font-normal text-ink outline-none placeholder:font-mono placeholder:text-xs placeholder:text-ink-3"
               rows={1}
             />
           )}
         </div>
 
-        {/* Suggestions dropdown */}
         {onChange && suggestions.length > 0 && (
-          <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg max-h-64 overflow-auto overscroll-contain transition-colors duration-200">
-	            {suggestions.map((task, index) => (
-	              <button
-	                key={task.id}
-	                type="button"
-	                onClick={() => addDependency(task.id)}
-	                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 ${
-	                  index === selectedIndex ? 'bg-gray-100 dark:bg-gray-700' : ''
-	                }`}
-	              >
-                <div className="font-medium text-gray-900 dark:text-white">{task.id}</div>
-                <div className="text-gray-600 dark:text-gray-300 break-words whitespace-normal">{task.title}</div>
+          <div className="absolute z-10 mt-1 max-h-64 w-full overflow-auto overscroll-contain rounded-control border border-line bg-surface py-1 shadow-lg">
+            {suggestions.map((task, index) => (
+              <button
+                key={task.id}
+                type="button"
+                onClick={() => addDependency(task.id)}
+                className={`w-full px-3 py-1.5 text-left text-sm font-normal transition-colors duration-200 hover:bg-hover ${
+                  index === selectedIndex ? 'bg-surface-2' : ''
+                }`}
+              >
+                <div className="font-mono text-xs font-medium text-ink-3">{task.id}</div>
+                <div className="whitespace-normal break-words text-ink">{task.title}</div>
               </button>
             ))}
           </div>

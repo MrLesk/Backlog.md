@@ -34,6 +34,8 @@ type MarkdownNode = {
 	type: string;
 	value?: string;
 	url?: string;
+	/** Properties the link element gets; a task link carries the ID of its task, which MermaidMarkdown links to. */
+	data?: { hProperties?: Record<string, string> };
 	children?: MarkdownNode[];
 };
 
@@ -66,7 +68,12 @@ function splitTaskIds(value: string, index: TaskIdIndex): MarkdownNode[] | null 
 			if (start > cursor) {
 				parts.push({ type: "text", value: value.slice(cursor, start) });
 			}
-			parts.push({ type: "link", url: `/tasks/${task.id}`, children: [{ type: "text", value: candidate }] });
+			parts.push({
+				type: "link",
+				url: `/tasks/${task.id}`,
+				data: { hProperties: { dataTaskId: task.id } },
+				children: [{ type: "text", value: candidate }],
+			});
 			cursor = end;
 		}
 
@@ -106,7 +113,8 @@ function linkTaskIds(node: MarkdownNode, index: TaskIdIndex): void {
 }
 
 /**
- * Remark plugin that turns known task IDs in markdown text into `/tasks/:id` links.
+ * Remark plugin that turns known task IDs in markdown text into links to their task. Each link carries its task's ID,
+ * so MermaidMarkdown can draw it as a TaskLink; the plain `/tasks/:id` address is what a copy of the HTML keeps.
  * Code fences and inline code hold no text children in mdast, so they are excluded by construction.
  */
 export function createTaskIdLinkPlugin(index: TaskIdIndex) {

@@ -3,7 +3,8 @@ id: BACK-599
 title: Align web task-link identity with route resolution and preserve return routes
 status: To Do
 assignee: []
-created_date: '2026-08-07 22:31'
+created_date: 2026-08-07 22:31
+updated_date: '2026-11-25T16:09:00Z'
 labels:
   - web
 dependencies:
@@ -39,3 +40,9 @@ Scope note: this is polish on shipped behaviour, not a regression from BACK-593.
 - [ ] #2 bun run check . passes when formatting/linting touched
 - [ ] #3 bun test (or scoped test) passes
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Item 2 (task links lose the return route) is covered by BACK-830 (Open a task as a page instead of a dialog). Every task link in the browser, including auto-linked task IDs in Markdown and dependency chips, is now built by one function, taskLinkTarget in src/web/lib/task-links.ts. A link keeps the query of the Tasks page it was followed from and records where the person came from, so closing the task returns to that filtered view. Item 1 (identity coverage against route resolution) is still open and still waits on the decision in BACK-260.
+<!-- SECTION:NOTES:END -->

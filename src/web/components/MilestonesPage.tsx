@@ -17,7 +17,6 @@ interface MilestonesPageProps {
 	statuses: string[];
 	milestoneEntities: Milestone[];
 	archivedMilestones: Milestone[];
-	onEditTask: (task: Task) => void;
 	onRefreshData?: () => Promise<void>;
 	dateFormat?: string;
 }
@@ -27,7 +26,6 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	statuses,
 	milestoneEntities,
 	archivedMilestones,
-	onEditTask,
 	onRefreshData,
 	dateFormat,
 }) => {
@@ -618,7 +616,6 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 											isDone={isTerminalStatus(task.status, statuses)}
 											statusBadgeClass={getStatusBadgeClass(task.status)}
 											priorityBadgeClass={getPriorityBadgeClass(task.priority)}
-											onEditTask={onEditTask}
 											drag={taskDrag}
 										/>
 									);
@@ -700,7 +697,6 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 													isDone={isTerminalStatus(task.status, statuses)}
 													statusBadgeClass={getStatusBadgeClass(task.status)}
 													priorityBadgeClass={getPriorityBadgeClass(task.priority)}
-													onEditTask={onEditTask}
 													drag={taskDrag}
 												/>
 											))}

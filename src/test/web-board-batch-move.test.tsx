@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
 import type { Milestone, Task } from "../types/index.ts";
 import Board from "../web/components/Board.tsx";
 import { apiClient, type MoveTasksPayload } from "../web/lib/api.ts";
@@ -72,19 +73,21 @@ const rerenderBoard = (
 ) => {
 	act(() => {
 		activeRoot?.render(
-			<Board
-				onEditTask={onEditTask}
-				tasks={extra.tasks ?? TASKS}
-				visibleTasks={extra.visibleTasks ?? extra.tasks ?? TASKS}
-				nesting={createUnfilteredNesting(extra.tasks ?? TASKS)}
-				statuses={STATUSES}
-				isLoading={false}
-				milestoneEntities={[]}
-				archivedMilestones={[]}
-				laneMode="none"
-				onTasksUpdated={extra.onTasksUpdated}
-				onRefreshData={extra.onRefreshData}
-			/>,
+			<MemoryRouter initialEntries={["/board"]}>
+				<Board
+					onEditTask={onEditTask}
+					tasks={extra.tasks ?? TASKS}
+					visibleTasks={extra.visibleTasks ?? extra.tasks ?? TASKS}
+					nesting={createUnfilteredNesting(extra.tasks ?? TASKS)}
+					statuses={STATUSES}
+					isLoading={false}
+					milestoneEntities={[]}
+					archivedMilestones={[]}
+					laneMode="none"
+					onTasksUpdated={extra.onTasksUpdated}
+					onRefreshData={extra.onRefreshData}
+				/>
+			</MemoryRouter>,
 		);
 	});
 };
@@ -99,17 +102,19 @@ const renderMilestoneBoard = (tasks: Task[] = MILESTONE_TASKS): HTMLElement => {
 	activeRoot = createRoot(container as HTMLElement);
 	act(() => {
 		activeRoot?.render(
-			<Board
-				onEditTask={() => {}}
-				tasks={tasks}
-				visibleTasks={tasks}
-				nesting={createUnfilteredNesting(tasks)}
-				statuses={STATUSES}
-				isLoading={false}
-				milestoneEntities={[MILESTONE]}
-				archivedMilestones={[]}
-				laneMode="milestone"
-			/>,
+			<MemoryRouter initialEntries={["/board"]}>
+				<Board
+					onEditTask={() => {}}
+					tasks={tasks}
+					visibleTasks={tasks}
+					nesting={createUnfilteredNesting(tasks)}
+					statuses={STATUSES}
+					isLoading={false}
+					milestoneEntities={[MILESTONE]}
+					archivedMilestones={[]}
+					laneMode="milestone"
+				/>
+			</MemoryRouter>,
 		);
 	});
 	return container as HTMLElement;

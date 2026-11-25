@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { type Task } from '../../types';
 import StoredDate from './StoredDate';
+import TaskLink from './TaskLink';
 import { formatPriorityLabel } from '../../utils/priority-config';
 
 interface DraftsListProps {
-  onEditTask: (task: Task) => void;
   onNewDraft: () => void;
   dateFormat?: string;
 }
 
-const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft, dateFormat }) => {
+const DraftsList: React.FC<DraftsListProps> = ({ onNewDraft, dateFormat }) => {
   const [drafts, setDrafts] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -137,7 +137,8 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft, dateFor
                 className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200"
               >
                 <div className="flex items-start justify-between">
-                  <div className="flex-1 cursor-pointer" onClick={() => onEditTask(draft)}>
+                  {/* A link to the draft: drafts open through the task route, as tasks do. */}
+                  <TaskLink task={draft} className="block min-w-0 flex-1 rounded-control focus-ring">
                     <div className="flex items-center space-x-3 mb-2">
                       <h3 className="text-lg font-medium text-gray-900 dark:text-white">{draft.title}</h3>
                       {draft.priority && (
@@ -174,7 +175,7 @@ const DraftsList: React.FC<DraftsListProps> = ({ onEditTask, onNewDraft, dateFor
                         ))}
                       </div>
                     )}
-                  </div>
+                  </TaskLink>
                   <div className="ml-4">
                     <button
                       onClick={(e) => {

@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { type TaskDetail, toTaskDetail } from "../core/task-detail.ts";
 import type { Task } from "../types/index.ts";
-import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
+import TaskDetails from "../web/components/TaskDetails";
 import { apiClient } from "../web/lib/api.ts";
 import { TaskIdIndexProvider } from "../web/contexts/TaskIdIndexContext.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext";
@@ -78,7 +78,7 @@ afterEach(() => {
 });
 
 /**
- * The verdict a detail read delivered describes the record it was read for. The modal shows it only
+ * The verdict a detail read delivered describes the record it was read for. The page shows it only
  * while the status and dependencies on screen still match that record, so an optimistic edit - or
  * one whose save failed and left the shown status ahead of the record - never stands next to a
  * verdict about what it replaced.
@@ -98,11 +98,10 @@ describe("task readiness badge against an optimistic edit", () => {
 				<MemoryRouter initialEntries={[`/tasks/${dependent.id}`]}>
 					<ThemeProvider>
 						<TaskIdIndexProvider tasks={corpus}>
-							<TaskDetailsModal
+							<TaskDetails
 								task={openDetail}
 								availableTasks={corpus}
 								availableStatuses={statuses}
-								isOpen={true}
 								onClose={() => {}}
 							/>
 						</TaskIdIndexProvider>
