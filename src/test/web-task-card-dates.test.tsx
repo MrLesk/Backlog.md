@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
 import { renderToString } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import TaskCard from "../web/components/TaskCard.tsx";
 import { pinTimeZone } from "./pin-timezone.ts";
@@ -39,7 +40,9 @@ const createTask = (dates: Pick<Task, "createdDate" | "updatedDate">): Task => (
 /** The rows of the card: header, title, tags and footer. */
 const renderCard = (task: Task, dateFormat?: string): Element => {
 	const html = renderToString(
-		<TaskCard task={task} onEdit={() => {}} dateFormat={dateFormat} {...STANDALONE_CARD_NESTING} />,
+		<MemoryRouter initialEntries={["/board"]}>
+			<TaskCard task={task} onOpenTask={() => {}} dateFormat={dateFormat} {...STANDALONE_CARD_NESTING} />
+		</MemoryRouter>,
 	);
 	const rows = JSDOM.fragment(html).querySelector("h4")?.parentElement;
 	if (!rows) throw new Error("The card did not render");

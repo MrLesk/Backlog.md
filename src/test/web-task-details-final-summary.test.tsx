@@ -3,9 +3,10 @@ import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import type { Milestone, Task } from "../types/index.ts";
 import { ThemeProvider } from "../web/contexts/ThemeContext";
-import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
+import TaskDetails from "../web/components/TaskDetails";
 import { ApiError, apiClient } from "../web/lib/api.ts";
 import { setNativeInputValue } from "./react-dom-input.ts";
 
@@ -97,7 +98,16 @@ afterEach(() => {
 	}
 });
 
-describe("Web task popup Final Summary display", () => {
+// The task view needs the app's router (its breadcrumb and task links) and theme.
+function TestApp({ children }: { children: React.ReactNode }) {
+	return (
+		<MemoryRouter initialEntries={["/tasks/task-1"]}>
+			<ThemeProvider>{children}</ThemeProvider>
+		</MemoryRouter>
+	);
+}
+
+describe("Task view Final summary and comments", () => {
 	it("renders Final Summary section in preview when present", () => {
 		setupDom();
 
@@ -113,12 +123,12 @@ describe("Web task popup Final Summary display", () => {
 		};
 
 		const html = renderToString(
-			<ThemeProvider>
-				<TaskDetailsModal task={task} isOpen={true} onClose={() => {}} />
-			</ThemeProvider>,
+			<TestApp>
+				<TaskDetails task={task} onClose={() => {}} />
+			</TestApp>,
 		);
 
-		expect(html).toContain("Final Summary");
+		expect(html).toContain("Final summary");
 		expect(html).toContain("PR-style summary");
 	});
 
@@ -144,9 +154,9 @@ describe("Web task popup Final Summary display", () => {
 		};
 
 		const html = renderToString(
-			<ThemeProvider>
-				<TaskDetailsModal task={task} isOpen={true} onClose={() => {}} />
-			</ThemeProvider>,
+			<TestApp>
+				<TaskDetails task={task} onClose={() => {}} />
+			</TestApp>,
 		);
 
 		expect(html).toContain("Comments");
@@ -169,9 +179,9 @@ describe("Web task popup Final Summary display", () => {
 		};
 
 		const html = renderToString(
-			<ThemeProvider>
-				<TaskDetailsModal task={task} isOpen={true} onClose={() => {}} />
-			</ThemeProvider>,
+			<TestApp>
+				<TaskDetails task={task} onClose={() => {}} />
+			</TestApp>,
 		);
 
 		expect(html).toContain("Comments");
@@ -195,9 +205,9 @@ describe("Web task popup Final Summary display", () => {
 		};
 
 		const html = renderToString(
-			<ThemeProvider>
-				<TaskDetailsModal task={task} isOpen={true} onClose={() => {}} />
-			</ThemeProvider>,
+			<TestApp>
+				<TaskDetails task={task} onClose={() => {}} />
+			</TestApp>,
 		);
 
 		expect(html).toContain("Read-only comment");
@@ -223,9 +233,9 @@ describe("Web task popup Final Summary display", () => {
 
 		await act(async () => {
 			activeRoot?.render(
-				<ThemeProvider>
-					<TaskDetailsModal task={task} isOpen={true} onClose={() => {}} />
-				</ThemeProvider>,
+				<TestApp>
+					<TaskDetails task={task} onClose={() => {}} />
+				</TestApp>,
 			);
 			await Promise.resolve();
 		});
@@ -290,9 +300,9 @@ describe("Web task popup Final Summary display", () => {
 
 			await act(async () => {
 				activeRoot?.render(
-					<ThemeProvider>
-						<TaskDetailsModal task={task} isOpen={true} onClose={() => {}} />
-					</ThemeProvider>,
+					<TestApp>
+						<TaskDetails task={task} onClose={() => {}} />
+					</TestApp>,
 				);
 				await Promise.resolve();
 			});
@@ -326,18 +336,21 @@ describe("Web task popup Final Summary display", () => {
 				clickElement(addButton as HTMLButtonElement);
 				await Promise.resolve();
 			});
-			// The own write is acknowledged before the parent receives its refreshed detail.
+			// The own write is acknowledged before the parent receives its refreshed detail. Save needs a change to write.
 			await act(async () => { clickElement(findButton(container as HTMLElement, "Cancel")!); });
 			await act(async () => { clickElement(findButton(container as HTMLElement, "Edit")!); });
+			await act(async () => {
+				setFormValue(findInputByValue(container as HTMLElement, task.title)!, "Edited after the comment");
+			});
 			await act(async () => { clickElement(findButton(container as HTMLElement, "Save")!); });
 			expect(writeCount).toBe(2);
 			await act(async () => { clickElement(findButton(container as HTMLElement, "Edit")!); });
 
 			await act(async () => {
 				activeRoot?.render(
-					<ThemeProvider>
-						<TaskDetailsModal task={updatedTask} isOpen={true} onClose={() => {}} />
-					</ThemeProvider>,
+					<TestApp>
+						<TaskDetails task={updatedTask} onClose={() => {}} />
+					</TestApp>,
 				);
 				await Promise.resolve();
 			});
@@ -370,7 +383,7 @@ describe("Web task popup Final Summary display", () => {
 			const container = document.getElementById("root")!;
 			activeRoot = createRoot(container);
 			const renderTask = async (current: Task) => {
-				await act(async () => { activeRoot?.render(<ThemeProvider><TaskDetailsModal task={current} isOpen={true} onClose={() => {}} /></ThemeProvider>); });
+				await act(async () => { activeRoot?.render(<TestApp><TaskDetails task={current} onClose={() => {}} /></TestApp>); });
 			};
 			await renderTask(task);
 			await act(async () => { clickElement(findButton(container, "Edit")!); });
@@ -432,9 +445,9 @@ describe("Web task popup Final Summary display", () => {
 
 		await act(async () => {
 			activeRoot?.render(
-				<ThemeProvider>
-					<TaskDetailsModal task={task} isOpen={true} onClose={() => {}} />
-				</ThemeProvider>,
+				<TestApp>
+					<TaskDetails task={task} onClose={() => {}} />
+				</TestApp>,
 			);
 			await Promise.resolve();
 		});
@@ -464,9 +477,9 @@ describe("Web task popup Final Summary display", () => {
 
 		await act(async () => {
 			activeRoot?.render(
-				<ThemeProvider>
-					<TaskDetailsModal task={refreshedTask} isOpen={true} onClose={() => {}} />
-				</ThemeProvider>,
+				<TestApp>
+					<TaskDetails task={refreshedTask} onClose={() => {}} />
+				</TestApp>,
 			);
 			await Promise.resolve();
 		});
@@ -512,17 +525,22 @@ describe("Web task popup Final Summary display", () => {
 				return { ...latest, ...updates, revision: "saved" } as Task;
 			};
 			apiClient.fetchTask = async () => latest as Awaited<ReturnType<typeof apiClient.fetchTask>>;
-			await act(async () => { activeRoot?.render(<ThemeProvider><TaskDetailsModal task={task} isOpen onClose={() => {}} /></ThemeProvider>); });
+			await act(async () => { activeRoot?.render(<TestApp><TaskDetails task={task} onClose={() => {}} /></TestApp>); });
 			await act(async () => { clickElement(findButton(container, "Edit")!); });
 			await act(async () => { setFormValue(findInputByValue(container, "Opened title")!, "Unsaved title"); });
 			await act(async () => { clickElement(findButton(container, "Save")!); });
 			expect(container.textContent).toContain("A newer version of this task is available");
 			expect(findInputByValue(container, "Unsaved title")).toBeTruthy();
 			expect(findButton(container, "Save")?.disabled).toBe(true);
-			await act(async () => { window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true })); });
+			// Ctrl+S from the edited field reaches the page's shortcut, which saves nothing while the newer version waits.
+			const saveShortcut = new window.KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true });
+			await act(async () => { findInputByValue(container, "Unsaved title")!.dispatchEvent(saveShortcut); });
+			expect(saveShortcut.defaultPrevented).toBe(true);
 			expect(writes).toBe(1);
 			await act(async () => { clickElement(findButton(container, "Refresh and discard edits")!); });
 			expect(findInputByValue(container, "Newer title")).toBeTruthy();
+			// Save writes only a change, so the retry edits the refreshed title.
+			await act(async () => { setFormValue(findInputByValue(container, "Newer title")!, "Retried title"); });
 			await act(async () => { clickElement(findButton(container, "Save")!); });
 			expect(writes).toBe(2);
 			expect(container.textContent).not.toContain("A newer version of this task is available");
@@ -537,8 +555,9 @@ describe("Web task popup Final Summary display", () => {
 		const latest = { ...task, revision: "newer", implementationNotes: "External notes" };
 		const container = document.getElementById("root")!;
 		activeRoot = createRoot(container);
-		const render = async (value: Task, isOpen = true) => {
-			await act(async () => { activeRoot?.render(<ThemeProvider><TaskDetailsModal task={value} isOpen={isOpen} onClose={() => {}} /></ThemeProvider>); });
+		// null renders no task: the page closed.
+		const render = async (value: Task | null) => {
+			await act(async () => { activeRoot?.render(<TestApp>{value && <TaskDetails task={value} onClose={() => {}} />}</TestApp>); });
 		};
 		const originalFetch = apiClient.fetchTask;
 		let finish: (value: Awaited<ReturnType<typeof apiClient.fetchTask>>) => void = () => {};
@@ -551,7 +570,7 @@ describe("Web task popup Final Summary display", () => {
 			if (action === "cancel") {
 				await act(async () => { clickElement(findButton(container, "Cancel")!); });
 			} else {
-				await render(latest, false);
+				await render(null);
 				await render(latest);
 			}
 			await act(async () => { clickElement(findButton(container, "Edit")!); });
@@ -575,7 +594,7 @@ describe("Web task popup Final Summary display", () => {
 		const wait = new Promise<void>(resolve => { finish = resolve; });
 		const onSaved = () => phase === "parent" ? wait : Promise.resolve();
 		const render = async (value: Task) => {
-			await act(async () => { activeRoot?.render(<ThemeProvider><TaskDetailsModal task={value} isOpen onClose={() => {}} onSaved={onSaved} /></ThemeProvider>); });
+			await act(async () => { activeRoot?.render(<TestApp><TaskDetails task={value} onClose={() => {}} onSaved={onSaved} /></TestApp>); });
 		};
 		try {
 			apiClient.fetchTask = async () => {
@@ -593,7 +612,7 @@ describe("Web task popup Final Summary display", () => {
 		} finally { apiClient.fetchTask = originalFetch; }
 	});
 
-	it("preserves unsaved create fields when refreshed props change while the modal stays open", async () => {
+	it("preserves unsaved create fields when refreshed props change while the create dialog stays open", async () => {
 		setupDom();
 
 		const container = document.getElementById("root");
@@ -602,14 +621,13 @@ describe("Web task popup Final Summary display", () => {
 
 		await act(async () => {
 			activeRoot?.render(
-				<ThemeProvider>
-					<TaskDetailsModal
-						isOpen={true}
+				<TestApp>
+					<TaskDetails
 						onClose={() => {}}
 						availableStatuses={["To Do", "In Progress", "Done"]}
 						definitionOfDoneDefaults={["Initial default"]}
 					/>
-				</ThemeProvider>,
+				</TestApp>,
 			);
 			await Promise.resolve();
 		});
@@ -637,14 +655,13 @@ describe("Web task popup Final Summary display", () => {
 
 		await act(async () => {
 			activeRoot?.render(
-				<ThemeProvider>
-					<TaskDetailsModal
-						isOpen={true}
+				<TestApp>
+					<TaskDetails
 						onClose={() => {}}
 						availableStatuses={["Backlog", "To Do", "In Progress", "Done"]}
 						definitionOfDoneDefaults={["Refreshed default"]}
 					/>
-				</ThemeProvider>,
+				</TestApp>,
 			);
 			await Promise.resolve();
 		});
@@ -673,24 +690,24 @@ describe("Web task popup Final Summary display", () => {
 		};
 
 		const html = renderToString(
-			<ThemeProvider>
-				<TaskDetailsModal task={task} isOpen={true} onClose={() => {}} />
-			</ThemeProvider>,
+			<TestApp>
+				<TaskDetails task={task} onClose={() => {}} />
+			</TestApp>,
 		);
 
-		expect(html).not.toContain("Final Summary");
+		expect(html).not.toContain("Final summary");
 	});
 
 	it("shows Final Summary editor in create mode", () => {
 		setupDom();
 
 		const html = renderToString(
-			<ThemeProvider>
-				<TaskDetailsModal isOpen={true} onClose={() => {}} />
-			</ThemeProvider>,
+			<TestApp>
+				<TaskDetails onClose={() => {}} />
+			</TestApp>,
 		);
 
-		expect(html).toContain("Final Summary");
+		expect(html).toContain("Final summary");
 		expect(html).toContain("PR-style summary of what was implemented");
 	});
 
@@ -717,9 +734,9 @@ describe("Web task popup Final Summary display", () => {
 		];
 
 		const html = renderToString(
-			<ThemeProvider>
-				<TaskDetailsModal task={task} isOpen={true} onClose={() => {}} milestoneEntities={milestones} />
-			</ThemeProvider>,
+			<TestApp>
+				<TaskDetails task={task} onClose={() => {}} milestoneEntities={milestones} />
+			</TestApp>,
 		);
 
 		expect(html).toContain('option value="m-1"');
@@ -750,9 +767,9 @@ describe("Web task popup Final Summary display", () => {
 		];
 
 		const html = renderToString(
-			<ThemeProvider>
-				<TaskDetailsModal task={task} isOpen={true} onClose={() => {}} milestoneEntities={milestones} />
-			</ThemeProvider>,
+			<TestApp>
+				<TaskDetails task={task} onClose={() => {}} milestoneEntities={milestones} />
+			</TestApp>,
 		);
 
 		expect(html).toContain('option value="m-1"');
@@ -790,15 +807,14 @@ describe("Web task popup Final Summary display", () => {
 		];
 
 		const html = renderToString(
-			<ThemeProvider>
-				<TaskDetailsModal
+			<TestApp>
+				<TaskDetails
 					task={task}
-					isOpen={true}
 					onClose={() => {}}
 					milestoneEntities={milestones}
 					archivedMilestoneEntities={archivedMilestones}
 				/>
-			</ThemeProvider>,
+			</TestApp>,
 		);
 
 		expect(html).toContain('option value="m-0"');

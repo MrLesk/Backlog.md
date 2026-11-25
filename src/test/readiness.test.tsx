@@ -7,7 +7,7 @@ import type { Task } from "../types/index.ts";
 import { generateDetailContent } from "../ui/task-viewer-with-search.ts";
 import { createReadinessGraph, formatReadinessBlockers, getTaskReadiness } from "../utils/readiness.ts";
 import { applyTaskFilters } from "../utils/task-search.ts";
-import { TaskDetailsModal } from "../web/components/TaskDetailsModal.tsx";
+import TaskDetails from "../web/components/TaskDetails.tsx";
 import { TaskIdIndexProvider } from "../web/contexts/TaskIdIndexContext.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext.tsx";
 
@@ -296,7 +296,7 @@ describe("rendered readiness guidance", () => {
 		expect(generateDetailContent(blockedTask).bodyContent.join("\n")).not.toContain("Readiness:");
 	});
 
-	it("renders the web task details modal readiness badge for ready, blocked, and unresolved dependencies", () => {
+	it("renders the readiness badge of the web task page for ready, blocked, and unresolved dependencies", () => {
 		const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost" });
 		globalThis.window = dom.window as unknown as Window & typeof globalThis;
 		globalThis.document = dom.window.document as Document;
@@ -325,18 +325,17 @@ describe("rendered readiness guidance", () => {
 		const noDepsTask = makeTask("BACK-6", "To Do");
 		const availableTasks = [doneDep, inProgDep, readyTask, blockedTask, unknownDepTask, noDepsTask];
 
-		// The modal renders the detail read it was handed, exactly as the browser receives it from
+		// The page renders the detail read it was handed, exactly as the browser receives it from
 		// GET /api/task/:id, so the badge can only say what core derived.
-		const renderModal = (task: Task, archivedTasks: Task[] = []) =>
+		const renderPage = (task: Task, archivedTasks: Task[] = []) =>
 			renderToString(
 				<MemoryRouter initialEntries={[`/tasks/${task.id}`]}>
 					<ThemeProvider>
 						<TaskIdIndexProvider tasks={availableTasks}>
-							<TaskDetailsModal
+							<TaskDetails
 								task={toTaskDetail(task, { tasks: availableTasks, archivedTasks, statuses })}
 								availableTasks={availableTasks}
 								availableStatuses={statuses}
-								isOpen={true}
 								onClose={() => {}}
 							/>
 						</TaskIdIndexProvider>
@@ -344,20 +343,20 @@ describe("rendered readiness guidance", () => {
 				</MemoryRouter>,
 			);
 
-		expect(renderModal(readyTask)).toContain("Ready to start");
-		expect(renderModal(blockedTask)).toContain("Blocked by BACK-2");
-		expect(renderModal(unknownDepTask)).toContain("Unknown dependency BACK-404");
+		expect(renderPage(readyTask)).toContain("Ready to start");
+		expect(renderPage(blockedTask)).toContain("Blocked by BACK-2");
+		expect(renderPage(unknownDepTask)).toContain("Unknown dependency BACK-404");
 
 		// Same rule as the TUI: no readiness copy without dependencies, or once the task is done.
-		expect(renderModal(noDepsTask)).not.toContain("Ready to start");
-		expect(renderModal(doneDep)).not.toContain("Ready to start");
+		expect(renderPage(noDepsTask)).not.toContain("Ready to start");
+		expect(renderPage(doneDep)).not.toContain("Ready to start");
 
 		// A direct link can open an archived task whose status is not the final one. It is off the
-		// board, so the modal must not offer it as ready to start.
+		// board, so the page must not offer it as ready to start.
 		const routedArchivedTask: Task = {
 			...makeTask("BACK-7", "Shipped", ["BACK-1"]),
 			source: "archived",
 		};
-		expect(renderModal(routedArchivedTask, [routedArchivedTask])).not.toContain("Ready to start");
+		expect(renderPage(routedArchivedTask, [routedArchivedTask])).not.toContain("Ready to start");
 	});
 });

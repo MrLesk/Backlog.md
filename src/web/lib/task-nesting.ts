@@ -1,5 +1,5 @@
 /**
- * How tasks nest on the Tasks page and in the task dialog: what a marker counts, which subtasks an opened level
+ * How tasks nest on the Tasks page and on the task page: what a marker counts, which subtasks an opened level
  * lists, and when a level is open. Which task is a subtask of which is decided in src/utils/task-subtasks.ts.
  */
 
@@ -21,14 +21,14 @@ export interface TaskNesting {
 	isFiltered: boolean;
 }
 
-/** The nesting of the task dialog, which has no filters: every subtask is listed. */
+/** The nesting of the task page, which has no filters: every subtask is listed. */
 export function createUnfilteredNesting(tasks: readonly Task[]): TaskNesting {
 	const hierarchy = createTaskHierarchy(tasks);
 	return { all: hierarchy, visible: hierarchy, isFiltered: false };
 }
 
 /**
- * The open state of the subtask levels of one tree owner: the List, the Board or the task dialog. A level is named by
+ * The open state of the subtask levels of one tree owner: the List, the Board or the task page. A level is named by
  * its path, the task IDs from the top-level row or card down to the level's task, joined by "/", so a task shown in
  * two places opens and closes on its own in each. Only the levels a person opened or closed are recorded; every other
  * level follows its default.

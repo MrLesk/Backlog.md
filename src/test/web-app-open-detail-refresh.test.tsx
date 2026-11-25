@@ -302,7 +302,7 @@ describe("open task detail across refreshes", () => {
 			statuses,
 		});
 
-		// Every read after the modal is open is held open until the test releases it, so the two
+		// Every read after the page is open is held open until the test releases it, so the two
 		// refreshes below can be answered out of order.
 		const pending: Array<(detail: TaskDetail) => void> = [];
 		let opened = false;
@@ -378,22 +378,23 @@ describe("open task detail across refreshes", () => {
 		});
 		await waitForText(container, "Draft with dependency");
 
-		const row = Array.from(container.querySelectorAll("div.cursor-pointer")).find((element) =>
+		// Each draft on the Drafts page is a link to its task route.
+		const row = Array.from(container.querySelectorAll("main a")).find((element) =>
 			element.textContent?.includes("Draft with dependency"),
 		);
 		expect(row).toBeTruthy();
 		await act(async () => {
-			row?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+			row?.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
 			await Promise.resolve();
 		});
 
-		// Drafts are not part of the task corpus the modal syncs against, so without a detail read
+		// Drafts are not part of the task corpus the page syncs against, so without a detail read
 		// there is no verdict to render at all.
 		await waitForText(container, "Blocked by TASK-1");
 		expect(requestedIds).toContain("DRAFT-1");
 	});
 
-	it("drops a detail read left in flight when the modal is closed and reopened", async () => {
+	it("drops a detail read left in flight when the task page is closed and reopened", async () => {
 		const dependent = makeTask("TASK-2", "To Do", ["TASK-9"]);
 		const blockedDetail = toTaskDetail(dependent, { tasks: [dependent], archivedTasks: [], statuses });
 		const readyDetail = toTaskDetail(dependent, {
@@ -423,7 +424,7 @@ describe("open task detail across refreshes", () => {
 		});
 		await waitForText(container, "Unknown dependency TASK-9");
 
-		// A refresh leaves a read in flight, and the reader closes the modal before it answers.
+		// A refresh leaves a read in flight, and the reader closes the page before it answers.
 		await act(async () => {
 			for (const socket of sockets) socket.onmessage?.({ data: "tasks-updated" });
 			await Promise.resolve();
@@ -432,9 +433,7 @@ describe("open task detail across refreshes", () => {
 		const staleRead = pending[pending.length - 1];
 		expect(staleRead).toBeTruthy();
 
-		const close = Array.from(container.querySelectorAll("button")).find(
-			(button) => button.getAttribute("aria-label") === "Close modal" || button.textContent?.trim() === "×",
-		);
+		const close = container.querySelector("button[aria-label='Close task']");
 		expect(close).toBeTruthy();
 		await act(async () => {
 			close?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
@@ -443,12 +442,10 @@ describe("open task detail across refreshes", () => {
 		await settle(2);
 
 		// Reopening from the list goes through the task route, which is the read whose answer counts.
-		const reopen = Array.from(container.querySelectorAll("button")).find((button) =>
-			button.getAttribute("aria-label")?.startsWith("Open TASK-2"),
-		);
+		const reopen = container.querySelector("a[aria-label^='Open TASK-2']");
 		expect(reopen).toBeTruthy();
 		await act(async () => {
-			reopen?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+			reopen?.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
 			await Promise.resolve();
 		});
 		await settle(2);
@@ -461,7 +458,7 @@ describe("open task detail across refreshes", () => {
 		});
 		await waitForText(container, "Ready to start");
 
-		// The read from before the modal closed answers last, and must not land on the reopened one.
+		// The read from before the page closed answers last, and must not land on the reopened one.
 		await act(async () => {
 			staleRead?.(blockedDetail);
 			await Promise.resolve();
@@ -476,7 +473,7 @@ describe("open task detail across refreshes", () => {
 		const beta = { ...makeTask("TASK-2", "To Do"), title: "Beta task" };
 		const detailFor = (task: Task) => toTaskDetail(task, { tasks: [alpha, beta], archivedTasks: [], statuses });
 
-		// Only the read that opens the modal answers immediately; every later read is held open so
+		// Only the read that opens the page answers immediately; every later read is held open so
 		// the test decides the order they come back in.
 		const pending = new Map<string, Array<(detail: TaskDetail) => void>>();
 		let openingRead = true;
@@ -504,17 +501,15 @@ describe("open task detail across refreshes", () => {
 			activeRoot?.render(<App />);
 			await Promise.resolve();
 		});
-		const dialogText = () => container.querySelector("[role='dialog']")?.textContent ?? "";
+		const pageText = () => container.querySelector("article")?.textContent ?? "";
 		await waitForText(container, "Alpha task");
-		expect(dialogText()).toContain("Alpha task");
+		expect(pageText()).toContain("Alpha task");
 
 		// The reader navigates to another task, leaving that route's read in flight...
-		const openBeta = Array.from(container.querySelectorAll("button")).find((button) =>
-			button.getAttribute("aria-label")?.startsWith("Open TASK-2"),
-		);
+		const openBeta = container.querySelector("a[aria-label^='Open TASK-2']");
 		expect(openBeta).toBeTruthy();
 		await act(async () => {
-			openBeta?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+			openBeta?.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
 			await Promise.resolve();
 		});
 		await settle(2);
@@ -537,12 +532,12 @@ describe("open task detail across refreshes", () => {
 			await settle(2);
 		};
 		await answer(beta.id, beta);
-		await waitFor("the modal to show the routed task", () => dialogText().includes("Beta task"));
+		await waitFor("the page to show the routed task", () => pageText().includes("Beta task"));
 
-		// The reads of the task left behind answer last. The URL says TASK-2, so the modal has to.
+		// The reads of the task left behind answer last. The URL says TASK-2, so the page has to.
 		await answer(alpha.id, alpha);
-		expect(dialogText()).toContain("Beta task");
-		expect(dialogText()).not.toContain("Alpha task");
+		expect(pageText()).toContain("Beta task");
+		expect(pageText()).not.toContain("Alpha task");
 	});
 
 	it("re-reads an open draft when the data refreshes", async () => {
@@ -568,16 +563,16 @@ describe("open task detail across refreshes", () => {
 			await Promise.resolve();
 		});
 		await waitForText(container, "Draft with dependency");
-		const row = Array.from(container.querySelectorAll("div.cursor-pointer")).find((element) =>
+		const row = Array.from(container.querySelectorAll("main a")).find((element) =>
 			element.textContent?.includes("Draft with dependency"),
 		);
 		await act(async () => {
-			row?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+			row?.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
 			await Promise.resolve();
 		});
 		await waitForText(container, "Blocked by TASK-1");
 
-		// The blocker is completed elsewhere. A draft is not in the task corpus the modal syncs
+		// The blocker is completed elsewhere. A draft is not in the task corpus the page syncs
 		// against, so nothing about the refresh names it: the read has to follow the refresh itself.
 		blockerCompleted = true;
 		await act(async () => {

@@ -529,7 +529,7 @@ const runOperation = async (label: string, expectations: FetchExpectation[], tri
 
 const click = async (element: Element, expectations: FetchExpectation[] = []) => {
 	await runOperation(`click ${element.textContent?.trim() || element.tagName}`, expectations, () => {
-		element.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+		element.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
 	});
 };
 
@@ -599,6 +599,9 @@ const travel = async (direction: "back" | "forward", expectations: FetchExpectat
 		await navigated;
 	});
 };
+
+// The open task's page: the page layer over the Tasks page, named by the task's ID and title.
+const taskPageOf = (container: HTMLElement) => container.querySelector<HTMLElement>("article");
 
 // The sidebar's Tasks entry, whose text is its label followed by the task count once the tasks have loaded.
 const sidebarTasksLink = (container: HTMLElement) =>
@@ -943,13 +946,13 @@ describe("task detail routes", () => {
 		assertState(
 			() =>
 				window.location.pathname === "/board/BACK-101/fix-labels-caf-docs" &&
-				Boolean(container.querySelector("[role='dialog']")),
+				Boolean(taskPageOf(container)),
 			"canonical board task route",
 		);
 
 		await travel("back");
 		assertState(
-			() => window.location.pathname === "/board" && container.querySelector("[role='dialog']") === null,
+			() => window.location.pathname === "/board" && taskPageOf(container) === null,
 			"Back to the canonical board",
 		);
 	});
@@ -989,7 +992,7 @@ describe("task detail routes", () => {
 
 		try {
 			const container = await renderApp("/board/BACK-201");
-			const link = container.querySelector('a[aria-label="Open BACK-202 - Graph follower"]');
+			const link = container.querySelector('a[aria-label="Open BACK-202: Graph follower"]');
 			expect(link).toBeTruthy();
 
 			const operation = new FetchOperation("graph link navigation", [
@@ -1000,7 +1003,7 @@ describe("task detail routes", () => {
 				await Promise.resolve();
 			});
 			await act(async () => operation.settle("linked task"));
-			// Give a redundant modal-sync refetch every chance to fire before counting requests. The
+			// Give a redundant page-sync refetch every chance to fire before counting requests. The
 			// sync effect compares the previous task's record against the newly opened one; only
 			// matching task IDs may trigger a follow-up detail read.
 			await act(async () => {
@@ -1048,14 +1051,14 @@ describe("task detail routes", () => {
 		assertState(
 			() =>
 				window.location.pathname === "/board/BACK-101/fix-labels-caf-docs" &&
-				Boolean(container.querySelector("[role='dialog']")),
+				Boolean(taskPageOf(container)),
 			"filtered board task route",
 		);
 		expect(window.location.search).toBe(filteredSearch);
 
 		await travel("back");
 		assertState(
-			() => window.location.pathname === "/board" && container.querySelector("[role='dialog']") === null,
+			() => window.location.pathname === "/board" && taskPageOf(container) === null,
 			"filtered board Back",
 		);
 		expect(window.location.search).toBe(filteredSearch);
@@ -1064,14 +1067,14 @@ describe("task detail routes", () => {
 		assertState(
 			() =>
 				window.location.pathname === "/board/BACK-101/fix-labels-caf-docs" &&
-				Boolean(container.querySelector("[role='dialog']")),
+				Boolean(taskPageOf(container)),
 			"filtered board Forward",
 		);
 		expect(window.location.search).toBe(filteredSearch);
 
-		await clickWithHistory(container.querySelector("button[aria-label='Close modal']") as HTMLButtonElement);
+		await clickWithHistory(container.querySelector("button[aria-label='Close task']") as HTMLButtonElement);
 		assertState(
-			() => window.location.pathname === "/board" && container.querySelector("[role='dialog']") === null,
+			() => window.location.pathname === "/board" && taskPageOf(container) === null,
 			"filtered board close",
 		);
 		expect(window.location.search).toBe(filteredSearch);
@@ -1079,11 +1082,11 @@ describe("task detail routes", () => {
 
 	it("preserves a type filter when closing a direct board task route", async () => {
 		const container = await renderApp("/board/BACK-101/fix-labels-caf-docs?type=Bug&lane=none");
-		assertState(() => Boolean(container.querySelector("[role='dialog']")), "direct filtered board task");
+		assertState(() => Boolean(taskPageOf(container)), "direct filtered board task");
 
-		await click(container.querySelector("button[aria-label='Close modal']") as HTMLButtonElement);
+		await click(container.querySelector("button[aria-label='Close task']") as HTMLButtonElement);
 		assertState(
-			() => window.location.pathname === "/board" && container.querySelector("[role='dialog']") === null,
+			() => window.location.pathname === "/board" && taskPageOf(container) === null,
 			"direct filtered board close",
 		);
 		expect(window.location.search).toBe("?type=Bug&lane=none");
@@ -1180,17 +1183,44 @@ describe("task detail routes", () => {
 		assertState(
 			() =>
 				window.location.pathname === "/board/BACK-101/fix-labels-caf-docs" &&
-				Boolean(container.querySelector("[role='dialog']")),
+				Boolean(taskPageOf(container)),
 			"sidebar filtered task route",
 		);
 		expect(window.location.search).toBe(filteredSearch);
 
-		await clickWithHistory(container.querySelector("button[aria-label='Close modal']") as HTMLButtonElement);
+		await clickWithHistory(container.querySelector("button[aria-label='Close task']") as HTMLButtonElement);
 		assertState(
-			() => window.location.pathname === "/board" && container.querySelector("[role='dialog']") === null,
+			() => window.location.pathname === "/board" && taskPageOf(container) === null,
 			"sidebar return to filtered board",
 		);
 		expect(window.location.search).toBe(filteredSearch);
+	});
+
+	// The Tasks page beneath tidies the spelling of its filters, but not while a task is open over it: that would replace
+	// the task's address and close the task.
+	for (const path of [
+		"/tasks/BACK-101?labels=web,docs",
+		"/board/BACK-101/fix-labels-caf-docs?status=to%20do",
+		"/board/BACK-101?priority=HIGH",
+	]) {
+		it(`keeps a direct task link open when the Tasks page beneath would tidy its query: ${path}`, async () => {
+			const container = await renderApp(path);
+			await act(async () => {
+				await Promise.resolve();
+			});
+
+			expect(taskPageOf(container)?.getAttribute("aria-label")).toContain(tasks[0]?.title ?? "");
+			expect(`${window.location.pathname}${window.location.search}`).toBe(path);
+		});
+	}
+
+	it("tidies the query of a direct task link once the task closes to the Tasks page", async () => {
+		const container = await renderApp("/tasks/BACK-101?labels=web,docs");
+		await click(container.querySelector("button[aria-label='Close task']") as HTMLButtonElement);
+
+		expect(taskPageOf(container)).toBeNull();
+		expect(window.location.pathname).toBe("/tasks");
+		expect(new URLSearchParams(window.location.search).getAll("label")).toEqual(["web", "docs"]);
 	});
 
 	it("keeps legacy highlight links while canonicalizing and closing them cleanly", async () => {
@@ -1198,16 +1228,16 @@ describe("task detail routes", () => {
 		assertState(
 			() =>
 				window.location.pathname === "/board/BACK-101/fix-labels-caf-docs" &&
-				Boolean(container.querySelector("[role='dialog']")),
+				Boolean(taskPageOf(container)),
 			"legacy highlight route",
 		);
 		expect(window.location.search).toBe("?lane=none&type=Bug");
 
-		const closeButton = container.querySelector("button[aria-label='Close modal']");
+		const closeButton = container.querySelector("button[aria-label='Close task']");
 		expect(closeButton).toBeTruthy();
 		await clickWithHistory(closeButton as HTMLButtonElement);
 		expect(window.location.pathname).toBe("/board");
-		expect(container.querySelector("[role='dialog']")).toBeNull();
+		expect(taskPageOf(container)).toBeNull();
 		expect(window.location.search).toBe("?lane=none&type=Bug");
 	});
 
@@ -1237,54 +1267,54 @@ describe("task detail routes", () => {
 		expect(shortcutSearch).toBeTruthy();
 		expect(ownerDocument.activeElement).toBe(shortcutSearch);
 
-		const title = Array.from(container.querySelectorAll("button")).find(
+		const title = Array.from(container.querySelectorAll("a")).find(
 			(element) => element.textContent === tasks[0]?.title,
 		);
 		expect(title).toBeTruthy();
-		(title as HTMLButtonElement).focus();
-		await click(title as HTMLButtonElement, [expectFetch("opened task", "/api/task/BACK-101")]);
+		(title as HTMLAnchorElement).focus();
+		await click(title as HTMLAnchorElement, [expectFetch("opened task", "/api/task/BACK-101")]);
 
 		assertState(
 			() =>
 				window.location.pathname === "/tasks/BACK-101/fix-labels-caf-docs" &&
-				container.querySelector("[role='dialog']") !== null,
-			"stable task route and modal",
+				taskPageOf(container) !== null,
+			"stable task route and task page",
 		);
-		const initialDialog = container.querySelector("[role='dialog']");
-		expect(initialDialog).toBeTruthy();
-		expect(initialDialog?.ownerDocument.activeElement).toBe(initialDialog);
+		const taskPage = taskPageOf(container);
+		expect(ownerDocument.activeElement).toBe(taskPage);
 		expect(window.location.search).toBe("?status=To%20Do");
+		// The list stays mounted beneath the page, out of reach until the page closes.
+		expect(title?.closest("[inert]")).toBeTruthy();
 
-		await press(initialDialog as HTMLElement, "k", { ctrlKey: true });
-		expect(ownerDocument.activeElement).toBe(initialDialog);
-		await press(shortcutSearch as HTMLInputElement, "Tab");
-		expect(initialDialog?.contains(ownerDocument.activeElement)).toBe(true);
-		expect(ownerDocument.activeElement).not.toBe(shortcutSearch);
+		// The task is a page of the app, not a dialog, so the search shortcut still reaches the sidebar.
+		await press(taskPage as HTMLElement, "k", { ctrlKey: true });
+		expect(ownerDocument.activeElement).toBe(shortcutSearch);
 
 		await travel("back");
 		assertState(
-			() => window.location.pathname === "/tasks" && container.querySelector("[role='dialog']") === null,
-			"Back to close the modal",
+			() => window.location.pathname === "/tasks" && taskPageOf(container) === null,
+			"Back to close the task page",
 		);
-		expect(ownerDocument.activeElement).toBe(title as HTMLButtonElement);
+		// The very link that opened the task has focus again: the list was never rebuilt, so its open groups and
+		// scroll position are as the person left them.
+		expect(ownerDocument.activeElement).toBe(title as HTMLAnchorElement);
+		expect(title?.closest("[inert]")).toBeNull();
 
 		await travel("forward", [expectFetch("reopened task", "/api/task/BACK-101")]);
 		assertState(
 			() =>
 				window.location.pathname === "/tasks/BACK-101/fix-labels-caf-docs" &&
-				container.querySelector("[role='dialog']") !== null,
-			"Forward to reopen the modal",
+				taskPageOf(container) !== null,
+			"Forward to reopen the task page",
 		);
-		const reopenedDialog = container.querySelector("[role='dialog']");
-		expect(reopenedDialog).toBeTruthy();
-		expect(reopenedDialog?.ownerDocument.activeElement).toBe(reopenedDialog);
+		expect(ownerDocument.activeElement).toBe(taskPageOf(container));
 
-		await pressWithHistory(container.querySelector("[role='dialog']") as HTMLElement, "Escape");
+		await pressWithHistory(taskPageOf(container) as HTMLElement, "Escape");
 		assertState(
-			() => window.location.pathname === "/tasks" && container.querySelector("[role='dialog']") === null,
-			"close button to return to list",
+			() => window.location.pathname === "/tasks" && taskPageOf(container) === null,
+			"Escape to return to the list",
 		);
-		expect(ownerDocument.activeElement).toBe(title as HTMLButtonElement);
+		expect(ownerDocument.activeElement).toBe(title as HTMLAnchorElement);
 	});
 
 	it("opens a subtask from its parent's Subtasks tree and closes back to the filtered list", async () => {
@@ -1308,30 +1338,30 @@ describe("task detail routes", () => {
 		try {
 			const container = await renderApp("/tasks?label=web");
 			assertState(() => container.textContent?.includes(parent.title) ?? false, "filtered list");
-			const title = container.querySelector<HTMLButtonElement>("button[aria-label='Open BACK-301: Tree parent']");
+			const title = container.querySelector<HTMLAnchorElement>("a[aria-label='Open BACK-301: Tree parent']");
 			expect(title).toBeTruthy();
-			(title as HTMLButtonElement).focus();
-			await click(title as HTMLButtonElement, [expectFetch("opened parent", "/api/task/BACK-301")]);
+			(title as HTMLAnchorElement).focus();
+			await click(title as HTMLAnchorElement, [expectFetch("opened parent", "/api/task/BACK-301")]);
 			assertState(
-				() => window.location.pathname === "/tasks/BACK-301/tree-parent" && container.querySelector("[role='dialog']") !== null,
-				"parent task dialog",
+				() => window.location.pathname === "/tasks/BACK-301/tree-parent" && taskPageOf(container) !== null,
+				"parent task page",
 			);
 
-			const dialog = container.querySelector("[role='dialog']") as HTMLElement;
-			const subtaskTitle = dialog.querySelector("button[aria-label='Open BACK-301.1: Tree child']");
+			const page = taskPageOf(container) as HTMLElement;
+			const subtaskTitle = page.querySelector("a[aria-label='Open BACK-301.1: Tree child']");
 			expect(subtaskTitle).toBeTruthy();
 			await click(subtaskTitle as HTMLElement, [expectFetch("opened subtask", "/api/task/BACK-301.1")]);
 			assertState(
 				() =>
 					window.location.pathname === "/tasks/BACK-301.1/tree-child" &&
-					container.querySelector("#modal-title")?.textContent?.includes("Tree child") === true,
-				"subtask dialog",
+					taskPageOf(container)?.getAttribute("aria-label")?.includes("Tree child") === true,
+				"subtask page",
 			);
 			expect(window.location.search).toBe("?label=web");
 
-			await pressWithHistory(container.querySelector("[role='dialog']") as HTMLElement, "Escape");
+			await pressWithHistory(taskPageOf(container) as HTMLElement, "Escape");
 			assertState(
-				() => window.location.pathname === "/tasks" && container.querySelector("[role='dialog']") === null,
+				() => window.location.pathname === "/tasks" && taskPageOf(container) === null,
 				"closed back to the list",
 			);
 			expect(window.location.search).toBe("?label=web");
@@ -1360,11 +1390,11 @@ describe("task detail routes", () => {
 			message: 'Task "BACK-1" is ambiguous. Repair duplicate task IDs before opening this link.',
 		},
 	]) {
-		it(`clears the previous modal when routing to ${scenario.name} and preserves Back`, async () => {
+		it(`clears the previous task page when routing to ${scenario.name} and preserves Back`, async () => {
 			const container = await renderApp("/tasks/BACK-101/original");
-			assertState(() => Boolean(container.querySelector("[role='dialog']")), "initial routed task modal");
-			expect(container.querySelector("#modal-title")?.textContent).toContain(tasks[0]?.title ?? "");
-			expect(container.ownerDocument.activeElement).toBe(container.querySelector("[role='dialog']"));
+			assertState(() => Boolean(taskPageOf(container)), "initial routed task page");
+			expect(taskPageOf(container)?.getAttribute("aria-label")).toContain(tasks[0]?.title ?? "");
+			expect(container.ownerDocument.activeElement).toBe(taskPageOf(container));
 
 			const scenarioId = scenario.path.split("/")[2] ?? "";
 			await pushRoute(scenario.path, [
@@ -1375,7 +1405,7 @@ describe("task detail routes", () => {
 				`${scenario.name} route fallback`,
 			);
 			const alert = container.querySelector("[role='alert']");
-			expect(container.querySelector("[role='dialog']")).toBeNull();
+			expect(taskPageOf(container)).toBeNull();
 			expect(alert?.textContent).toContain(scenario.message);
 			expect(container.ownerDocument.activeElement).toBe(alert);
 
@@ -1383,15 +1413,15 @@ describe("task detail routes", () => {
 			assertState(
 				() =>
 					window.location.pathname === "/tasks/BACK-101/original" &&
-					Boolean(container.querySelector("[role='dialog']")),
-				"Back to the previous routed task modal",
+					Boolean(taskPageOf(container)),
+				"Back to the previous routed task page",
 			);
-			expect(container.querySelector("#modal-title")?.textContent).toContain(tasks[0]?.title ?? "");
-			expect(container.ownerDocument.activeElement).toBe(container.querySelector("[role='dialog']"));
+			expect(taskPageOf(container)?.getAttribute("aria-label")).toContain(tasks[0]?.title ?? "");
+			expect(container.ownerDocument.activeElement).toBe(taskPageOf(container));
 		});
 	}
 
-	it("renders a focused repair alert instead of a modal for a direct active-branch collision link", async () => {
+	it("renders a focused repair alert instead of a task page for a direct active-branch collision link", async () => {
 		const container = await renderApp("/tasks/BACK-1/collision-shadow");
 		assertState(
 			() => window.location.pathname === "/tasks" && Boolean(container.querySelector("[role='alert']")),
@@ -1401,7 +1431,7 @@ describe("task detail routes", () => {
 		expect(alert?.textContent).toContain(
 			'Task "BACK-1" is ambiguous. Repair duplicate task IDs before opening this link.',
 		);
-		expect(container.querySelector("[role='dialog']")).toBeNull();
+		expect(taskPageOf(container)).toBeNull();
 		expect(container.ownerDocument.activeElement).toBe(alert);
 	});
 
@@ -1409,16 +1439,16 @@ describe("task detail routes", () => {
 		const container = await renderApp("/tasks");
 		assertState(() => container.textContent?.includes("Jira task") ?? false, "cross-prefix task list");
 
-		const title = Array.from(container.querySelectorAll("button")).find(
+		const title = Array.from(container.querySelectorAll("a")).find(
 			(element) => element.textContent === "Jira task",
 		);
 		expect(title).toBeTruthy();
-		await click(title as HTMLButtonElement, [expectFetch("opened Jira task", "/api/task/JIRA-007")]);
+		await click(title as HTMLAnchorElement, [expectFetch("opened Jira task", "/api/task/JIRA-007")]);
 
 		assertState(
 			() =>
 				window.location.pathname === "/tasks/JIRA-007/jira-task" &&
-				container.querySelector("#modal-title")?.textContent?.includes("Jira task") === true,
+				taskPageOf(container)?.getAttribute("aria-label")?.includes("Jira task") === true,
 			"unambiguous cross-prefix task route",
 		);
 		expect(container.querySelector("[role='alert']")).toBeNull();
@@ -1428,16 +1458,16 @@ describe("task detail routes", () => {
 		const container = await renderApp("/tasks");
 		assertState(() => container.textContent?.includes("Legacy prefixed task") ?? false, "legacy task list row");
 
-		const title = Array.from(container.querySelectorAll("button")).find(
+		const title = Array.from(container.querySelectorAll("a")).find(
 			(element) => element.textContent === "Legacy prefixed task",
 		);
 		expect(title).toBeTruthy();
-		await click(title as HTMLButtonElement, [expectFetch("opened legacy task", "/api/task/TASK-PREFIXED")]);
+		await click(title as HTMLAnchorElement, [expectFetch("opened legacy task", "/api/task/TASK-PREFIXED")]);
 
 		assertState(
 			() =>
 				window.location.pathname === "/tasks/TASK-PREFIXED/legacy-prefixed-task" &&
-				container.querySelector("#modal-title")?.textContent?.includes("Legacy prefixed task") === true,
+				taskPageOf(container)?.getAttribute("aria-label")?.includes("Legacy prefixed task") === true,
 			"legacy task route",
 		);
 		expect(container.querySelector("[role='alert']")).toBeNull();
@@ -1445,8 +1475,8 @@ describe("task detail routes", () => {
 
 	it("opens an exact legacy task ID from a direct route", async () => {
 		const container = await renderApp("/board/task-prefixed/cosmetic-slug");
-		assertState(() => Boolean(container.querySelector("[role='dialog']")), "direct legacy task modal");
-		expect(container.querySelector("#modal-title")?.textContent).toContain("Legacy prefixed task");
+		assertState(() => Boolean(taskPageOf(container)), "direct legacy task page");
+		expect(taskPageOf(container)?.getAttribute("aria-label")).toContain("Legacy prefixed task");
 		expect(container.querySelector("[role='alert']")).toBeNull();
 	});
 
@@ -1460,20 +1490,59 @@ describe("task detail routes", () => {
 		const alert = container.querySelector("[role='alert']");
 		expect(alert?.textContent).toContain('Task "TASK-MISSING" was not found.');
 		expect(document.activeElement).toBe(alert);
-		expect(container.querySelector("[role='dialog']")).toBeNull();
+		expect(taskPageOf(container)).toBeNull();
 	});
 
-	it("reads the task detail when a page without a task route opens the modal", async () => {
-		const container = await renderApp("/milestones");
-		// Milestones has no task route, so it opens the modal directly. It must still read the detail,
-		// or the modal would show the compact list record with no dependency graph.
-		const row = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("BACK-101"));
-		expect(row).toBeTruthy();
-		await click(row as HTMLElement, [expectFetch("milestone task detail", "/api/task/BACK-101")]);
-		assertState(
-			() => window.location.pathname === "/milestones" && Boolean(container.querySelector("[role='dialog']")),
-			"milestone task modal without a page change",
-		);
+	it("opens a task from Milestones over that page, which keeps its search, its open list and focus", async () => {
+		// More unassigned tasks than the Milestones page lists before "Show all".
+		const fillers: Task[] = Array.from({ length: 14 }, (_, index) => ({
+			...(tasks[2] as Task),
+			id: `BACK-${500 + index}`,
+			title: `Filler task ${index + 1}`,
+		}));
+		const fillerResults: SearchResult[] = fillers.map((task) => ({ type: "task", task, score: 1 }));
+		tasks.push(...fillers);
+		searchResults.push(...fillerResults);
+
+		try {
+			const container = await renderApp("/milestones");
+			const search = container.querySelector("input[aria-label='Search milestones']") as HTMLInputElement;
+			await setInputValue(search, "Filler");
+			const showAll = Array.from(container.querySelectorAll("button")).find(
+				(button) => button.textContent === "Show all 14 tasks ↓",
+			);
+			expect(showAll).toBeTruthy();
+			await click(showAll as HTMLButtonElement);
+			const row = Array.from(container.querySelectorAll("a")).find((link) => link.textContent?.includes("Filler task 14"));
+			expect(row).toBeTruthy();
+			(row as HTMLAnchorElement).focus();
+
+			await click(row as HTMLAnchorElement, [expectFetch("milestone task detail", "/api/task/BACK-513")]);
+			// Milestones has no task route of its own: the task's address is in the layout used last, the Board by default,
+			// and the Milestones page stays beneath it, out of reach.
+			assertState(
+				() => window.location.pathname === "/board/BACK-513/filler-task-14" && Boolean(taskPageOf(container)),
+				"task page over Milestones",
+			);
+			expect(search.isConnected).toBe(true);
+			expect(search.closest("[inert]")).toBeTruthy();
+			const breadcrumb = container.querySelector<HTMLAnchorElement>("nav[aria-label='Breadcrumb'] a");
+			expect(breadcrumb?.textContent).toBe("Milestones");
+			expect(breadcrumb?.getAttribute("href")).toBe("/milestones");
+
+			const returnedToMilestones = nextHistoryChange("/milestones");
+			await click(container.querySelector("button[aria-label='Close task']") as HTMLButtonElement);
+			await act(async () => returnedToMilestones);
+			expect(taskPageOf(container)).toBeNull();
+			// The same page, as it was: the search typed, the whole list shown, and focus on the row that opened the task.
+			expect(search.isConnected).toBe(true);
+			expect(search.value).toBe("Filler");
+			expect(container.textContent).toContain("Show less ↑");
+			expect(container.ownerDocument.activeElement).toBe(row as HTMLAnchorElement);
+		} finally {
+			tasks.splice(tasks.indexOf(fillers[0] as Task), fillers.length);
+			searchResults.splice(searchResults.indexOf(fillerResults[0] as SearchResult), fillerResults.length);
+		}
 	});
 
 	it("archives a routed task with a single history close", async () => {
@@ -1492,28 +1561,29 @@ describe("task detail routes", () => {
 			"task list navigation",
 		);
 
-		const title = Array.from(container.querySelectorAll("button")).find(
+		const title = Array.from(container.querySelectorAll("a")).find(
 			(element) => element.textContent === tasks[0]?.title,
 		);
 		expect(title).toBeTruthy();
-		await click(title as HTMLButtonElement, [expectFetch("opened task", "/api/task/BACK-101")]);
+		await click(title as HTMLAnchorElement, [expectFetch("opened task", "/api/task/BACK-101")]);
 		assertState(
 			() =>
 				window.location.pathname.startsWith("/tasks/BACK-101/") &&
-				Boolean(container.querySelector("[role='dialog']")),
-			"routed task modal",
+				Boolean(taskPageOf(container)),
+			"routed task page",
 		);
 
-		const archiveButton = Array.from(container.querySelectorAll("button")).find(
-			(element) => element.textContent?.includes("Archive Task"),
+		await click(container.querySelector("button[aria-label='More actions']") as HTMLButtonElement);
+		const archiveItem = Array.from(container.querySelectorAll("[role='menuitem']")).find(
+			(element) => element.textContent === "Archive",
 		);
-		expect(archiveButton).toBeTruthy();
-		await clickWithHistory(archiveButton as HTMLButtonElement, [
+		expect(archiveItem).toBeTruthy();
+		await clickWithHistory(archiveItem as HTMLButtonElement, [
 			expectFetch("archive response", "/api/tasks/BACK-101/archive", { settleOn: "response" }),
 			expectFetch("archive refresh", "/api/search"),
 		]);
 		assertState(
-			() => window.location.pathname === "/tasks" && container.querySelector("[role='dialog']") === null,
+			() => window.location.pathname === "/tasks" && taskPageOf(container) === null,
 			"single archive close",
 		);
 		expect(window.location.pathname).toBe("/tasks");
@@ -1523,25 +1593,26 @@ describe("task detail routes", () => {
 		const container = await renderApp("/tasks");
 		assertState(() => container.textContent?.includes(tasks[0]?.title ?? "") ?? false, "task list");
 
-		const firstTitle = Array.from(container.querySelectorAll("button")).find(
+		const firstTitle = Array.from(container.querySelectorAll("a")).find(
 			(element) => element.textContent === tasks[0]?.title,
 		);
 		const staleRoute = new FetchOperation("stale task route", [
 			expectFetch("stale task", "/api/task/BACK-101", { manual: true }),
 		]);
-		await click(firstTitle as HTMLButtonElement);
+		await click(firstTitle as HTMLAnchorElement);
 		staleRoute.finish();
 		expect(window.location.pathname).toStartWith("/tasks/BACK-101/");
+		// While the first read is pending, the page is already there with its head, over the list.
+		expect(taskPageOf(container)?.getAttribute("aria-busy")).toBe("true");
+		expect(firstTitle?.closest("[inert]")).toBeTruthy();
 
-		const secondTitle = Array.from(container.querySelectorAll("button")).find(
-			(element) => element.textContent === tasks[1]?.title,
-		);
-		await click(secondTitle as HTMLButtonElement, [expectFetch("newer task", "/api/task/BACK-001.02")]);
+		// The route moves on to another task before the first read answers, as Forward or a link would.
+		await pushRoute("/tasks/BACK-001.02/padded-subtask", [expectFetch("newer task", "/api/task/BACK-001.02")]);
 		assertState(
 			() =>
 				window.location.pathname === "/tasks/BACK-001.02/padded-subtask" &&
-				container.querySelector("#modal-title")?.textContent?.includes("Padded subtask") === true,
-			"newer task modal",
+				taskPageOf(container)?.getAttribute("aria-label")?.includes("Padded subtask") === true,
+			"newer task page",
 		);
 
 		await act(async () => {
@@ -1549,14 +1620,54 @@ describe("task detail routes", () => {
 			await staleRoute.settle("stale task");
 		});
 		expect(window.location.pathname).toBe("/tasks/BACK-001.02/padded-subtask");
-		expect(container.querySelector("#modal-title")?.textContent).toContain("Padded subtask");
+		expect(taskPageOf(container)?.getAttribute("aria-label")).toContain("Padded subtask");
 
-		const closeButton = container.querySelector("button[aria-label='Close modal']");
-		await clickWithHistory(closeButton as HTMLButtonElement);
+		// The newer route came from outside the app (no history state of its own), so closing its task leaves it for the
+		// Tasks page beneath rather than going back.
+		await click(container.querySelector("button[aria-label='Close task']") as HTMLButtonElement);
 		assertState(
-			() => window.location.pathname === "/tasks" && container.querySelector("[role='dialog']") === null,
+			() => window.location.pathname === "/tasks" && taskPageOf(container) === null,
 			"race winner close",
 		);
+	});
+
+	it("keeps the page on screen while a task linked from it loads", async () => {
+		const container = await renderApp("/tasks/BACK-101/fix-labels-caf-docs");
+		assertState(() => taskPageOf(container)?.getAttribute("aria-busy") === "false", "first task read");
+		const searchInput = container.querySelector("input[placeholder='Search (⌘K)...']") as HTMLInputElement | null;
+		await setInputValue(searchInput as HTMLInputElement, "Padded", [expectFetch("sidebar search", "/api/search")]);
+		// The sidebar's search result, not the row of the list beneath the page, which is out of reach while it is open.
+		const resultLink = Array.from(container.querySelectorAll("a")).find(
+			(link) => link.textContent?.includes(tasks[1]?.title ?? "") && !link.closest("[inert]"),
+		);
+		expect(resultLink).toBeTruthy();
+
+		const nextRead = new FetchOperation("next task", [
+			expectFetch("next task", "/api/task/BACK-001.02", { manual: true }),
+		]);
+		await click(resultLink as HTMLAnchorElement);
+		nextRead.finish();
+		expect(window.location.pathname).toBe("/tasks/BACK-001.02/padded-subtask");
+		// Between the two tasks the page keeps its head and names the next task; the list never shows through.
+		const loadingPage = taskPageOf(container);
+		expect(loadingPage?.getAttribute("aria-busy")).toBe("true");
+		expect(loadingPage?.getAttribute("aria-label")).toBe("BACK-001.02");
+
+		await act(async () => {
+			nextRead.respond("next task", json(tasks[1]));
+			await nextRead.settle("next task");
+		});
+		expect(taskPageOf(container)?.getAttribute("aria-label")).toContain("Padded subtask");
+	});
+
+	it("leads back to the filtered Tasks page through the breadcrumb", async () => {
+		const container = await renderApp("/tasks/BACK-101/fix-labels-caf-docs?status=To%20Do");
+		const breadcrumb = container.querySelector<HTMLAnchorElement>("nav[aria-label='Breadcrumb'] a");
+		expect(breadcrumb?.getAttribute("href")).toBe("/tasks?status=To%20Do");
+
+		await click(breadcrumb as HTMLAnchorElement);
+		expect(`${window.location.pathname}${window.location.search}`).toBe("/tasks?status=To%20Do");
+		expect(taskPageOf(container)).toBeNull();
 	});
 
 	it("ignores a stale duplicate repair plan when a newer data load wins", async () => {
@@ -1608,14 +1719,14 @@ describe("task detail routes", () => {
 
 	it("opens a padded custom-prefix subtask directly and closes to the board", async () => {
 		const container = await renderApp("/board/001.02/cosmetic-slug");
-		assertState(() => Boolean(container.querySelector("[role='dialog']")), "direct board modal");
-		expect(container.querySelector("#modal-title")?.textContent).toContain("Padded subtask");
+		assertState(() => Boolean(taskPageOf(container)), "direct board task page");
+		expect(taskPageOf(container)?.getAttribute("aria-label")).toContain("Padded subtask");
 
-		const closeButton = container.querySelector("button[aria-label='Close modal']");
+		const closeButton = container.querySelector("button[aria-label='Close task']");
 		expect(closeButton).toBeTruthy();
 		await click(closeButton as HTMLButtonElement);
 		assertState(
-			() => window.location.pathname === "/board" && container.querySelector("[role='dialog']") === null,
+			() => window.location.pathname === "/board" && taskPageOf(container) === null,
 			"direct route close",
 		);
 	});
@@ -1630,7 +1741,7 @@ describe("task detail routes", () => {
 		const alert = container.querySelector("[role='alert']");
 		expect(alert?.textContent).toContain('"TASK-../secret" is not a valid task ID.');
 		expect(document.activeElement).toBe(alert);
-		expect(container.querySelector("[role='dialog']")).toBeNull();
+		expect(taskPageOf(container)).toBeNull();
 	});
 
 	it("handles malformed deeper paths at the client SPA boundary", async () => {
@@ -1641,6 +1752,6 @@ describe("task detail routes", () => {
 		);
 		expect(window.location.search).toBe("?lane=none");
 		expect(container.querySelector("[role='alert']")?.textContent).toContain("That task link is not valid.");
-		expect(container.querySelector("[role='dialog']")).toBeNull();
+		expect(taskPageOf(container)).toBeNull();
 	});
 });

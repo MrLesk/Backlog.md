@@ -164,7 +164,7 @@ describe("readiness agreement across surfaces", () => {
 		for (const id of readyIds) expect(mcpOutput).toContain(id);
 		for (const id of notReadyIds) expect(mcpOutput).not.toContain(id);
 
-		// What the browser is handed when it opens a task: the modal renders this, it does not
+		// What the browser is handed when it opens a task: the task page renders this, it does not
 		// resolve anything of its own.
 		for (const [id, isReady] of Object.entries(expectedReadiness)) {
 			const response = await withTimeout(handlers.handleGetTask(id), `task detail ${id}`, 5_000);

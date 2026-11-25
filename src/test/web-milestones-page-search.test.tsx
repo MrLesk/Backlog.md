@@ -101,7 +101,6 @@ const renderPage = (
 					statuses={["To Do", "In Progress", "Done"]}
 					milestoneEntities={milestoneEntities}
 					archivedMilestones={[]}
-					onEditTask={() => {}}
 					onRefreshData={options.onRefreshData}
 					dateFormat={options.dateFormat}
 				/>

@@ -4,13 +4,15 @@ title: Open task files in a viewer with an Open in editor action
 status: To Do
 assignee: []
 created_date: '2026-11-23T20:53:00Z'
+updated_date: '2026-11-25T16:09:00Z'
 labels:
   - web
 dependencies:
   - BACK-830
 references:
   - src/server/index.ts
-  - src/web/components/TaskDetailsModal.tsx
+  - src/web/components/TaskDetails.tsx
+  - src/web/components/TaskFileList.tsx
 priority: medium
 type: feature
 ordinal: 427000

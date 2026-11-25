@@ -49,7 +49,7 @@ let activeRoot: Root | null = null;
 interface PageOptions {
 	tasks?: Task[];
 	statuses?: string[];
-	onEditTask?: (task: Task) => void;
+	onOpenTask?: (task: Task) => void;
 }
 
 const pageRoutes = (options: PageOptions) => {
@@ -66,16 +66,17 @@ const pageRoutes = (options: PageOptions) => {
 			availableProjects={[]}
 			isLoading={false}
 			hideEmptyColumns={false}
-			onEditTask={options.onEditTask ?? (() => {})}
+			onOpenTask={options.onOpenTask ?? (() => {})}
 			onNewTask={() => {}}
 			onRefreshData={async () => {}}
 			onTasksUpdated={() => {}}
 		/>
 	);
 	return (
+		// As in the app, a task route shows the page of its layout, so a task link keeps the page on screen.
 		<Routes>
-			<Route path="/tasks" element={page("list")} />
-			<Route path="/board" element={page("board")} />
+			<Route path="/tasks/*" element={page("list")} />
+			<Route path="/board/*" element={page("board")} />
 		</Routes>
 	);
 };
@@ -130,15 +131,15 @@ const idOf = (label: string | null): string => label?.match(/^Open ([^:]+):/)?.[
 
 /** The tasks the list shows, top to bottom, with the levels opened so far. */
 const listedIds = (scope: ParentNode): string[] =>
-	Array.from(scope.querySelectorAll("li button[aria-label^='Open ']"), (title) =>
+	Array.from(scope.querySelectorAll("li a[aria-label^='Open ']"), (title) =>
 		idOf(title.getAttribute("aria-label")),
 	);
 
-/** The button that opens a task in a list row or a tree row. A card's title is a role="button" span: see cardOf. */
-const titleOf = (scope: ParentNode, taskId: string): HTMLButtonElement => {
-	const title = scope.querySelector<HTMLButtonElement>(`button[aria-label^="Open ${taskId}:"]`);
+/** The link that opens a task, in a list row, a tree row or on a card. */
+const titleOf = (scope: ParentNode, taskId: string): HTMLAnchorElement => {
+	const title = scope.querySelector<HTMLAnchorElement>(`a[aria-label^="Open ${taskId}:"]`);
 	expect(title, `title of ${taskId}`).toBeTruthy();
-	return title as HTMLButtonElement;
+	return title as HTMLAnchorElement;
 };
 
 /** The marker beside a task's title, in a list row or a tree row. */
@@ -166,14 +167,14 @@ const groupRows = (container: HTMLElement, status: string): HTMLElement => {
 	return rows as HTMLElement;
 };
 
-/** The task IDs of the cards on the board: each card's title is the button that opens it. */
+/** The task IDs of the cards on the board: each card's title is the link that opens it. */
 const cardIds = (scope: ParentNode): string[] =>
-	Array.from(scope.querySelectorAll("[role='group'] h4 [role='button'][aria-label^='Open ']"), (title) =>
+	Array.from(scope.querySelectorAll("[role='group'] h4 a[aria-label^='Open ']"), (title) =>
 		idOf(title.getAttribute("aria-label")),
 	);
 
 const cardOf = (container: HTMLElement, taskId: string): HTMLElement => {
-	const title = container.querySelector(`[role='group'] h4 [role='button'][aria-label^="Open ${taskId}:"]`);
+	const title = container.querySelector(`[role='group'] h4 a[aria-label^="Open ${taskId}:"]`);
 	const card = title?.closest<HTMLElement>("[aria-selected]");
 	expect(card, `card of ${taskId}`).toBeTruthy();
 	return card as HTMLElement;
@@ -247,14 +248,15 @@ describe("Nested tasks in the List", () => {
 
 	it("lists a subtask with another status in its own group, linked to its parent, and under the opened parent", async () => {
 		const opened: string[] = [];
-		const container = renderPage("/tasks", { onEditTask: (task) => opened.push(task.id) });
+		const container = renderPage("/tasks", { onOpenTask: (task) => opened.push(task.id) });
 		const doingGroup = groupRows(container, "Doing");
 
 		expect(listedIds(doingGroup)).toEqual(["TASK-2.2"]);
-		const parentLink = doingGroup.querySelector("button[aria-label^='Parent task TASK-2:']");
-		expect(parentLink).toBeTruthy();
+		const parentLink = doingGroup.querySelector("a[aria-label^='Parent task TASK-2:']");
+		expect(parentLink?.getAttribute("href")).toBe("/tasks/TASK-2/orbit-root");
 		await click(parentLink as Element);
-		expect(opened).toEqual(["TASK-2"]);
+		expect(window.location.pathname).toBe("/tasks/TASK-2/orbit-root");
+		expect(opened).toEqual([]);
 
 		await click(markerOf(container, "TASK-2"));
 		const backlogGroup = groupRows(container, "Backlog");
@@ -263,7 +265,7 @@ describe("Nested tasks in the List", () => {
 
 	it("opens a subtask from a click anywhere on its row, never its parent", async () => {
 		const opened: string[] = [];
-		const container = renderPage("/tasks", { onEditTask: (task) => opened.push(task.id) });
+		const container = renderPage("/tasks", { onOpenTask: (task) => opened.push(task.id) });
 		await click(markerOf(container, "TASK-2"));
 
 		const row = titleOf(container, "TASK-2.1").closest("li")?.firstElementChild;
@@ -278,7 +280,7 @@ describe("Nested tasks under filters", () => {
 		const container = renderPage("/tasks?search=zeppelin");
 
 		expect(listedIds(container)).toEqual(["TASK-2.1.1.1.1.1"]);
-		expect(container.querySelector("button[aria-label^='Parent task TASK-2.1.1.1.1:']")).toBeTruthy();
+		expect(container.querySelector("a[aria-label^='Parent task TASK-2.1.1.1.1:']")).toBeTruthy();
 	});
 
 	it("opens parents by themselves when their subtasks match too", () => {
@@ -334,7 +336,7 @@ describe("Nested tasks on the Board", () => {
 
 	it("opens a parent's subtasks inside its card level by level, and each subtask keeps its card and parent link", async () => {
 		const opened: string[] = [];
-		const container = renderPage("/board", { onEditTask: (task) => opened.push(task.id) });
+		const container = renderPage("/board", { onOpenTask: (task) => opened.push(task.id) });
 		const parent = cardOf(container, "TASK-2");
 		const bar = parent.querySelector(":scope > button[aria-expanded]") as HTMLButtonElement;
 
@@ -342,7 +344,7 @@ describe("Nested tasks on the Board", () => {
 		await click(bar);
 		expect(bar.getAttribute("aria-expanded")).toBe("true");
 		expect(titleOf(parent, "TASK-2.4")).toBeTruthy();
-		expect(parent.querySelector("button[aria-label^='Open TASK-2.1.1:']")).toBeNull();
+		expect(parent.querySelector("a[aria-label^='Open TASK-2.1.1:']")).toBeNull();
 
 		await click(markerOf(parent, "TASK-2.1"));
 		expect(titleOf(parent, "TASK-2.1.1")).toBeTruthy();
@@ -350,13 +352,14 @@ describe("Nested tasks on the Board", () => {
 		// TASK-2.4 has a status the board has no column for, so it has no card.
 		expect(cardIds(container)).toEqual(expect.arrayContaining(["TASK-2.1", "TASK-2.2", "TASK-2.3"]));
 		const subtaskCard = cardOf(container, "TASK-2.2");
-		await click(subtaskCard.querySelector("button[aria-label^='Parent task TASK-2:']") as Element);
-		expect(opened).toEqual(["TASK-2"]);
+		await click(subtaskCard.querySelector("a[aria-label^='Parent task TASK-2:']") as Element);
+		expect(window.location.pathname).toBe("/board/TASK-2/orbit-root");
+		expect(opened).toEqual([]);
 	});
 
 	it("runs the bar, a subtask row and the parent link on a plain click, and never opens the card", async () => {
 		const opened: string[] = [];
-		const container = renderPage("/board", { onEditTask: (task) => opened.push(task.id) });
+		const container = renderPage("/board", { onOpenTask: (task) => opened.push(task.id) });
 		const parent = cardOf(container, "TASK-2");
 		const bar = parent.querySelector(":scope > button[aria-expanded]") as HTMLButtonElement;
 
@@ -367,13 +370,15 @@ describe("Nested tasks on the Board", () => {
 		await click(titleOf(parent, "TASK-2.3").closest("li")?.firstElementChild as Element);
 		expect(opened).toEqual(["TASK-2.3"]);
 
-		await click(cardOf(container, "TASK-2.2").querySelector("button[aria-label^='Parent task TASK-2:']") as Element);
-		expect(opened).toEqual(["TASK-2.3", "TASK-2"]);
+		// The parent link is a link: it opens the parent through its own route, and the card does not open.
+		await click(cardOf(container, "TASK-2.2").querySelector("a[aria-label^='Parent task TASK-2:']") as Element);
+		expect(window.location.pathname).toBe("/board/TASK-2/orbit-root");
+		expect(opened).toEqual(["TASK-2.3"]);
 	});
 
 	it("selects a card on a Ctrl-click anywhere on it, also on its bar, a subtask row or its parent link", async () => {
 		const opened: string[] = [];
-		const container = renderPage("/board", { onEditTask: (task) => opened.push(task.id) });
+		const container = renderPage("/board", { onOpenTask: (task) => opened.push(task.id) });
 		const parent = cardOf(container, "TASK-2");
 		const bar = parent.querySelector(":scope > button[aria-expanded]") as HTMLButtonElement;
 
@@ -381,7 +386,7 @@ describe("Nested tasks on the Board", () => {
 		expect(parent.getAttribute("aria-selected")).toBe("true");
 		expect(bar.getAttribute("aria-expanded")).toBe("false");
 
-		await click(cardOf(container, "TASK-2.2").querySelector("button[aria-label^='Parent task']") as Element, {
+		await click(cardOf(container, "TASK-2.2").querySelector("a[aria-label^='Parent task']") as Element, {
 			ctrlKey: true,
 		});
 		expect(cardOf(container, "TASK-2.2").getAttribute("aria-selected")).toBe("true");
@@ -393,10 +398,10 @@ describe("Nested tasks on the Board", () => {
 		expect(opened).toEqual([]);
 	});
 
-	it("selects a card with Ctrl+Enter on its title, and opens it once with Enter or Space", async () => {
+	it("selects a card with Ctrl+Enter on its title, leaves Enter to the link, and opens it once with Space", async () => {
 		const opened: string[] = [];
-		const container = renderPage("/board", { onEditTask: (task) => opened.push(task.id) });
-		const title = container.querySelector("h4 [role='button'][aria-label^='Open TASK-1:']") as HTMLElement;
+		const container = renderPage("/board", { onOpenTask: (task) => opened.push(task.id) });
+		const title = container.querySelector("h4 a[aria-label^='Open TASK-1:']") as HTMLElement;
 		const press = async (key: string, init: KeyboardEventInit = {}) => {
 			const event = new window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init });
 			await act(async () => {
@@ -410,11 +415,12 @@ describe("Nested tasks on the Board", () => {
 		expect(cardOf(container, "TASK-1").getAttribute("aria-selected")).toBe("true");
 		expect(opened).toEqual([]);
 
-		await press("Enter");
-		expect(opened).toEqual(["TASK-1"]);
-		// Space opens too, and does not scroll the page.
+		// Enter is the link's own key: the browser follows the link, so the card's handler leaves it alone.
+		expect((await press("Enter")).defaultPrevented).toBe(false);
+		expect(opened).toEqual([]);
+		// Space opens the task too, once, and does not scroll the page.
 		expect((await press(" ")).defaultPrevented).toBe(true);
-		expect(opened).toEqual(["TASK-1", "TASK-1"]);
+		expect(opened).toEqual(["TASK-1"]);
 	});
 
 	it("cancels a drag that starts on a subtask row, so the card around it does not move", async () => {
@@ -439,6 +445,6 @@ describe("Nested tasks on the Board", () => {
 			carried: [],
 		});
 		// A drag from the card's own title still carries the card.
-		expect((await dragFrom(parent.querySelector("h4 [role='button']") as Element)).carried).toContain("TASK-2");
+		expect((await dragFrom(parent.querySelector("h4 a") as Element)).carried).toContain("TASK-2");
 	});
 });

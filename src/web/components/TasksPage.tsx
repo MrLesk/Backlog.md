@@ -6,6 +6,7 @@ import { resolveTaskById } from "../../utils/task-id.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../../utils/task-search.ts";
 import { createTaskHierarchy } from "../../utils/task-subtasks.ts";
 import { isTerminalStatus } from "../../utils/terminal-status.ts";
+import { useAddressBarLocation } from "../contexts/AddressBarLocationContext.tsx";
 import { useBrowserAccess } from "../contexts/BrowserAccessContext";
 import type { LaneMode } from "../lib/lanes.ts";
 import {
@@ -17,6 +18,7 @@ import {
 	toTaskFilterOptions,
 	writeTaskFilters,
 } from "../lib/task-filters.ts";
+import { taskRouteOf } from "../lib/task-links.ts";
 import type { TaskNesting } from "../lib/task-nesting.ts";
 import { readLaneMode, rememberLaneMode, rememberTaskLayout, type TaskLayout } from "../lib/task-view.ts";
 import Board from "./Board";
@@ -44,7 +46,7 @@ interface TasksPageProps {
 	loadError?: Error | null;
 	hideEmptyColumns: boolean;
 	dateFormat?: string;
-	onEditTask: (task: Task) => void;
+	onOpenTask: (task: Task) => void;
 	onNewTask: () => void;
 	onRefreshData: () => Promise<void>;
 	onTasksUpdated: (tasks: Task[], requestTask: Task) => void;
@@ -87,13 +89,17 @@ export default function TasksPage({
 	loadError,
 	hideEmptyColumns,
 	dateFormat,
-	onEditTask,
+	onOpenTask,
 	onNewTask,
 	onRefreshData,
 	onTasksUpdated,
 }: TasksPageProps) {
 	const { canWrite } = useBrowserAccess();
 	const [searchParams, setSearchParams] = useSearchParams();
+	// While a task is open over this page, the address bar belongs to the task: setSearchParams here acts on this page's
+	// own location, so a write would replace the task's address and close it. The page tidies its query once it is the
+	// page again.
+	const isBeneathTask = taskRouteOf(useAddressBarLocation().pathname) !== null;
 	const choices = useMemo(
 		() => ({ statuses, types: availableTypes, projects: availableProjects, priorities: availablePriorities }),
 		[statuses, availableTypes, availableProjects, availablePriorities],
@@ -116,10 +122,10 @@ export default function TasksPage({
 	// priorities, and type, project and priority values that are not configured leave the URL. This waits for a
 	// successful load, or every custom value would look unsupported.
 	useEffect(() => {
-		if (isLoading || loadError) return;
+		if (isLoading || loadError || isBeneathTask) return;
 		const canonical = writeTaskFilters(searchParams, filters);
 		if (canonical.toString() !== searchParams.toString()) setSearchParams(canonical, { replace: true });
-	}, [isLoading, loadError, searchParams, filters, setSearchParams]);
+	}, [isLoading, loadError, isBeneathTask, searchParams, filters, setSearchParams]);
 
 	useEffect(() => {
 		rememberTaskLayout(layout);
@@ -148,7 +154,7 @@ export default function TasksPage({
 	// loaded and the page has rendered, as it did on the board.
 	useEffect(() => {
 		const highlight = searchParams.get("highlight");
-		if (!highlight) return;
+		if (!highlight || isBeneathTask) return;
 		setHighlightTaskId(highlight);
 		setSearchParams(
 			(params) => {
@@ -158,7 +164,7 @@ export default function TasksPage({
 			},
 			{ replace: true },
 		);
-	}, [searchParams, setSearchParams]);
+	}, [isBeneathTask, searchParams, setSearchParams]);
 
 	useEffect(() => {
 		if (!highlightTaskId || tasks.length === 0) return;
@@ -166,10 +172,10 @@ export default function TasksPage({
 		if (resolution.status !== "found") return;
 		const timer = setTimeout(() => {
 			setHighlightTaskId(null);
-			onEditTask(resolution.task);
+			onOpenTask(resolution.task);
 		}, 100);
 		return () => clearTimeout(timer);
-	}, [highlightTaskId, tasks, onEditTask]);
+	}, [highlightTaskId, tasks, onOpenTask]);
 
 	// The shared task search narrows the tasks once, for whichever layout shows them. Its index is built only while
 	// there is text to search for.
@@ -285,7 +291,7 @@ export default function TasksPage({
 									finalGroupOpenByDefault={filters.statuses.some((status) => isTerminalStatus(status, statuses))}
 									isLoading={isLoading}
 									dateFormat={dateFormat}
-									onEditTask={onEditTask}
+									onOpenTask={onOpenTask}
 									onCleanup={openCleanup}
 								/>
 							) : (
@@ -293,7 +299,7 @@ export default function TasksPage({
 									tasks={tasks}
 									visibleTasks={visibleTasks}
 									nesting={nesting}
-									onEditTask={onEditTask}
+									onOpenTask={onOpenTask}
 									onRefreshData={onRefreshData}
 									onTasksUpdated={onTasksUpdated}
 									statuses={statuses}

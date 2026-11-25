@@ -3,9 +3,10 @@ import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import TaskCard from "../web/components/TaskCard.tsx";
-import { TaskDetailsModal } from "../web/components/TaskDetailsModal.tsx";
+import TaskDetails from "../web/components/TaskDetails.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext.tsx";
 import { apiClient, type TaskUpdateRequest } from "../web/lib/api.ts";
 import { setNativeInputValue } from "./react-dom-input.ts";
@@ -118,20 +119,24 @@ afterEach(() => {
 describe("Web task project UI", () => {
 	it("shows a project badge on cards and no badge for unprojected tasks", () => {
 		const webHtml = renderToString(
-			<TaskCard
-				task={createTask({ project: "Web" })}
-				onEdit={() => {}}
-				availableProjects={["Web"]}
-				{...STANDALONE_CARD_NESTING}
-			/>,
+			<MemoryRouter initialEntries={["/board"]}>
+				<TaskCard
+					task={createTask({ project: "Web" })}
+					onOpenTask={() => {}}
+					availableProjects={["Web"]}
+					{...STANDALONE_CARD_NESTING}
+				/>
+			</MemoryRouter>,
 		);
 		const untaggedHtml = renderToString(
-			<TaskCard
-				task={createTask()}
-				onEdit={() => {}}
-				availableProjects={["Web"]}
-				{...STANDALONE_CARD_NESTING}
-			/>,
+			<MemoryRouter initialEntries={["/board"]}>
+				<TaskCard
+					task={createTask()}
+					onOpenTask={() => {}}
+					availableProjects={["Web"]}
+					{...STANDALONE_CARD_NESTING}
+				/>
+			</MemoryRouter>,
 		);
 
 		expect(webHtml).toContain('data-task-project="Web"');
@@ -140,26 +145,30 @@ describe("Web task project UI", () => {
 
 	it("hides the project badge when no projects are configured, even if the task has one", () => {
 		const html = renderToString(
-			<TaskCard
-				task={createTask({ project: "Web" })}
-				onEdit={() => {}}
-				{...STANDALONE_CARD_NESTING}
-			/>,
+			<MemoryRouter initialEntries={["/board"]}>
+				<TaskCard
+					task={createTask({ project: "Web" })}
+					onOpenTask={() => {}}
+					{...STANDALONE_CARD_NESTING}
+				/>
+			</MemoryRouter>,
 		);
 
 		expect(html).not.toContain("data-task-project");
 	});
 
-	it("omits the project select from the task detail modal when no projects are configured", async () => {
+	it("omits the project select from the task page when no projects are configured", async () => {
 		const container = setupDom();
 		const task = createTask({ project: undefined });
 
 		activeRoot = createRoot(container);
 		await act(async () => {
 			activeRoot?.render(
-				<ThemeProvider>
-					<TaskDetailsModal task={task} isOpen onClose={() => {}} />
-				</ThemeProvider>,
+				<MemoryRouter>
+					<ThemeProvider>
+						<TaskDetails task={task} onClose={() => {}} />
+					</ThemeProvider>
+				</MemoryRouter>,
 			);
 			await Promise.resolve();
 		});
@@ -182,9 +191,11 @@ describe("Web task project UI", () => {
 		activeRoot = createRoot(container);
 		await act(async () => {
 			activeRoot?.render(
-				<ThemeProvider>
-					<TaskDetailsModal task={task} isOpen onClose={() => {}} availableProjects={["Web", "API"]} />
-				</ThemeProvider>,
+				<MemoryRouter>
+					<ThemeProvider>
+						<TaskDetails task={task} onClose={() => {}} availableProjects={["Web", "API"]} />
+					</ThemeProvider>
+				</MemoryRouter>,
 			);
 			await Promise.resolve();
 		});
@@ -218,9 +229,11 @@ describe("Web task project UI", () => {
 		activeRoot = createRoot(container);
 		await act(async () => {
 			activeRoot?.render(
-				<ThemeProvider>
-					<TaskDetailsModal task={task} isOpen onClose={() => {}} />
-				</ThemeProvider>,
+				<MemoryRouter>
+					<ThemeProvider>
+						<TaskDetails task={task} onClose={() => {}} />
+					</ThemeProvider>
+				</MemoryRouter>,
 			);
 			await Promise.resolve();
 		});
@@ -237,6 +250,8 @@ describe("Web task project UI", () => {
 		};
 
 		await clickButton("Edit");
+		// Save writes only when something changed, so the edit changes the title.
+		await setInputValue(container.querySelector("input[aria-label='Title']") as HTMLInputElement, "Edited title");
 		await clickButton("Save");
 		await waitFor(() => receivedUpdates.length === 1);
 
@@ -249,17 +264,18 @@ describe("Web task project UI", () => {
 		activeRoot = createRoot(container);
 		await act(async () => {
 			activeRoot?.render(
-				<ThemeProvider>
-					<TaskDetailsModal
-						isOpen
-						onClose={() => {}}
-						onSubmit={async (taskData) => {
-							submitted = taskData;
-						}}
-						availableStatuses={["To Do", "In Progress", "Done"]}
-						availableProjects={["Web", "API"]}
-					/>
-				</ThemeProvider>,
+				<MemoryRouter>
+					<ThemeProvider>
+						<TaskDetails
+							onClose={() => {}}
+							onSubmit={async (taskData) => {
+								submitted = taskData;
+							}}
+							availableStatuses={["To Do", "In Progress", "Done"]}
+							availableProjects={["Web", "API"]}
+						/>
+					</ThemeProvider>
+				</MemoryRouter>,
 			);
 			await Promise.resolve();
 		});

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import { apiClient } from "../web/lib/api.ts";
 import { createUnfilteredNesting } from "../web/lib/task-nesting.ts";
@@ -48,19 +49,21 @@ const renderBoard = (options: {
 	activeRoot = createRoot(container as HTMLElement);
 	act(() => {
 		activeRoot?.render(
-			<Board
-				onEditTask={() => {}}
-				tasks={[draggedTask]}
-				visibleTasks={[draggedTask]}
-				nesting={createUnfilteredNesting([draggedTask])}
-				statuses={STATUSES}
-				isLoading={false}
-				milestoneEntities={[]}
-				archivedMilestones={[]}
-				laneMode="none"
-				hideEmptyColumns={options.hideEmptyColumns}
-				onTasksUpdated={options.onTasksUpdated}
-			/>,
+			<MemoryRouter initialEntries={["/board"]}>
+				<Board
+					onOpenTask={() => {}}
+					tasks={[draggedTask]}
+					visibleTasks={[draggedTask]}
+					nesting={createUnfilteredNesting([draggedTask])}
+					statuses={STATUSES}
+					isLoading={false}
+					milestoneEntities={[]}
+					archivedMilestones={[]}
+					laneMode="none"
+					hideEmptyColumns={options.hideEmptyColumns}
+					onTasksUpdated={options.onTasksUpdated}
+				/>
+			</MemoryRouter>,
 		);
 	});
 	return container as HTMLElement;

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef, memo, type ComponentType, type ReactNode } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { Tooltip } from 'react-tooltip';
 import {
 	type Decision,
@@ -12,11 +12,13 @@ import {
 } from '../../types';
 import { useBrowserAccess } from '../contexts/BrowserAccessContext';
 import ErrorBoundary from './ErrorBoundary';
-import { createRecordUrlPath, createUrlPath } from '../utils/urlHelpers';
+import { createRecordUrlPath } from '../utils/urlHelpers';
+import TaskLink from './TaskLink';
 import { getWebVersion } from '../utils/version';
 import { apiClient } from '../lib/api';
 import { parseSearchCommandQuery } from '../utils/search-command-query';
 import { buildDocsTree, type DocsTreeNode } from '../lib/docs-tree';
+import { APP_PAGES } from '../lib/app-pages';
 import { readRememberedTaskLayout, TASK_LAYOUT_PATHS, taskLayoutOfPath } from '../lib/task-view';
 
 const hasTaskSearchFilters = (parsedQuery: ReturnType<typeof parseSearchCommandQuery>): boolean => {
@@ -335,12 +337,6 @@ const SideNavigation = memo(function SideNavigation({
 	const [isDecisionsCollapsed, setIsDecisionsCollapsed] = useSectionCollapse('decisionsCollapsed', decisions.length, Boolean(onCloseDrawer));
 	const [version, setVersion] = useState<string>('');
 	const location = useLocation();
-	const navigate = useNavigate();
-
-	// Create handlers - just navigate to new pages
-	const handleCreateDocument = useCallback(() => {
-		navigate('/documentation/new');
-	}, [navigate]);
 
 	useEffect(() => {
 		localStorage.setItem('sideNavCollapsed', JSON.stringify(desktopCollapsed));
@@ -461,16 +457,16 @@ const SideNavigation = memo(function SideNavigation({
 		setDesktopCollapsed(true);
 	}, [expandAndFocusSearch, isCollapsed]);
 
-	const milestoneLink = { path: '/milestones', label: 'Milestones', Icon: Icons.Milestone, visible: sections.milestones };
-	const draftLink = { path: '/drafts', label: 'Drafts', Icon: Icons.Draft, visible: canWrite };
+	const milestoneLink = { ...APP_PAGES.milestones, Icon: Icons.Milestone, visible: sections.milestones };
+	const draftLink = { ...APP_PAGES.drafts, Icon: Icons.Draft, visible: canWrite };
 	// On the Tasks page the entry keeps the layout on screen; elsewhere it opens the layout this browser used last.
 	// Its count is the only part that waits for the tasks to load, so the entry itself never moves.
 	const tasksPath = TASK_LAYOUT_PATHS[taskLayoutOfPath(location.pathname) ?? readRememberedTaskLayout()];
 	const taskCountBadge = <NavigationCount count={taskCount} isLoading={isLoading} error={error} label="task" />;
 	const pageLinks: Array<{ path: string; label: string; Icon: ComponentType; visible: boolean; count?: ReactNode }> = [
-		{ path: tasksPath, label: 'Tasks', Icon: Icons.Tasks, visible: sections.tasks, count: taskCountBadge },
+		{ path: tasksPath, label: APP_PAGES.tasks.label, Icon: Icons.Tasks, visible: sections.tasks, count: taskCountBadge },
 		...(isCollapsed ? [draftLink, milestoneLink] : [milestoneLink, draftLink]),
-		{ path: '/statistics', label: 'Statistics', Icon: Icons.Statistics, visible: sections.tasks },
+		{ ...APP_PAGES.statistics, Icon: Icons.Statistics, visible: sections.tasks },
 	].filter(({ visible }) => visible);
 
 	const desktopSidebarSize = isCollapsed ? 'w-16' : 'w-80 min-w-80';
@@ -560,30 +556,10 @@ const SideNavigation = memo(function SideNavigation({
 								: result.type === 'document'
 									? (result as DocumentSearchResult).document
 									: (result as DecisionSearchResult).decision;
-							const getResultLink = () => {
-								if (result.type === 'document') {
-									return createRecordUrlPath('/documentation', item);
-								}
-								if (result.type === 'decision') {
-									return createRecordUrlPath('/decisions', item);
-								}
-								const taskPath = createUrlPath(tasksPath, item.id, item.title);
-								return taskLayoutOfPath(location.pathname) ? `${taskPath}${location.search}` : taskPath;
-							};
-
 							const ResultIcon = SEARCH_RESULT_ICONS[result.type];
-
-							return (
-								<NavLink
-									key={`${result.type}-${item.id}-${index}`}
-									to={getResultLink()}
-									state={
-										result.type === 'task'
-											? { taskModalFrom: `${location.pathname}${location.search}` }
-											: undefined
-									}
-									className="flex items-center space-x-3 px-3 py-2 text-sm rounded-control transition-colors duration-200 hover:bg-hover text-ink focus-ring"
-								>
+							const className = "flex items-center space-x-3 px-3 py-2 text-sm rounded-control transition-colors duration-200 hover:bg-hover text-ink focus-ring";
+							const content = (
+								<>
 									<span className="text-ink-3"><ResultIcon /></span>
 									<div className="flex-1 min-w-0">
 										<div className="font-medium truncate">
@@ -598,6 +574,22 @@ const SideNavigation = memo(function SideNavigation({
 											{`${Math.round((1 - result.score) * 100)}%`}
 										</div>
 									)}
+								</>
+							);
+							const key = `${result.type}-${item.id}-${index}`;
+							// A task result is a task link like any other (taskLinkTarget): it opens the task over the Tasks page, or in
+							// place of the task that is open.
+							return result.type === 'task' ? (
+								<TaskLink key={key} task={item} className={className}>
+									{content}
+								</TaskLink>
+							) : (
+								<NavLink
+									key={key}
+									to={createRecordUrlPath(result.type === 'document' ? '/documentation' : '/decisions', item)}
+									className={className}
+								>
+									{content}
 								</NavLink>
 							);
 						})}
@@ -686,12 +678,12 @@ const SideNavigation = memo(function SideNavigation({
 							<div className="flex items-center justify-between lg:mb-1">
 								<div className="flex flex-1 items-center gap-2 lg:flex-initial lg:gap-3">
 									<NavLink
-										to="/documentation"
+										to={APP_PAGES.documents.path}
 										end
 										className={SECTION_LINK_CLASS}
 									>
 										<span className="text-ink-3"><Icons.Document /></span>
-										<span>Documents (<NavigationCount count={docs.length} isLoading={isLoading} error={error} label="document" />)</span>
+										<span>{APP_PAGES.documents.label} (<NavigationCount count={docs.length} isLoading={isLoading} error={error} label="document" />)</span>
 									</NavLink>
 									<button
 										onClick={() => setIsDocsCollapsed(!isDocsCollapsed)}
@@ -703,16 +695,18 @@ const SideNavigation = memo(function SideNavigation({
 									</button>
 								</div>
 									{canWrite && (
-										<button
-											onClick={handleCreateDocument}
+										// A link, so a task with unsaved edits asks before this leaves it, as it does for every link.
+										<Link
+											to="/documentation/new"
 											className="rounded-control p-1 text-ink-3 hover:bg-hover hover:text-ink transition-colors duration-200 focus-ring"
 											title="Create new document"
+											aria-label="Create new document"
 										>
 											<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
 											<circle cx="12" cy="12" r="10" />
 										</svg>
-									</button>
+									</Link>
 									)}
 							</div>
 							
@@ -763,12 +757,12 @@ const SideNavigation = memo(function SideNavigation({
 							<div className="flex items-center justify-between lg:mb-1">
 								<div className="flex flex-1 items-center gap-2 lg:flex-initial lg:gap-3">
 									<NavLink
-										to="/decisions"
+										to={APP_PAGES.decisions.path}
 										end
 										className={SECTION_LINK_CLASS}
 									>
 										<span className="text-ink-3"><Icons.Decision /></span>
-										<span>Decisions (<NavigationCount count={decisions.length} isLoading={isLoading} error={error} label="decision" />)</span>
+										<span>{APP_PAGES.decisions.label} (<NavigationCount count={decisions.length} isLoading={isLoading} error={error} label="decision" />)</span>
 									</NavLink>
 									<button
 										onClick={() => setIsDecisionsCollapsed(!isDecisionsCollapsed)}
@@ -819,9 +813,9 @@ const SideNavigation = memo(function SideNavigation({
 									setIsDocsCollapsed(false);
 								}}
 									data-tooltip-id="sidebar-tooltip"
-									aria-label="Documentation"
-								data-tooltip-content="Documentation"
-									className={`flex w-full items-center justify-center p-3 ${navItemClass(location.pathname.startsWith('/documentation'))}`}
+									aria-label={APP_PAGES.documents.label}
+								data-tooltip-content={APP_PAGES.documents.label}
+									className={`flex w-full items-center justify-center p-3 ${navItemClass(location.pathname.startsWith(APP_PAGES.documents.path))}`}
 							>
 								<div className="w-6 h-6 flex items-center justify-center">
 									<Icons.Document />
@@ -835,9 +829,9 @@ const SideNavigation = memo(function SideNavigation({
 									setIsDecisionsCollapsed(false);
 								}}
 									data-tooltip-id="sidebar-tooltip"
-									aria-label="Decisions"
-								data-tooltip-content="Decisions"
-									className={`flex w-full items-center justify-center p-3 ${navItemClass(location.pathname.startsWith('/decisions'))}`}
+									aria-label={APP_PAGES.decisions.label}
+								data-tooltip-content={APP_PAGES.decisions.label}
+									className={`flex w-full items-center justify-center p-3 ${navItemClass(location.pathname.startsWith(APP_PAGES.decisions.path))}`}
 							>
 								<div className="w-6 h-6 flex items-center justify-center">
 									<Icons.Decision />
@@ -852,23 +846,23 @@ const SideNavigation = memo(function SideNavigation({
 			<div className={`border-t border-line py-2 ${isCollapsed ? 'mx-2' : 'mx-4'}`}>
 				{!isCollapsed ? (
 					<NavLink
-						to="/settings"
+						to={APP_PAGES.settings.path}
 						className={({ isActive }) =>
 							`flex min-h-11 items-center px-3 py-2 lg:min-h-0 ${navItemClass(isActive)}`
 						}
 					>
 						<Icons.DocumentSettings />
-						<span className="ml-3 text-sm">Settings</span>
+						<span className="ml-3 text-sm">{APP_PAGES.settings.label}</span>
 						{version && (
 							<span className="ml-auto font-mono text-xs text-ink-3">v{version}</span>
 						)}
 					</NavLink>
 				) : (
 					<NavLink
-						to="/settings"
+						to={APP_PAGES.settings.path}
 						data-tooltip-id="sidebar-tooltip"
-						aria-label="Settings"
-						data-tooltip-content="Settings"
+						aria-label={APP_PAGES.settings.label}
+						data-tooltip-content={APP_PAGES.settings.label}
 						className={({ isActive }) =>
 							`flex items-center justify-center p-3 ${navItemClass(isActive)}`
 						}

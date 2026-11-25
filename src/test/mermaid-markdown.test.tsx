@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
 import { renderToString } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import MermaidMarkdown from "../web/components/MermaidMarkdown.tsx";
 import { TaskIdIndexProvider } from "../web/contexts/TaskIdIndexContext.tsx";
@@ -24,11 +25,14 @@ const taskFixtures = (...ids: string[]): Task[] =>
 
 const knownTasks = taskFixtures("TASK-358.8", "BACK-123", "TASK-100", "TASK-200", "TASK-123", "BACK-1", "TASK-PREFIXED");
 
+// Rendered on the List, so an auto-linked task ID is a task link to the List's task route.
 function renderMarkdown(source: string, tasks: Task[] = knownTasks): string {
 	return renderToString(
-		<TaskIdIndexProvider tasks={tasks}>
-			<MermaidMarkdown source={source} />
-		</TaskIdIndexProvider>,
+		<MemoryRouter initialEntries={["/tasks"]}>
+			<TaskIdIndexProvider tasks={tasks}>
+				<MermaidMarkdown source={source} />
+			</TaskIdIndexProvider>
+		</MemoryRouter>,
 	);
 }
 
@@ -51,15 +55,15 @@ describe("MermaidMarkdown", () => {
 		const source =
 			"Implemented contracts: getDishesByMenu(String menuId) -> Result<List<MenuItem>>";
 
-		expect(() => renderToString(<MermaidMarkdown source={source} />)).not.toThrow();
+		expect(() => renderToString(<MemoryRouter><MermaidMarkdown source={source} /></MemoryRouter>)).not.toThrow();
 
-		const html = renderToString(<MermaidMarkdown source={source} />);
+		const html = renderToString(<MemoryRouter><MermaidMarkdown source={source} /></MemoryRouter>);
 		expect(html).toContain("Result&lt;List&lt;MenuItem&gt;&gt;");
 	});
 
 	it("keeps markdown rendering functional for normal content", () => {
 		const source = "## Heading\n\nRegular **markdown** content.";
-		const html = renderToString(<MermaidMarkdown source={source} />);
+		const html = renderToString(<MemoryRouter><MermaidMarkdown source={source} /></MemoryRouter>);
 
 		expect(html).toContain("Heading");
 		expect(html).toContain("<strong>markdown</strong>");
@@ -119,7 +123,7 @@ describe("MermaidMarkdown", () => {
 		globalThis.navigator = dom.window.navigator as Navigator;
 
 		const source = "# First Heading\n\n[First](#first-heading) [Second](#second-heading)\n\n## Second Heading";
-		const html = renderToString(<MermaidMarkdown source={source} />);
+		const html = renderToString(<MemoryRouter><MermaidMarkdown source={source} /></MemoryRouter>);
 		const renderedDocument = new JSDOM(html).window.document;
 		const links = Array.from(renderedDocument.querySelectorAll("p a")).map((link) => link.getAttribute("href"));
 
@@ -131,16 +135,16 @@ describe("MermaidMarkdown", () => {
 		]);
 	});
 
-	it("automatically links task IDs to /tasks/:id", () => {
+	it("automatically links task IDs to their task route", () => {
 		const html = renderMarkdown("Related task: TASK-358.8 and BACK-123.");
 
-		expect(taskLinks(html)).toEqual(["/tasks/TASK-358.8", "/tasks/BACK-123"]);
+		expect(taskLinks(html)).toEqual(["/tasks/TASK-358.8/task-task-3588", "/tasks/BACK-123/task-back-123"]);
 	});
 
 	it("links task IDs written in lower case to their canonical task", () => {
 		const html = renderMarkdown("See back-123 for context.");
 
-		expect(taskLinks(html)).toEqual(["/tasks/BACK-123"]);
+		expect(taskLinks(html)).toEqual(["/tasks/BACK-123/task-back-123"]);
 	});
 
 	it("does not auto-link task IDs inside code backticks or existing links", () => {
@@ -153,7 +157,7 @@ describe("MermaidMarkdown", () => {
 	it("does not auto-link task IDs inside fenced code blocks", () => {
 		const html = renderMarkdown("Run this:\n\n```bash\nbacklog task view TASK-100\n```\n\nThen open BACK-123.");
 
-		expect(taskLinks(html)).toEqual(["/tasks/BACK-123"]);
+		expect(taskLinks(html)).toEqual(["/tasks/BACK-123/task-back-123"]);
 	});
 
 	it("does not auto-link tokens that only look like task IDs", () => {
@@ -183,26 +187,26 @@ describe("MermaidMarkdown", () => {
 	it("links task IDs inside list items and headings", () => {
 		const html = renderMarkdown("## Blocked by BACK-123\n\n- depends on TASK-100\n");
 
-		expect(taskLinks(html)).toEqual(["/tasks/BACK-123", "/tasks/TASK-100"]);
+		expect(taskLinks(html)).toEqual(["/tasks/BACK-123/task-back-123", "/tasks/TASK-100/task-task-100"]);
 	});
 
 	it("links zero-padded references to the canonical task", () => {
 		const html = renderMarkdown("Padded reference BACK-0123 resolves.");
 
-		expect(taskLinks(html)).toEqual(["/tasks/BACK-123"]);
+		expect(taskLinks(html)).toEqual(["/tasks/BACK-123/task-back-123"]);
 	});
 
 	it("links legacy non-numeric task IDs", () => {
 		const html = renderMarkdown("Legacy reference TASK-PREFIXED resolves.");
 
-		expect(taskLinks(html)).toEqual(["/tasks/TASK-PREFIXED"]);
+		expect(taskLinks(html)).toEqual(["/tasks/TASK-PREFIXED/task-task-prefixed"]);
 	});
 
 	it("leaves references plain when two loaded tasks share a canonical ID", () => {
 		const ambiguousTasks = taskFixtures("BACK-1", "BACK-01", "BACK-2");
 		const html = renderMarkdown("Ambiguous BACK-1 and unambiguous BACK-2.", ambiguousTasks);
 
-		expect(taskLinks(html)).toEqual(["/tasks/BACK-2"]);
+		expect(taskLinks(html)).toEqual(["/tasks/BACK-2/task-back-2"]);
 	});
 
 	it("does not auto-link IDs embedded in non-ASCII identifiers", () => {

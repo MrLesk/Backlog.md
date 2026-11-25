@@ -84,32 +84,30 @@ const ChipInput: React.FC<ChipInputProps> = ({ value, onChange, placeholder, lab
     onChange(value.filter((_, i) => i !== index));
   };
 
+  // A quiet field, as the property values beside it: its frame shows on hover and focus. The property list names it
+  // on screen, so its own label is for screen readers only.
   return (
     <div className="w-full">
-      <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 transition-colors duration-200">
-        {label}
+      <label htmlFor={inputId} className="sr-only">
+        {label || name}
       </label>
-      <div className={`relative w-full min-h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-md focus-within:ring-2 focus-within:ring-blue-500 dark:focus-within:ring-blue-400 focus-within:border-transparent transition-colors duration-200 pr-2 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
-        <div className="flex flex-wrap gap-2 items-center w-full">
+      <div className={`relative property-field py-0.5 focus-within:bg-surface ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}>
+        <div className="flex w-full flex-wrap items-center gap-1">
           {value.map((item, index) => (
             <span
               key={index}
-              className="inline-flex items-center gap-1 px-2 py-0.5 text-sm bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 rounded-md flex-shrink-0 min-w-0 max-w-full transition-colors duration-200"
+              className="inline-flex min-w-0 max-w-full shrink-0 items-center gap-0.5 rounded-chip bg-surface-2 py-0.5 pr-0.5 pl-1.5 text-xs font-medium text-ink-2"
             >
-              <span className="truncate max-w-[16rem] sm:max-w-[20rem] md:max-w-[24rem]">{item}</span>
+              <span className="truncate">{item}</span>
               {!disabled && (
-	                <button
-	                  type="button"
-	                  onClick={() => removeChip(index)}
-	                  className="hover:bg-blue-200 dark:hover:bg-blue-800 rounded-sm p-0.5 transition-colors duration-200"
-	                  aria-label={`Remove ${item}`}
-	                >
-	                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-	                    <path
-                      fillRule="evenodd"
-                      d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                      clipRule="evenodd"
-                    />
+                <button
+                  type="button"
+                  onClick={() => removeChip(index)}
+                  className="rounded-[3px] p-0.5 text-ink-3 transition-colors duration-200 hover:bg-hover hover:text-ink focus-ring"
+                  aria-label={`Remove ${item}`}
+                >
+                  <svg className="size-3" viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="m4.5 4.5 7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
                   </svg>
                 </button>
               )}
@@ -119,7 +117,6 @@ const ChipInput: React.FC<ChipInputProps> = ({ value, onChange, placeholder, lab
             id={inputId}
             type="text"
             role={suggestions ? 'combobox' : undefined}
-            aria-label={label || name}
             aria-autocomplete={suggestions ? 'list' : undefined}
             aria-expanded={suggestions ? expanded : undefined}
             aria-controls={expanded ? listId : undefined}
@@ -130,7 +127,7 @@ const ChipInput: React.FC<ChipInputProps> = ({ value, onChange, placeholder, lab
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             placeholder={value.length === 0 ? placeholder : ''}
-            className="flex-1 min-w-[2ch] outline-none text-sm bg-transparent text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+            className="min-w-[2ch] flex-1 bg-transparent text-sm font-normal text-ink outline-none placeholder:font-mono placeholder:text-xs placeholder:text-ink-3"
             disabled={disabled}
           />
         </div>
@@ -139,7 +136,7 @@ const ChipInput: React.FC<ChipInputProps> = ({ value, onChange, placeholder, lab
             id={listId}
             role="listbox"
             aria-label={label || name}
-            className="absolute left-0 top-full z-10 mt-1 w-full max-h-48 overflow-y-auto overscroll-contain rounded-md border border-gray-300 bg-white shadow-lg dark:border-gray-600 dark:bg-gray-800"
+            className="absolute left-0 top-full z-10 mt-1 max-h-48 w-full overflow-y-auto overscroll-contain rounded-control border border-line bg-surface py-1 shadow-lg"
           >
             {matches.map((item, index) => (
               <li
@@ -150,7 +147,7 @@ const ChipInput: React.FC<ChipInputProps> = ({ value, onChange, placeholder, lab
                 aria-selected={index === activeIndex}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => addValue(item)}
-                className={`cursor-pointer px-3 py-2 text-sm text-gray-900 hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-gray-700 ${index === activeIndex ? 'bg-blue-100 dark:bg-blue-900' : ''}`}
+                className={`cursor-pointer px-3 py-1.5 text-sm font-normal text-ink hover:bg-hover ${index === activeIndex ? 'bg-surface-2' : ''}`}
               >
                 {item}
               </li>

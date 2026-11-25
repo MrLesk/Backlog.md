@@ -221,6 +221,86 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     @apply px-2 lg:px-5;
 }
 
+/* The size of the small controls of a task: the buttons of its head and the fields of its properties, on the task page
+   and in the dialog that creates a task. A control that wraps its content, such as a field of chips, grows taller. */
+@utility compact-control {
+    min-height: 26px;
+    border-radius: 7px;
+}
+
+/* The field of a property in a task's side column: a select, a field of chips, the dependency field or the due date.
+   Its padding sits in a negative margin, so its text lines up with the values beside it, and its frame shows on hover
+   and while it has focus, so on the task page a property reads as its value. In the dialog that creates a task the list
+   of properties carries data-framed-fields, and every frame shows, so each property reads as a field to fill in. */
+@utility property-field {
+    @apply compact-control;
+    margin-left: -0.5rem;
+    width: calc(100% + 0.5rem);
+    padding-inline: 0.5rem;
+    border: 1px solid transparent;
+    transition-property: border-color, background-color;
+    transition-duration: 200ms;
+
+    &:hover,
+    &:focus-within {
+        border-color: var(--color-line);
+    }
+
+    &:focus-visible,
+    &:has(:focus-visible) {
+        outline: 2px solid var(--color-accent-strong);
+        outline-offset: 2px;
+    }
+
+    [data-framed-fields] & {
+        border-color: var(--color-line);
+        background-color: var(--color-surface);
+    }
+}
+
+/* A checkbox drawn the same in both themes: an ink-3 outline on the surface, and once checked an ink box with an
+   on-ink check. The browser's own box would be a gray square on the dark surface. A disabled box, on a task that
+   cannot be changed, is dimmed: a hairline on surface-2, or ink-3 once checked, with a not-allowed cursor. */
+@utility checkbox {
+    appearance: none;
+    display: inline-grid;
+    place-content: center;
+    width: 1rem;
+    height: 1rem;
+    border: 1px solid var(--color-ink-3);
+    border-radius: 4px;
+    background-color: var(--color-surface);
+
+    &::before {
+        content: "";
+        width: 10px;
+        height: 10px;
+        background-color: var(--color-on-ink);
+        clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0, 43% 62%);
+        transform: scale(0);
+    }
+
+    &:checked {
+        border-color: var(--color-ink);
+        background-color: var(--color-ink);
+    }
+
+    &:checked::before {
+        transform: scale(1);
+    }
+
+    &:disabled {
+        cursor: not-allowed;
+        border-color: var(--color-line);
+        background-color: var(--color-surface-2);
+    }
+
+    &:checked:disabled {
+        border-color: var(--color-ink-3);
+        background-color: var(--color-ink-3);
+    }
+}
+
 @layer base {
     /* The page background behind the sidebar and the content panel. It is set on body so the first paint,
        before the app renders, already has the colors of the stored theme, and it fades with the controls
@@ -327,6 +407,45 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         --color-prettylights-syntax-markup-italic: #cbd5e1 !important;
         --color-prettylights-syntax-markup-list: #fbbf24 !important;
         --color-prettylights-syntax-markup-code-bg: #334155 !important;
+    }
+
+    /* A task's Markdown, on the task page and in the dialog that creates a task, takes the shared colors in both
+       themes instead of the library's: no canvas of its own, ink text and teal links. Documents and decisions keep the
+       colors above until their own slices. The [data-color-mode] in the selectors outranks the dark theme rule above,
+       which matches on the same attribute. */
+    .task-markdown[data-color-mode] .wmde-markdown,
+    .task-markdown .w-md-editor[data-color-mode],
+    .task-markdown .w-md-editor[data-color-mode] .wmde-markdown {
+        --color-canvas-default: var(--color-surface) !important;
+        --color-canvas-subtle: var(--color-surface-2) !important;
+        --color-fg-default: var(--color-ink) !important;
+        --color-fg-muted: var(--color-ink-2) !important;
+        --color-fg-subtle: var(--color-ink-3) !important;
+        --color-border-default: var(--color-line) !important;
+        --color-border-muted: var(--color-line-soft) !important;
+        --color-neutral-muted: var(--color-surface-2) !important;
+        --color-accent-fg: var(--color-accent-text) !important;
+        --color-accent-emphasis: var(--color-accent-strong) !important;
+    }
+
+    /* The reading column's type: 14px text, as the sections around it, and headings that stay below the task's title.
+       !important, as above: the library's stylesheet is not in a layer, so it outranks these rules otherwise. */
+    .task-markdown[data-color-mode] .wmde-markdown {
+        font-size: 14px !important;
+        line-height: 1.6 !important;
+    }
+
+    .task-markdown[data-color-mode] .wmde-markdown :is(h1, h2) {
+        font-size: 1.25em !important;
+    }
+
+    .task-markdown[data-color-mode] .wmde-markdown :is(h3, h4, h5, h6) {
+        font-size: 1.05em !important;
+    }
+
+    /* The reading measure: a line of prose stops at 72 characters, counted in its own 14px text. */
+    .task-markdown[data-color-mode] .wmde-markdown :is(p, li) {
+        max-width: 72ch;
     }
 }
 

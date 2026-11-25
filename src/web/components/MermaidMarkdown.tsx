@@ -1,9 +1,10 @@
-import { type MouseEvent, useEffect, useMemo, useRef } from "react";
+import { type ComponentProps, type MouseEvent, useEffect, useMemo, useRef } from "react";
 import MDEditor from "@uiw/react-md-editor";
 import { useBrowserAccess } from "../contexts/BrowserAccessContext";
 import { useTaskIdIndex } from "../contexts/TaskIdIndexContext";
 import { renderMermaidIn } from "../utils/mermaid";
-import { createTaskIdLinkPlugin } from "../utils/task-id-links";
+import { createTaskIdLinkPlugin, resolveTaskReference } from "../utils/task-id-links";
+import TaskLink from "./TaskLink";
 
 interface Props {
 	source: string;
@@ -52,6 +53,21 @@ function openPublishedHeading(event: MouseEvent<HTMLDivElement>) {
 	document.getElementById(href.slice(1))?.scrollIntoView();
 }
 
+/**
+ * A link in Markdown. A task ID the text names (see createTaskIdLinkPlugin) becomes a TaskLink, so it opens the task
+ * like every other task link and closing the task returns here; any other link stays as written.
+ */
+function MarkdownLink({ node: _node, ...props }: ComponentProps<"a"> & { node?: unknown; "data-task-id"?: string }) {
+	const index = useTaskIdIndex();
+	const taskId = props["data-task-id"];
+	const task = taskId ? resolveTaskReference(index, taskId) : undefined;
+	if (!task) return <a {...props} />;
+	const { href: _href, ...linkProps } = props;
+	return <TaskLink {...linkProps} task={task} />;
+}
+
+const MARKDOWN_COMPONENTS = { a: MarkdownLink };
+
 export default function MermaidMarkdown({ source }: Props) {
 	const ref = useRef<HTMLDivElement | null>(null);
 	const { canWrite } = useBrowserAccess();
@@ -78,6 +94,7 @@ export default function MermaidMarkdown({ source }: Props) {
 				source={source}
 				urlTransform={canWrite ? keepHashLinksInCurrentRoute : publishedLinkUrl}
 				remarkPlugins={remarkPlugins}
+				components={MARKDOWN_COMPONENTS}
 			/>
 		</div>
 	);

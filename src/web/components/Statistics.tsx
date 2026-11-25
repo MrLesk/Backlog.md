@@ -6,6 +6,7 @@ import { isTerminalStatus } from '../../utils/terminal-status';
 import { formatPriorityLabel } from '../../utils/priority-config';
 import LoadingSpinner from './LoadingSpinner';
 import StoredDate from './StoredDate';
+import TaskLink from './TaskLink';
 
 interface StatisticsData extends Omit<TaskStatistics, 'statusCounts' | 'priorityCounts'> {
 	statusCounts: Record<string, number>;
@@ -16,16 +17,105 @@ interface StatisticsProps {
 	statuses: string[];
 	tasks?: Task[];
 	isLoading?: boolean;
-	onEditTask?: (task: Task) => void;
 	projectName?: string;
 	dateFormat?: string;
+}
+
+// A link to the task, so it opens like a task anywhere else and can open in a new tab. These pieces are defined outside
+// Statistics, so a render of the page keeps their elements: a task opened from one of these links returns focus to it
+// when it closes.
+function TaskPreview({
+	task,
+	showDate,
+	statuses,
+	dateFormat,
+}: {
+	task: Task;
+	showDate: 'created' | 'updated';
+	statuses: string[];
+	dateFormat?: string;
+}) {
+	const displayDate = showDate === 'created' ? task.createdDate : task.updatedDate || task.createdDate;
+
+	return (
+		<TaskLink
+			task={task}
+			className="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg transition-colors duration-200 hover:bg-gray-100 dark:hover:bg-gray-600/50 focus-ring"
+		>
+			<StatusIcon status={task.status} statuses={statuses} />
+			<div className="flex-1 min-w-0">
+				<p className="font-medium text-gray-900 dark:text-gray-100 truncate">{task.title}</p>
+				<p className="text-sm text-gray-500 dark:text-gray-400">
+					{task.id} • {showDate === 'created' ? 'Created' : 'Updated'} <StoredDate value={displayDate} dateFormat={dateFormat} />
+				</p>
+			</div>
+		</TaskLink>
+	);
+}
+
+function StatusIcon({ status, statuses }: { status: string; statuses: string[] }) {
+	if (isTerminalStatus(status, statuses)) {
+		return (
+			<svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 24 24">
+				<path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+			</svg>
+		);
+	}
+	switch (status.toLowerCase()) {
+		case 'to do':
+			return (
+				<svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+				</svg>
+			);
+		case 'in progress':
+			return (
+				<svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+				</svg>
+			);
+		default:
+			return (
+				<svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+				</svg>
+			);
+	}
+}
+
+function PriorityIcon({ priority }: { priority: string }) {
+	switch (priority.toLowerCase()) {
+		case 'high':
+			return (
+				<svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+					<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+				</svg>
+			);
+		case 'medium':
+			return (
+				<svg className="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
+					<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+				</svg>
+			);
+		case 'low':
+			return (
+				<svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 24 24">
+					<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+				</svg>
+			);
+		default:
+			return (
+				<svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+				</svg>
+			);
+	}
 }
 
 const Statistics: React.FC<StatisticsProps> = ({
 	statuses,
 	tasks: _tasks,
 	isLoading: externalLoading,
-	onEditTask,
 	projectName,
 	dateFormat,
 }) => {
@@ -137,87 +227,6 @@ const Statistics: React.FC<StatisticsProps> = ({
 			</div>
 		);
 	}
-
-	const TaskPreview = ({ task, showDate, onClick }: { task: Task; showDate: 'created' | 'updated'; onClick?: () => void }) => {
-		const displayDate = showDate === 'created' ? task.createdDate : task.updatedDate || task.createdDate;
-
-		return (
-			<div 
-				key={task.id} 
-				className={`flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg transition-colors duration-200 ${
-					onClick ? 'hover:bg-gray-100 dark:hover:bg-gray-600/50 cursor-pointer' : ''
-				}`}
-				onClick={onClick}
-			>
-				<StatusIcon status={task.status} />
-				<div className="flex-1 min-w-0">
-					<p className="font-medium text-gray-900 dark:text-gray-100 truncate">{task.title}</p>
-					<p className="text-sm text-gray-500 dark:text-gray-400">
-						{task.id} • {showDate === 'created' ? 'Created' : 'Updated'} <StoredDate value={displayDate} dateFormat={dateFormat} />
-					</p>
-				</div>
-			</div>
-		);
-	};
-
-	const StatusIcon = ({ status }: { status: string }) => {
-		if (isTerminalStatus(status, statuses)) {
-			return (
-				<svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 24 24">
-					<path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-				</svg>
-			);
-		}
-		switch (status.toLowerCase()) {
-			case 'to do':
-				return (
-					<svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-					</svg>
-				);
-			case 'in progress':
-				return (
-					<svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-					</svg>
-				);
-			default:
-				return (
-					<svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-					</svg>
-				);
-		}
-	};
-
-	const PriorityIcon = ({ priority }: { priority: string }) => {
-		switch (priority.toLowerCase()) {
-			case 'high':
-				return (
-					<svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 24 24">
-						<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-					</svg>
-				);
-			case 'medium':
-				return (
-					<svg className="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
-						<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-					</svg>
-				);
-			case 'low':
-				return (
-					<svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 24 24">
-						<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-					</svg>
-				);
-			default:
-				return (
-					<svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-					</svg>
-				);
-		}
-	};
 
 	const getStatusColor = (status: string) => {
 		if (isTerminalStatus(status, statuses)) return 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200';
@@ -350,7 +359,7 @@ const Statistics: React.FC<StatisticsProps> = ({
 							.map(([status, count]) => (
 							<div key={status} className="flex items-center justify-between">
 								<div className="flex items-center space-x-3">
-									<StatusIcon status={status} />
+									<StatusIcon status={status} statuses={statuses} />
 									<span className={`px-3 py-1 rounded-circle text-sm font-medium ${getStatusColor(status)}`}>
 										{status}
 									</span>
@@ -414,11 +423,7 @@ const Statistics: React.FC<StatisticsProps> = ({
 					{statistics.recentActivity.created.length > 0 ? (
 						<div className="space-y-3">
 							{statistics.recentActivity.created.map((task) => (
-								<TaskPreview 
-									task={task} 
-									showDate="created" 
-									onClick={onEditTask ? () => onEditTask(task) : undefined}
-								/>
+								<TaskPreview key={task.id} task={task} showDate="created" statuses={statuses} dateFormat={dateFormat} />
 							))}
 						</div>
 					) : (
@@ -432,11 +437,7 @@ const Statistics: React.FC<StatisticsProps> = ({
 					{statistics.recentActivity.updated.length > 0 ? (
 						<div className="space-y-3">
 							{statistics.recentActivity.updated.map((task) => (
-								<TaskPreview 
-									task={task} 
-									showDate="updated" 
-									onClick={onEditTask ? () => onEditTask(task) : undefined}
-								/>
+								<TaskPreview key={task.id} task={task} showDate="updated" statuses={statuses} dateFormat={dateFormat} />
 							))}
 						</div>
 					) : (
@@ -494,12 +495,7 @@ const Statistics: React.FC<StatisticsProps> = ({
 									</p>
 									<div className="space-y-2">
 										{statistics.projectHealth.staleTasks.slice(0, 3).map((task) => (
-											<TaskPreview 
-												key={task.id}
-												task={task} 
-												showDate="updated" 
-												onClick={onEditTask ? () => onEditTask(task) : undefined}
-											/>
+											<TaskPreview key={task.id} task={task} showDate="updated" statuses={statuses} dateFormat={dateFormat} />
 										))}
 										{statistics.projectHealth.staleTasks.length > 3 && (
 											<p className="text-xs text-gray-500 dark:text-gray-400 px-3">
@@ -521,12 +517,7 @@ const Statistics: React.FC<StatisticsProps> = ({
 									</p>
 									<div className="space-y-2">
 										{statistics.projectHealth.blockedTasks.slice(0, 3).map((task) => (
-											<TaskPreview 
-												key={task.id}
-												task={task} 
-												showDate="created" 
-												onClick={onEditTask ? () => onEditTask(task) : undefined}
-											/>
+											<TaskPreview key={task.id} task={task} showDate="created" statuses={statuses} dateFormat={dateFormat} />
 										))}
 										{statistics.projectHealth.blockedTasks.length > 3 && (
 											<p className="text-xs text-gray-500 dark:text-gray-400 px-3">

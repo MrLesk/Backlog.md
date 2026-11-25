@@ -78,7 +78,7 @@ const renderBoard = (isLoading: boolean, error?: Error): string =>
 				isLoading={isLoading}
 				loadError={error}
 				hideEmptyColumns={false}
-				onEditTask={() => {}}
+				onOpenTask={() => {}}
 				onNewTask={() => {}}
 				onRefreshData={async () => {}}
 				onTasksUpdated={() => {}}

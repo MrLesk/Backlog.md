@@ -3,9 +3,10 @@ import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import TaskCard from "../web/components/TaskCard.tsx";
-import { TaskDetailsModal } from "../web/components/TaskDetailsModal.tsx";
+import TaskDetails from "../web/components/TaskDetails.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext.tsx";
 import { apiClient, type TaskUpdateRequest } from "../web/lib/api.ts";
 import { pinTimeZone } from "./pin-timezone.ts";
@@ -113,6 +114,12 @@ afterEach(() => {
 	apiClient.updateTask = originalUpdateTask;
 });
 
+/** The value of a property of the task page, such as "Due", as its row shows it. */
+const propertyValue = (container: HTMLElement, name: string): string | undefined => {
+	const term = Array.from(container.querySelectorAll("dt")).find((element) => element.textContent === name);
+	return term?.nextElementSibling?.textContent ?? undefined;
+};
+
 describe("Web task type UI", () => {
 	// The browser renders stored timestamps in the viewer's timezone, so pin one.
 	pinTimeZone("Asia/Tokyo");
@@ -129,16 +136,18 @@ describe("Web task type UI", () => {
 		activeRoot = createRoot(container);
 		await act(async () => {
 			activeRoot?.render(
-				<ThemeProvider>
-					<TaskDetailsModal task={task} isOpen onClose={() => {}} />
-				</ThemeProvider>,
+				<MemoryRouter>
+					<ThemeProvider>
+						<TaskDetails task={task} onClose={() => {}} />
+					</ThemeProvider>
+				</MemoryRouter>,
 			);
 			await Promise.resolve();
 		});
 		// The viewer is nine hours ahead of UTC, and the due date does not care: it names a day.
-		expect(container.textContent).toContain("Due: 2026-08-10");
+		expect(propertyValue(container, "Due")).toBe("2026-08-10");
 		// The stored created_date is date-only: it has no time to convert and must not shift a day.
-		expect(container.textContent).toContain("Created: 2026-07-09");
+		expect(propertyValue(container, "Created")).toBe("2026-07-09");
 
 		const editButton = Array.from(container.querySelectorAll("button")).find(
 			(button) => button.textContent?.trim() === "Edit",
@@ -166,15 +175,21 @@ describe("Web task type UI", () => {
 	it("names the type of a task on its card and shows no type for an untyped task", () => {
 		const typeChip = (task: Task) =>
 			JSDOM.fragment(
-				renderToString(<TaskCard task={task} onEdit={() => {}} {...STANDALONE_CARD_NESTING} />),
+				renderToString(
+					<MemoryRouter initialEntries={["/board"]}>
+						<TaskCard task={task} onOpenTask={() => {}} {...STANDALONE_CARD_NESTING} />
+					</MemoryRouter>,
+				),
 			).querySelector("[data-task-type]");
 		const datedHtml = renderToString(
-			<TaskCard
-				task={createTask({ dueDate: "2026-08-10" })}
-				onEdit={() => {}}
-				dateFormat="dd/mm/yyyy hh:mm"
-				{...STANDALONE_CARD_NESTING}
-			/>,
+			<MemoryRouter initialEntries={["/board"]}>
+				<TaskCard
+					task={createTask({ dueDate: "2026-08-10" })}
+					onOpenTask={() => {}}
+					dateFormat="dd/mm/yyyy hh:mm"
+					{...STANDALONE_CARD_NESTING}
+				/>
+			</MemoryRouter>,
 		);
 
 		// The chip says what it is, so a type reads as a type and not as a label or a project.
@@ -193,17 +208,18 @@ describe("Web task type UI", () => {
 		activeRoot = createRoot(container);
 		await act(async () => {
 			activeRoot?.render(
-				<ThemeProvider>
-					<TaskDetailsModal
-						isOpen
-						onClose={() => {}}
-						onSubmit={async (taskData) => {
-							submitted = taskData;
-						}}
-						availableStatuses={["To Do", "In Progress", "Done"]}
-						availableTypes={["Bug", "Customer Request"]}
-					/>
-				</ThemeProvider>,
+				<MemoryRouter>
+					<ThemeProvider>
+						<TaskDetails
+							onClose={() => {}}
+							onSubmit={async (taskData) => {
+								submitted = taskData;
+							}}
+							availableStatuses={["To Do", "In Progress", "Done"]}
+							availableTypes={["Bug", "Customer Request"]}
+						/>
+					</ThemeProvider>
+				</MemoryRouter>,
 			);
 			await Promise.resolve();
 		});
@@ -250,19 +266,20 @@ describe("Web task type UI", () => {
 		activeRoot = createRoot(container);
 		await act(async () => {
 			activeRoot?.render(
-				<ThemeProvider>
-					<TaskDetailsModal
-						isOpen
-						onClose={() => {
-							closeCalls += 1;
-						}}
-						onSubmit={async () => {
-							throw new Error(errorMessage);
-						}}
-						availableStatuses={["To Do", "In Progress", "Done"]}
-						availableTypes={["Bug", "Feature"]}
-					/>
-				</ThemeProvider>,
+				<MemoryRouter>
+					<ThemeProvider>
+						<TaskDetails
+							onClose={() => {
+								closeCalls += 1;
+							}}
+							onSubmit={async () => {
+								throw new Error(errorMessage);
+							}}
+							availableStatuses={["To Do", "In Progress", "Done"]}
+							availableTypes={["Bug", "Feature"]}
+						/>
+					</ThemeProvider>
+				</MemoryRouter>,
 			);
 			await Promise.resolve();
 		});
@@ -297,15 +314,12 @@ describe("Web task type UI", () => {
 		activeRoot = createRoot(container);
 		await act(async () => {
 			activeRoot?.render(
-				<ThemeProvider>
-					<TaskDetailsModal
-							task={task}
-							isOpen
-							onClose={() => {}}
-							availableTypes={["Legacy Type", "Bug", "Feature"]}
-						/>
-					</ThemeProvider>,
-				);
+				<MemoryRouter>
+					<ThemeProvider>
+						<TaskDetails task={task} onClose={() => {}} availableTypes={["Legacy Type", "Bug", "Feature"]} />
+					</ThemeProvider>
+				</MemoryRouter>,
+			);
 			await Promise.resolve();
 		});
 
@@ -320,14 +334,11 @@ describe("Web task type UI", () => {
 
 		await act(async () => {
 			activeRoot?.render(
-				<ThemeProvider>
-					<TaskDetailsModal
-						task={task}
-						isOpen
-						onClose={() => {}}
-						availableTypes={["Bug", "Feature"]}
-					/>
-				</ThemeProvider>,
+				<MemoryRouter>
+					<ThemeProvider>
+						<TaskDetails task={task} onClose={() => {}} availableTypes={["Bug", "Feature"]} />
+					</ThemeProvider>
+				</MemoryRouter>,
 			);
 			await Promise.resolve();
 		});
@@ -367,17 +378,18 @@ describe("Web task type UI", () => {
 		activeRoot = createRoot(container);
 		await act(async () => {
 			activeRoot?.render(
-				<ThemeProvider>
-					<TaskDetailsModal
-						task={task}
-						isOpen
-						onClose={() => {}}
-						onSaved={async () => {
-							savedCalls += 1;
-						}}
-						availableTypes={["Bug", "Feature"]}
-					/>
-				</ThemeProvider>,
+				<MemoryRouter>
+					<ThemeProvider>
+						<TaskDetails
+							task={task}
+							onClose={() => {}}
+							onSaved={async () => {
+								savedCalls += 1;
+							}}
+							availableTypes={["Bug", "Feature"]}
+						/>
+					</ThemeProvider>
+				</MemoryRouter>,
 			);
 			await Promise.resolve();
 		});
@@ -412,34 +424,35 @@ describe("Web task type UI", () => {
 			return updateResult;
 		};
 
-		const renderModal = async (refreshedTask: Task, availableTypes: string[], availableStatuses: string[]) => {
+		const renderPage = async (refreshedTask: Task, availableTypes: string[], availableStatuses: string[]) => {
 			await act(async () => {
 				activeRoot?.render(
-					<ThemeProvider>
-						<TaskDetailsModal
-							task={refreshedTask}
-							isOpen
-							onClose={() => {}}
-							onSaved={async () => {
-								savedCalls += 1;
-							}}
-							availableTypes={availableTypes}
-							availableStatuses={availableStatuses}
-						/>
-					</ThemeProvider>,
+					<MemoryRouter>
+						<ThemeProvider>
+							<TaskDetails
+								task={refreshedTask}
+								onClose={() => {}}
+								onSaved={async () => {
+									savedCalls += 1;
+								}}
+								availableTypes={availableTypes}
+								availableStatuses={availableStatuses}
+							/>
+						</ThemeProvider>
+					</MemoryRouter>,
 				);
 				await Promise.resolve();
 			});
 		};
 
 		activeRoot = createRoot(container);
-		await renderModal(task, ["Bug", "feature"], ["To Do", "Done"]);
+		await renderPage(task, ["Bug", "feature"], ["To Do", "Done"]);
 		let typeSelect = container.querySelector("select[aria-label='Task type']") as HTMLSelectElement;
 		await setSelectValue(typeSelect, "feature");
 		await waitFor(() => updateCalls === 1 && typeSelect.disabled);
 
 		const refreshedTask = { ...task, description: "Refreshed while the type write is pending" };
-		await renderModal(refreshedTask, ["Bug", "Feature"], ["Backlog", "To Do", "Done"]);
+		await renderPage(refreshedTask, ["Bug", "Feature"], ["Backlog", "To Do", "Done"]);
 		typeSelect = container.querySelector("select[aria-label='Task type']") as HTMLSelectElement;
 		expect(typeSelect.disabled).toBe(true);
 		expect(typeSelect.value).toBe("Feature");
@@ -478,16 +491,18 @@ for (const timeZone of ["Pacific/Kiritimati", "America/Los_Angeles"]) {
 			activeRoot = createRoot(container);
 			await act(async () => {
 				activeRoot?.render(
-					<ThemeProvider>
-						<TaskDetailsModal task={task} isOpen onClose={() => {}} />
-					</ThemeProvider>,
+					<MemoryRouter>
+						<ThemeProvider>
+							<TaskDetails task={task} onClose={() => {}} />
+						</ThemeProvider>
+					</MemoryRouter>,
 				);
 				await Promise.resolve();
 			});
-			expect(container.textContent).toContain("Due: 2026-09-05");
+			expect(propertyValue(container, "Due")).toBe("2026-09-05");
 			// The created timestamp is a genuine instant and still moves with the viewer, so this
 			// asserts the two kinds of value stayed apart rather than that nothing converts at all.
-			expect(container.textContent).not.toContain("Created: 2026-09-04 22:00");
+			expect(propertyValue(container, "Created")).not.toBe("2026-09-04 22:00");
 
 			const dueSpan = Array.from(container.querySelectorAll("span")).find(
 				(element) => element.textContent === "2026-09-05",
@@ -504,6 +519,8 @@ for (const timeZone of ["Pacific/Kiritimati", "America/Los_Angeles"]) {
 
 			const dueDateInput = container.querySelector('input[type="date"]') as HTMLInputElement | null;
 			expect(dueDateInput?.value).toBe("2026-09-05");
+			// Save writes only when something changed: the title changes, and the due date goes along unchanged.
+			await setInputValue(container.querySelector("input[aria-label='Title']") as HTMLInputElement, "Edited title");
 
 			const saveButton = Array.from(container.querySelectorAll("button")).find(
 				(button) => button.textContent?.trim() === "Save",
@@ -528,9 +545,11 @@ for (const timeZone of ["Pacific/Kiritimati", "America/Los_Angeles"]) {
 			activeRoot = createRoot(container);
 			await act(async () => {
 				activeRoot?.render(
-					<ThemeProvider>
-						<TaskDetailsModal task={task} isOpen onClose={() => {}} />
-					</ThemeProvider>,
+					<MemoryRouter>
+						<ThemeProvider>
+							<TaskDetails task={task} onClose={() => {}} />
+						</ThemeProvider>
+					</MemoryRouter>,
 				);
 				await Promise.resolve();
 			});

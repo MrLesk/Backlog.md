@@ -10,6 +10,7 @@ import {
 	type TaskNesting,
 	useSubtaskLevels,
 } from "../lib/task-nesting.ts";
+import { taskLinkLabel } from "../lib/task-links.ts";
 import AcceptanceCriteriaProgress from "./AcceptanceCriteriaProgress";
 import CleanupButton from "./CleanupButton";
 import PriorityBars from "./PriorityBars";
@@ -17,6 +18,7 @@ import StatusMark from "./StatusMark";
 import StoredDate from "./StoredDate";
 import { NO_MATCHING_SUBTASKS, ParentTaskLink, SubtaskMarker, SubtaskRails } from "./SubtaskControls";
 import TaskBranch from "./TaskBranch";
+import TaskLink, { isTaskOpeningClick } from "./TaskLink";
 import TaskTags from "./TaskTags";
 
 interface TaskListProps {
@@ -34,7 +36,8 @@ interface TaskListProps {
 	finalGroupOpenByDefault: boolean;
 	isLoading: boolean;
 	dateFormat?: string;
-	onEditTask: (task: Task) => void;
+	/** Opens a task on a click elsewhere on its row; the row's title is a link that opens it by itself. */
+	onOpenTask: (task: Task) => void;
 	/** Opens the cleanup dialog; absent without write access. */
 	onCleanup?: () => void;
 }
@@ -54,7 +57,7 @@ export default function TaskList({
 	finalGroupOpenByDefault,
 	isLoading,
 	dateFormat,
-	onEditTask,
+	onOpenTask,
 	onCleanup,
 }: TaskListProps) {
 	// Only the groups a person opened or closed are recorded; every other group follows its default.
@@ -133,7 +136,7 @@ export default function TaskList({
 										projects={projects}
 										idWidth={idWidth}
 										dateFormat={dateFormat}
-										onEditTask={onEditTask}
+										onOpenTask={onOpenTask}
 									/>
 								))}
 							</ul>
@@ -158,7 +161,7 @@ interface TaskRowProps {
 	projects?: string[];
 	idWidth: string;
 	dateFormat?: string;
-	onEditTask: (task: Task) => void;
+	onOpenTask: (task: Task) => void;
 }
 
 // A row's vertical padding, and the rails' negative margins that reach into it so the guide lines join from row to
@@ -189,7 +192,7 @@ const ROW_LAYOUTS = {
  * line and wraps the title.
  */
 function TaskRow(props: TaskRowProps) {
-	const { task, path, depth, nesting, levels, statuses, priorities, projects, idWidth, dateFormat, onEditTask } = props;
+	const { task, path, depth, nesting, levels, statuses, priorities, projects, idWidth, dateFormat, onOpenTask } = props;
 	const subtasksId = useId();
 	const { progress, isOpen } = readSubtaskLevel(task, path, nesting, levels, statuses);
 	const isTopLevel = depth === 0;
@@ -203,21 +206,17 @@ function TaskRow(props: TaskRowProps) {
 			{isTopLevel && task.parentTaskId && (
 				// As tall as the title's first line, so the shorter link lines up with it.
 				<span className="flex h-5 shrink-0 items-center">
-					<ParentTaskLink task={task} parent={nesting.all.parentOf(task)} onOpenTask={onEditTask} />
+					<ParentTaskLink task={task} parent={nesting.all.parentOf(task)} />
 				</span>
 			)}
-			<button
-				type="button"
-				onClick={(event) => {
-					event.stopPropagation();
-					onEditTask(task);
-				}}
+			<TaskLink
+				task={task}
 				title={task.title}
-				aria-label={`Open ${task.id}: ${task.title}`}
+				aria-label={taskLinkLabel(task)}
 				className="min-w-0 max-w-fit grow basis-40 rounded-[4px] text-left text-sm font-medium text-ink wrap-anywhere focus-ring @5xl:grow-0 @5xl:basis-auto @5xl:truncate"
 			>
 				{task.title}
-			</button>
+			</TaskLink>
 			{progress && (
 				<SubtaskMarker
 					progress={progress}
@@ -231,11 +230,13 @@ function TaskRow(props: TaskRowProps) {
 
 	return (
 		<li>
-			{/* The title button is the keyboard and screen reader path to the task; a click anywhere else on the row is a
-			    shortcut for the mouse. The click is on the row, not the li, so a click on a subtask row below cannot
-			    reach it. */}
+			{/* The title link is the keyboard and screen reader path to the task, and the way to open it in a new tab; a
+			    plain click anywhere else on the row is a shortcut for the mouse. The click is on the row, not the li, so a
+			    click on a subtask row below cannot reach it. */}
 			<div
-				onClick={() => onEditTask(task)}
+				onClick={(event) => {
+					if (isTaskOpeningClick(event)) onOpenTask(task);
+				}}
 				className={`grid cursor-pointer items-start gap-x-2.5 gap-y-1 border-t border-line-soft panel-gutter transition-colors duration-200 hover:bg-hover @5xl:items-center ${ROW_PADDING} ${layout.grid}`}
 			>
 				{/* The marks and the ID are one title line tall, so they stay beside the first line of a title that wraps. */}

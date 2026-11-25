@@ -7,11 +7,14 @@ import StoredDate from './StoredDate';
 import { ParentTaskLink, SubtaskBar } from './SubtaskControls';
 import SubtaskTree from './SubtaskTree';
 import TaskBranch from './TaskBranch';
+import { taskLinkLabel } from '../lib/task-links';
+import TaskLink, { isTaskOpeningClick } from './TaskLink';
 import TaskTags from './TaskTags';
 
 interface TaskCardProps {
   task: Task;
-  onEdit: (task: Task) => void;
+  /** Opens the task on a plain click elsewhere on the card; the card's title is a link that opens it by itself. */
+  onOpenTask: (task: Task) => void;
   /** Which tasks are subtasks of which: a subtask's card links to its parent, and a parent's card ends in a bar. */
   nesting: TaskNesting;
   /** The configured statuses in workflow order, for the subtasks' status marks and finished count. */
@@ -70,7 +73,7 @@ const buildSelectionDragImage = (source: HTMLElement, count: number): HTMLElemen
 
 const TaskCard: React.FC<TaskCardProps> = ({
   task,
-  onEdit: onOpenTask,
+  onOpenTask,
   nesting,
   statuses,
   subtaskLevels,
@@ -96,8 +99,8 @@ const TaskCard: React.FC<TaskCardProps> = ({
   const isFromOtherBranch = Boolean(task.branch);
   const acceptanceCriteriaProgress = getAcceptanceCriteriaProgressCounts(task);
   const accessibleLabel = acceptanceCriteriaProgress
-    ? `Open ${task.id}: ${task.title}. Acceptance criteria progress: ${acceptanceCriteriaProgress.checked} of ${acceptanceCriteriaProgress.total}`
-    : `Open ${task.id}: ${task.title}`;
+    ? `${taskLinkLabel(task)}. Acceptance criteria progress: ${acceptanceCriteriaProgress.checked} of ${acceptanceCriteriaProgress.total}`
+    : taskLinkLabel(task);
 
   const handleDragStart = (e: React.DragEvent) => {
     // Prevent dragging cross-branch tasks
@@ -155,16 +158,20 @@ const TaskCard: React.FC<TaskCardProps> = ({
     onSelect?.({ shiftKey: event.shiftKey });
   };
 
-  // Enter and Space open the task once, and Space does not scroll the page; with Ctrl/Cmd or Shift they select the
-  // card instead, as a click with those keys does.
+  // A card is a selectable item with keys of its own, unlike a task link anywhere else, which leaves its keys to the
+  // browser. Enter opens the task, as on any link, and Space does too without scrolling the page. With Ctrl/Cmd or
+  // Shift both select the card instead, as a click with those keys does, so they never open a new tab or window here.
   const handleTitleKeyDown = (event: React.KeyboardEvent) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
     if (selectsCard(event)) {
+      event.preventDefault();
       onSelect?.({ shiftKey: event.shiftKey });
       return;
     }
-    onOpenTask(task);
+    if (event.key === ' ') {
+      event.preventDefault();
+      onOpenTask(task);
+    }
   };
 
   const handleDragEnd = () => {
@@ -190,8 +197,9 @@ const TaskCard: React.FC<TaskCardProps> = ({
       )}
 
       {/* The card takes the mouse: a click opens the task, a Ctrl/Cmd or Shift click selects the card, and the whole
-          card drags. The title is its button for the keyboard and screen readers. The parent link, the subtask bar and
-          the subtask rows stop their plain clicks, so those never open the card.
+          card drags. The title is its link for the keyboard and screen readers, and a middle click or its context menu
+          opens the task in a new tab. A click on a link of the card belongs to that link (isTaskOpeningClick), and
+          the subtask bar and the subtask rows stop their clicks, so none of those opens the card as well.
           The 10px corner radius is also in SubtaskBar, which rounds its fill 9px: this radius minus the 1px border. */}
       <div
         className={`rounded-[10px] border bg-surface transition-all duration-200 ${
@@ -202,7 +210,9 @@ const TaskCard: React.FC<TaskCardProps> = ({
         aria-selected={isSelected}
         {...dragEvents}
         onClickCapture={selectOnModifierClick}
-        onClick={() => onOpenTask(task)}
+        onClick={(event) => {
+          if (isTaskOpeningClick(event)) onOpenTask(task);
+        }}
       >
         <div className="p-3">
           {/* Header row: the same priority and ID as a row of the list, and the acceptance-criteria ring. A subtask's
@@ -210,7 +220,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <PriorityBars priority={task.priority} priorities={priorities} />
             {task.parentTaskId && (
-              <ParentTaskLink task={task} parent={nesting.all.parentOf(task)} onOpenTask={onOpenTask} />
+              <ParentTaskLink task={task} parent={nesting.all.parentOf(task)} />
             )}
             <span className="min-w-0 font-mono text-xs font-medium text-ink-3 wrap-anywhere">{task.id}</span>
             <span className="ml-auto flex shrink-0">
@@ -219,19 +229,20 @@ const TaskCard: React.FC<TaskCardProps> = ({
           </div>
 
           <h4 className="mt-1.5 text-sm font-medium leading-snug text-ink">
-            {/* Not a <button>: Firefox does not start a drag that begins on a button inside a draggable element
-                (Mozilla bug 568313), and a card must also drag by its title. A block, not an inline-block, so it adds no
-                baseline gap under the title, and only as wide as its text, so the focus ring stays around the text.
-                A mouse click on it opens the task through the card. */}
-            <span
-              role="button"
-              tabIndex={0}
+            {/* A link, not a <button>: Firefox does not start a drag that begins on a button inside a draggable element
+                (Mozilla bug 568313), and a card must also drag by its title. draggable={false}, because a link is
+                draggable by itself and would start a drag of its address instead of the card. A block, not an
+                inline-block, so it adds no baseline gap under the title, and only as wide as its text, so the focus ring
+                stays around the text. */}
+            <TaskLink
+              task={task}
+              draggable={false}
               aria-label={accessibleLabel}
               onKeyDown={handleTitleKeyDown}
               className="block w-fit rounded-[4px] wrap-anywhere focus-ring md:line-clamp-2"
             >
               {task.title}
-            </span>
+            </TaskLink>
           </h4>
 
           <div className="mt-2 flex flex-wrap gap-1 empty:hidden">
@@ -284,6 +295,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
               statuses={statuses}
               levels={subtaskLevels}
               onOpenTask={onOpenTask}
+              variant="card"
             />
           </div>
         )}

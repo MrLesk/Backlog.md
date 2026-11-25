@@ -106,16 +106,15 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({
   };
 
   return (
+    // The section around the editor shows its name; `label` names each field for screen readers.
     <div className="space-y-2">
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 transition-colors duration-200">
-        {label}
-      </label>
       <ul className="space-y-2">
         {criteria.map((c) => (
           <li key={c.index} className="flex items-center gap-2">
             <input
               type="checkbox"
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              aria-label={`${label} item ${c.index} done`}
+              className="shrink-0 checkbox focus-ring"
               checked={c.checked}
               onChange={(e) => handleToggle(c.index, e.target.checked)}
               disabled={disableToggle}
@@ -129,12 +128,12 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               onInput={(e) => autoResize(e.currentTarget)}
-              className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 resize-none overflow-hidden leading-5"
+              className="min-w-0 flex-1 resize-none overflow-hidden rounded-control border border-line bg-surface px-2 py-1 text-sm leading-5 text-ink placeholder:text-ink-3 focus-ring"
             />
             <button
               type="button"
               onClick={() => handleRemove(c.index)}
-              className="px-2 py-1 text-sm text-red-600 dark:text-red-400 hover:underline"
+              className="shrink-0 rounded-control px-2 py-1 text-sm text-ink-2 transition-colors duration-200 hover:bg-hover hover:text-blocked focus-ring"
             >
               Remove
             </button>
@@ -153,18 +152,18 @@ const AcceptanceCriteriaEditor: React.FC<Props> = ({
             onPaste={handlePaste}
             onInput={(e) => autoResize(e.currentTarget)}
             placeholder="New criterion"
-            className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 focus:border-transparent transition-colors duration-200 resize-none overflow-hidden leading-5"
+            className="min-w-0 flex-1 resize-none overflow-hidden rounded-control border border-line bg-surface px-2 py-1 text-sm leading-5 text-ink placeholder:text-ink-3 focus-ring"
           />
           <button
             type="button"
             onClick={handleAdd}
-            className="px-2 py-1 text-sm bg-blue-500 dark:bg-blue-600 text-white rounded-md hover:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 focus:ring-blue-400 dark:focus:ring-blue-500 transition-colors duration-200"
+            className="shrink-0 rounded-control border border-line bg-surface px-2.5 py-1 text-sm font-medium text-ink transition-colors duration-200 hover:bg-hover focus-ring"
           >
             Add
           </button>
         </li>
       </ul>
-      {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p role="alert" className="text-sm text-blocked">{error}</p>}
     </div>
   );
 };

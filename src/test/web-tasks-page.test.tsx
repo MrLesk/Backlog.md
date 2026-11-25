@@ -75,6 +75,7 @@ interface PageOptions {
 	dateFormat?: string;
 	onRefreshData?: () => Promise<void>;
 	onTasksUpdated?: (tasks: Task[], requestTask: Task) => void;
+	onOpenTask?: (task: Task) => void;
 }
 
 let activeRoot: Root | null = null;
@@ -104,7 +105,7 @@ const renderPage = (path: string, options: PageOptions = {}): HTMLElement => {
 			isLoading={options.isLoading ?? false}
 			hideEmptyColumns={false}
 			dateFormat={options.dateFormat}
-			onEditTask={() => {}}
+			onOpenTask={options.onOpenTask ?? (() => {})}
 			onNewTask={() => {}}
 			onRefreshData={options.onRefreshData ?? (async () => {})}
 			onTasksUpdated={options.onTasksUpdated ?? (() => {})}
@@ -198,14 +199,14 @@ const listedTaskIds = async (container: HTMLElement): Promise<string[]> => {
 	for (const header of Array.from(container.querySelectorAll("h3 button[aria-expanded='false']"))) {
 		await click(header);
 	}
-	return Array.from(container.querySelectorAll("li button[aria-label^='Open ']"), (title) =>
+	return Array.from(container.querySelectorAll("li a[aria-label^='Open ']"), (title) =>
 		idOf(title.getAttribute("aria-label")),
 	);
 };
 
-/** The task IDs of the cards on the board, column by column: each card's title is the button that opens it. */
+/** The task IDs of the cards on the board, column by column: each card's title is the link that opens it. */
 const boardTaskIds = (container: HTMLElement): string[] =>
-	Array.from(container.querySelectorAll("[role='group'] h4 [role='button'][aria-label^='Open ']"), (title) =>
+	Array.from(container.querySelectorAll("[role='group'] h4 a[aria-label^='Open ']"), (title) =>
 		idOf(title.getAttribute("aria-label")),
 	);
 
@@ -451,7 +452,7 @@ describe("Tasks page list", () => {
 		});
 
 		expect(groupHeaders(container)).toEqual([{ name: "Done1", open: "true" }]);
-		expect(container.querySelector("li button[aria-label^='Open TASK-4:']")).toBeTruthy();
+		expect(container.querySelector("li a[aria-label^='Open TASK-4:']")).toBeTruthy();
 	});
 
 	it("names the status and priority marks of a row and shows the branch of a task from another branch", () => {
@@ -463,7 +464,7 @@ describe("Tasks page list", () => {
 			priorities: ORDER_FIXTURE_PRIORITIES,
 		});
 		const row = (id: string) =>
-			container.querySelector(`li button[aria-label^='Open ${id}:']`)?.closest("li") as HTMLElement;
+			container.querySelector(`li a[aria-label^='Open ${id}:']`)?.closest("li") as HTMLElement;
 		const markNames = (id: string) =>
 			Array.from(row(id).querySelectorAll("[role='img']"), (mark) => mark.getAttribute("aria-label"));
 
@@ -631,5 +632,34 @@ describe("Tasks page board", () => {
 		} finally {
 			apiClient.getCleanupPreview = originalGetCleanupPreview;
 		}
+	});
+});
+
+describe("List task links", () => {
+	it.each([
+		["Ctrl", { ctrlKey: true }],
+		["Cmd", { metaKey: true }],
+	] as const)("leaves a %s-click on a title link and on its row to the browser", (_key, modifier) => {
+		const opened: string[] = [];
+		const container = renderPage("/tasks", { onOpenTask: (task) => opened.push(task.id) });
+		const title = container.querySelector("li a[aria-label^='Open task-101:']") as HTMLAnchorElement;
+		const row = title.closest("li > div") as HTMLElement;
+		// A listener on the window runs after the app's own handlers: it records whether the app took the click, then
+		// stops jsdom from trying to follow the link, which it cannot do.
+		const preventedByApp: boolean[] = [];
+		window.addEventListener("click", (event) => {
+			preventedByApp.push(event.defaultPrevented);
+			event.preventDefault();
+		});
+
+		for (const target of [title, row]) {
+			act(() => {
+				target.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true, ...modifier }));
+			});
+		}
+
+		expect(preventedByApp).toEqual([false, false]);
+		expect(opened).toEqual([]);
+		expect(window.location.pathname).toBe("/tasks");
 	});
 });

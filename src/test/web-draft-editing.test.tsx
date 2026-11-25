@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import type { Task } from "../types/index.ts";
 import DraftsList from "../web/components/DraftsList.tsx";
-import { TaskDetailsModal } from "../web/components/TaskDetailsModal.tsx";
+import TaskDetails from "../web/components/TaskDetails.tsx";
 import { TaskIdIndexProvider } from "../web/contexts/TaskIdIndexContext.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext.tsx";
 
@@ -64,14 +64,25 @@ function serveStatuses(): void {
 	serveJson(() => ["To Do", "In Progress", "Done"]);
 }
 
-async function renderDrafts(onEditTask: (task: Task) => void): Promise<HTMLElement> {
+let currentLocation: { pathname: string; state: unknown } = { pathname: "", state: null };
+
+function LocationProbe() {
+	const location = useLocation();
+	currentLocation = { pathname: location.pathname, state: location.state };
+	return null;
+}
+
+async function renderDrafts(): Promise<HTMLElement> {
 	const container = setupDom();
 	activeRoot = createRoot(container);
 	await act(async () => {
 		activeRoot?.render(
-			<ThemeProvider>
-				<DraftsList onEditTask={onEditTask} onNewDraft={() => {}} />
-			</ThemeProvider>,
+			<MemoryRouter initialEntries={["/drafts"]}>
+				<LocationProbe />
+				<ThemeProvider>
+					<DraftsList onNewDraft={() => {}} />
+				</ThemeProvider>
+			</MemoryRouter>,
 		);
 		await Promise.resolve();
 	});
@@ -87,28 +98,30 @@ afterEach(() => {
 });
 
 describe("Web drafts list", () => {
-	it("opens the clicked draft for editing", async () => {
+	it("opens the clicked draft through its task route, returning to Drafts when it closes", async () => {
 		serveDrafts(() => [draft("DRAFT-1", "First draft"), draft("DRAFT-2", "Second draft")]);
-		const edited: Task[] = [];
-		const container = await renderDrafts((task) => edited.push(task));
+		const container = await renderDrafts();
 
 		const headings = Array.from(container.querySelectorAll("h3"));
 		const target = headings.find((heading) => heading.textContent === "Second draft");
 		expect(target).toBeTruthy();
 
 		await act(async () => {
-			target?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+			target?.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
 			await Promise.resolve();
 		});
 
-		expect(edited.map((task) => task.id)).toEqual(["DRAFT-2"]);
+		expect(currentLocation).toEqual({
+			pathname: "/board/DRAFT-2/second-draft",
+			state: { background: { pathname: "/drafts", search: "" } },
+		});
 	});
 
 	// App.refreshData fires this event after every save, so a draft edit shows up without a reload.
 	it("reloads the drafts when a drafts-updated event fires", async () => {
 		let drafts = [draft("DRAFT-1", "First draft")];
 		serveDrafts(() => drafts);
-		const container = await renderDrafts(() => {});
+		const container = await renderDrafts();
 		expect(container.textContent).toContain("First draft");
 
 		drafts = [draft("DRAFT-1", "Reviewed scope")];
@@ -122,8 +135,8 @@ describe("Web drafts list", () => {
 	});
 });
 
-describe("Web task popup status field", () => {
-	async function renderModal(task: Task): Promise<HTMLElement> {
+describe("Task view status field", () => {
+	async function renderPage(task: Task): Promise<HTMLElement> {
 		const container = setupDom();
 		activeRoot = createRoot(container);
 		await act(async () => {
@@ -131,7 +144,7 @@ describe("Web task popup status field", () => {
 				<MemoryRouter initialEntries={["/"]}>
 					<ThemeProvider>
 						<TaskIdIndexProvider tasks={[task]}>
-							<TaskDetailsModal task={task} isOpen={true} onClose={() => {}} />
+							<TaskDetails task={task} onClose={() => {}} />
 						</TaskIdIndexProvider>
 					</ThemeProvider>
 				</MemoryRouter>,
@@ -142,7 +155,7 @@ describe("Web task popup status field", () => {
 	}
 
 	function statusField(container: HTMLElement): { options: string[]; selected?: string; disabled?: boolean } {
-		const select = container.querySelector("select") as HTMLSelectElement | null;
+		const select = container.querySelector("select[aria-label='Task status']") as HTMLSelectElement | null;
 		expect(select).toBeTruthy();
 		return {
 			options: Array.from(select?.options ?? []).map((option) => option.value),
@@ -151,20 +164,19 @@ describe("Web task popup status field", () => {
 		};
 	}
 
-	it("shows the status a draft actually has instead of the first configured status", async () => {
+	it("shows the status a draft actually has, and offers no other", async () => {
 		serveStatuses();
-		const container = await renderModal(draft("DRAFT-1", "Draft under review"));
+		const container = await renderPage(draft("DRAFT-1", "Draft under review"));
 
-		const { options, selected, disabled } = statusField(container);
-		expect(options).toEqual(["Draft", "To Do", "In Progress", "Done"]);
-		expect(selected).toBe("Draft");
 		// Promotion stays on the Drafts page action, which is the only place that reports the new ID.
-		expect(disabled).toBe(true);
+		expect(container.querySelector("select[aria-label='Task status']")).toBeNull();
+		const statusRow = Array.from(container.querySelectorAll("dt")).find((term) => term.textContent === "Status");
+		expect(statusRow?.nextElementSibling?.textContent).toBe("Draft");
 	});
 
 	it("offers only the configured statuses for a task", async () => {
 		serveStatuses();
-		const container = await renderModal({
+		const container = await renderPage({
 			id: "TASK-1",
 			title: "Ordinary task",
 			status: "To Do",
