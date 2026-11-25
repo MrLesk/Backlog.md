@@ -137,8 +137,12 @@ describe("CLI Integration", () => {
 			const agents = await Bun.file(join(TEST_DIR, "AGENTS.md")).text();
 			expect(agents).toContain(CLI_AGENT_NUDGE);
 			expect(agents).toContain(
-				"At the beginning of each conversation in this project, run `backlog instructions overview` before answering or taking action. Re-read it only if you have not read it yet in the current conversation.",
+				"Run `backlog instructions overview` once per conversation, before the first action that touches tracked work.",
 			);
+			expect(agents).toContain(
+				"Answering a question, explaining code, debugging, reviewing a change, or committing needs no Backlog command",
+			);
+			expect(agents).not.toContain("At the beginning of each conversation in this project");
 			expect(agents).not.toContain("`backlog instructions` to list available guides");
 			expect(agents).not.toContain("# Instructions for the usage of Backlog.md CLI Tool");
 		});
