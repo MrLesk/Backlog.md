@@ -203,10 +203,10 @@ const listedTaskIds = async (container: HTMLElement): Promise<string[]> => {
 	);
 };
 
-/** The task IDs of the cards on the board, column by column. */
+/** The task IDs of the cards on the board, column by column: each card's title is the button that opens it. */
 const boardTaskIds = (container: HTMLElement): string[] =>
-	Array.from(container.querySelectorAll("[role='group'] [role='button'][aria-label^='Open ']"), (card) =>
-		idOf(card.getAttribute("aria-label")),
+	Array.from(container.querySelectorAll("[role='group'] h4 button[aria-label^='Open ']"), (title) =>
+		idOf(title.getAttribute("aria-label")),
 	);
 
 const search = () => new URLSearchParams(window.location.search);

@@ -18,9 +18,11 @@ import { getProjectValues, resolveProjectValue } from "../../utils/project-confi
 import { getTaskTypeValues, resolveTaskTypeValue } from "../../utils/task-type-config";
 import { formatReadinessBlockers } from "../../utils/readiness";
 import { buildTaskIdIndex, resolveTaskReference } from "../utils/task-id-links";
-import { findDirectSubtasks, findParentTask, summarizeSubtaskProgress } from "../../utils/task-subtasks.ts";
+import { summarizeSubtaskProgress } from "../../utils/task-subtasks.ts";
 import { isTerminalStatus } from "../../utils/terminal-status.ts";
-import { createUrlPath } from "../utils/urlHelpers";
+import { createUnfilteredNesting, useSubtaskLevels } from "../lib/task-nesting.ts";
+import { describeSubtasks } from "./SubtaskControls";
+import SubtaskTree from "./SubtaskTree";
 
 interface Props {
   task?: Task | TaskDetail; // Optional for create mode
@@ -236,7 +238,7 @@ function PublishedTaskSummary({ task, statuses, dateFormat }: { task: Task; stat
 
 const HierarchyChevron: React.FC = () => (
   <svg
-    className="h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200 group-hover:translate-x-0.5 dark:text-gray-500"
+    className="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500"
     fill="none"
     stroke="currentColor"
     viewBox="0 0 24 24"
@@ -518,20 +520,12 @@ export const TaskDetailsModal: React.FC<Props> = ({
 
   // Hierarchy is derived from the shared corpus rather than the task payload: the single-task
   // API does not carry parent/subtask fields, while the list the modal already receives does.
-  const parentTask = useMemo(
-    () => (task ? findParentTask(task, availableTasks) : null),
-    [task, availableTasks],
-  );
-
-  const subtasks = useMemo(
-    () => (task ? findDirectSubtasks(task, availableTasks) : []),
-    [task, availableTasks],
-  );
-
-  const subtaskProgress = useMemo(
-    () => (task ? summarizeSubtaskProgress(task, availableTasks, availableStatuses) : null),
-    [task, availableTasks, availableStatuses],
-  );
+  // The dialog has no filters, so its Subtasks tree lists every subtask in that list.
+  const nesting = useMemo(() => createUnfilteredNesting(availableTasks), [availableTasks]);
+  const parentTask = task ? nesting.all.parentOf(task) : null;
+  const subtaskProgress = task ? summarizeSubtaskProgress(nesting.all.subtasksOf(task), availableStatuses) : null;
+  // The subtask levels opened here. Their paths start with the task's ID, so each task keeps its own.
+  const subtaskLevels = useSubtaskLevels();
 
   const resetForm = useCallback((next: TaskDetailsFormState, revision?: string) => {
     setTitle(next.title);
@@ -794,6 +788,14 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const hasUnsavedEdits =
     (mode === "edit" || mode === "create") && (isDirty || hasCommentDraft || hasCreateModeEntries);
 
+  // Every way from this task to another one asks this before it leaves unsaved edits behind.
+  const mayLeaveEdits = () => !hasUnsavedEdits || window.confirm("Discard unsaved changes and leave this task?");
+
+  // The parent link and the Subtasks tree open another task.
+  const openRelatedTask = (relatedTask: Task) => {
+    if (mayLeaveEdits()) onNavigateToTask?.(relatedTask);
+  };
+
   // Links inside the modal (dependency chips, auto-linked task IDs in markdown) leave this
   // task behind, so they ask the same question closing does before the navigation happens.
   const confirmNavigationAwayFromEdits = (event: React.MouseEvent<HTMLElement>) => {
@@ -806,7 +808,7 @@ export const TaskDetailsModal: React.FC<Props> = ({
     if (destination.protocol !== "http:" && destination.protocol !== "https:") return;
     // Same-page anchors (markdown heading links) do not unload the form.
     if (destination.pathname === window.location.pathname && destination.search === window.location.search) return;
-    if (window.confirm("Discard unsaved changes and leave this task?")) return;
+    if (mayLeaveEdits()) return;
     event.preventDefault();
     event.stopPropagation();
   };
@@ -1405,8 +1407,6 @@ export const TaskDetailsModal: React.FC<Props> = ({
         <nav
           aria-label="Task hierarchy"
           className="mb-4"
-          data-task-hierarchy
-          onClickCapture={confirmNavigationAwayFromEdits}
         >
           <ol className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">
             <li className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
@@ -1415,10 +1415,8 @@ export const TaskDetailsModal: React.FC<Props> = ({
             <li className="min-w-0 max-w-full">
               <button
                 type="button"
-                onClick={() => onNavigateToTask?.(parentTask)}
+                onClick={() => openRelatedTask(parentTask)}
                 disabled={!onNavigateToTask}
-                data-parent-task-id={parentTask.id}
-                data-parent-task-href={createUrlPath('/tasks', parentTask.id, parentTask.title)}
                 className="group inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-2 py-1 text-left text-gray-700 transition-colors duration-200 hover:bg-gray-100 hover:text-gray-950 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-default disabled:hover:bg-transparent dark:text-gray-200 dark:hover:bg-gray-700 dark:hover:text-white"
                 aria-label={`Open parent task ${parentTask.id}: ${parentTask.title} (${parentTask.status})`}
               >
@@ -1479,54 +1477,28 @@ export const TaskDetailsModal: React.FC<Props> = ({
             )}
           </div>
 
-          {subtasks.length > 0 && (
+          {subtaskProgress && task && (
             <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
               <SectionHeader
                 title="Subtasks"
                 right={
-                  subtaskProgress
-                    ? `${subtaskProgress.completed} of ${subtaskProgress.total} complete`
-                    : undefined
+                  <span className="font-mono" title={describeSubtasks(subtaskProgress)}>
+                    <span aria-hidden="true">
+                      {subtaskProgress.completed}/{subtaskProgress.total}
+                    </span>
+                    <span className="sr-only">{describeSubtasks(subtaskProgress)}</span>
+                  </span>
                 }
               />
-              <div className="divide-y divide-gray-100 dark:divide-gray-700" data-subtask-list>
-                {subtasks.map((subtask) => {
-                  const nested = summarizeSubtaskProgress(subtask, availableTasks, availableStatuses);
-                  return (
-                    <button
-                      key={subtask.id}
-                      type="button"
-                      onClick={() => onNavigateToTask?.(subtask)}
-                      disabled={!onNavigateToTask}
-                      data-subtask-id={subtask.id}
-                      data-subtask-href={createUrlPath('/tasks', subtask.id, subtask.title)}
-                      className="group flex w-full items-center gap-3 rounded-md px-2 py-3 text-left transition-colors duration-200 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-default disabled:hover:bg-transparent dark:hover:bg-gray-700/50"
-                      aria-label={`Open subtask ${subtask.id}: ${subtask.title} (${subtask.status})`}
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="flex flex-wrap items-center gap-2">
-                          <span className="shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">
-                            {subtask.id}
-                          </span>
-                          <HierarchyStatusBadge status={subtask.status} statuses={availableStatuses} />
-                          {nested && (
-                            <span
-                              className="text-xs text-gray-500 dark:text-gray-400"
-                              data-nested-progress={`${nested.completed}/${nested.total}`}
-                            >
-                              {nested.completed} of {nested.total} complete
-                            </span>
-                          )}
-                        </span>
-                        <span className="mt-1 block break-words text-sm font-medium text-gray-900 dark:text-gray-100">
-                          {subtask.title}
-                        </span>
-                      </span>
-                      <HierarchyChevron />
-                    </button>
-                  );
-                })}
-              </div>
+              <SubtaskTree
+                parent={task}
+                path={task.id}
+                nesting={nesting}
+                statuses={availableStatuses}
+                levels={subtaskLevels}
+                onOpenTask={openRelatedTask}
+                showsCriteria
+              />
             </section>
           )}
 

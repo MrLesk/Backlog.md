@@ -1287,6 +1287,62 @@ describe("task detail routes", () => {
 		expect(ownerDocument.activeElement).toBe(title as HTMLButtonElement);
 	});
 
+	it("opens a subtask from its parent's Subtasks tree and closes back to the filtered list", async () => {
+		const parent: Task = {
+			id: "BACK-301",
+			title: "Tree parent",
+			status: "To Do",
+			assignee: [],
+			labels: ["web"],
+			dependencies: [],
+			createdDate: "2026-07-10",
+		};
+		const subtask: Task = { ...parent, id: "BACK-301.1", title: "Tree child", parentTaskId: "BACK-301" };
+		tasks.push(parent, subtask);
+		const addedResults: SearchResult[] = [
+			{ type: "task", task: parent, score: 1 },
+			{ type: "task", task: subtask, score: 1 },
+		];
+		searchResults.push(...addedResults);
+
+		try {
+			const container = await renderApp("/tasks?label=web");
+			assertState(() => container.textContent?.includes(parent.title) ?? false, "filtered list");
+			const title = container.querySelector<HTMLButtonElement>("button[aria-label='Open BACK-301: Tree parent']");
+			expect(title).toBeTruthy();
+			(title as HTMLButtonElement).focus();
+			await click(title as HTMLButtonElement, [expectFetch("opened parent", "/api/task/BACK-301")]);
+			assertState(
+				() => window.location.pathname === "/tasks/BACK-301/tree-parent" && container.querySelector("[role='dialog']") !== null,
+				"parent task dialog",
+			);
+
+			const dialog = container.querySelector("[role='dialog']") as HTMLElement;
+			const subtaskTitle = dialog.querySelector("button[aria-label='Open BACK-301.1: Tree child']");
+			expect(subtaskTitle).toBeTruthy();
+			await click(subtaskTitle as HTMLElement, [expectFetch("opened subtask", "/api/task/BACK-301.1")]);
+			assertState(
+				() =>
+					window.location.pathname === "/tasks/BACK-301.1/tree-child" &&
+					container.querySelector("#modal-title")?.textContent?.includes("Tree child") === true,
+				"subtask dialog",
+			);
+			expect(window.location.search).toBe("?label=web");
+
+			await pressWithHistory(container.querySelector("[role='dialog']") as HTMLElement, "Escape");
+			assertState(
+				() => window.location.pathname === "/tasks" && container.querySelector("[role='dialog']") === null,
+				"closed back to the list",
+			);
+			expect(window.location.search).toBe("?label=web");
+			expect(container.ownerDocument.activeElement).toBe(title);
+		} finally {
+			tasks.splice(tasks.indexOf(parent), 1);
+			tasks.splice(tasks.indexOf(subtask), 1);
+			for (const result of addedResults) searchResults.splice(searchResults.indexOf(result), 1);
+		}
+	});
+
 	for (const scenario of [
 		{
 			name: "a missing task",

@@ -35,6 +35,18 @@ const task: Task = {
 	comments: [{ index: 1, body: "Blocked by BACK-2 until it lands.", createdDate: "2026-08-07" }],
 };
 
+// A subtask of the task being edited, for the task dialog's parent link and Subtasks tree.
+const subtask: Task = {
+	id: "BACK-1.1",
+	title: "Subtask being edited",
+	status: "To Do",
+	assignee: [],
+	createdDate: "2026-08-07",
+	labels: [],
+	dependencies: [],
+	parentTaskId: "BACK-1",
+};
+
 const setupDom = () => {
 	activeDom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", {
 		url: "http://localhost",
@@ -76,7 +88,10 @@ function LocationProbe() {
 	return null;
 }
 
-const renderModal = async (modalTask: Task | undefined): Promise<HTMLElement> => {
+const renderModal = async (
+	modalTask: Task | undefined,
+	options: { availableTasks?: Task[]; onNavigateToTask?: (task: Task) => void } = {},
+): Promise<HTMLElement> => {
 	setupDom();
 	currentPath = "";
 	const container = document.getElementById("root");
@@ -91,7 +106,8 @@ const renderModal = async (modalTask: Task | undefined): Promise<HTMLElement> =>
 							task={modalTask}
 							isOpen={true}
 							onClose={() => {}}
-							availableTasks={[task, dependency]}
+							availableTasks={options.availableTasks ?? [task, dependency]}
+							onNavigateToTask={options.onNavigateToTask}
 						/>
 					</TaskIdIndexProvider>
 				</ThemeProvider>
@@ -147,12 +163,12 @@ const declineOnConfirm = () => {
 	return prompts;
 };
 
-const startEditingWithUnsavedChanges = async (container: HTMLElement) => {
+const startEditingWithUnsavedChanges = async (container: HTMLElement, editedTask: Task = task) => {
 	await startEditing(container);
 
-	const titleInput = Array.from(container.querySelectorAll("input")).find((input) => input.value === task.title);
+	const titleInput = Array.from(container.querySelectorAll("input")).find((input) => input.value === editedTask.title);
 	expect(titleInput).toBeTruthy();
-	await typeInto(titleInput as HTMLInputElement, "Task being edited with unsaved work");
+	await typeInto(titleInput as HTMLInputElement, `${editedTask.title} with unsaved work`);
 };
 
 const findLinkByText = (container: HTMLElement, text: string): HTMLAnchorElement => {
@@ -249,6 +265,41 @@ describe("Task details modal navigation with unsaved edits", () => {
 		const event = await click(findCommentLink(container));
 
 		expect(event.defaultPrevented).toBe(true);
+	});
+
+	it("asks before a subtask in the Subtasks tree leaves unsaved edits, and stays when declined", async () => {
+		const opened: string[] = [];
+		const container = await renderModal(task, {
+			availableTasks: [task, dependency, subtask],
+			onNavigateToTask: (target) => opened.push(target.id),
+		});
+		await startEditingWithUnsavedChanges(container);
+		const subtaskTitle = container.querySelector("button[aria-label^='Open BACK-1.1:']");
+		expect(subtaskTitle).toBeTruthy();
+
+		const prompts = declineOnConfirm();
+		await click(subtaskTitle as Element);
+		expect(prompts).toEqual(["Discard unsaved changes and leave this task?"]);
+		expect(opened).toEqual([]);
+
+		window.confirm = () => true;
+		await click(subtaskTitle as Element);
+		expect(opened).toEqual(["BACK-1.1"]);
+	});
+
+	it("asks before the parent link leaves unsaved edits", async () => {
+		const opened: string[] = [];
+		const container = await renderModal(subtask, {
+			availableTasks: [task, dependency, subtask],
+			onNavigateToTask: (target) => opened.push(target.id),
+		});
+		await startEditingWithUnsavedChanges(container, subtask);
+
+		const prompts = declineOnConfirm();
+		await click(container.querySelector("nav[aria-label='Task hierarchy'] button") as Element);
+
+		expect(prompts.length).toBe(1);
+		expect(opened).toEqual([]);
 	});
 
 	it("lets links through while there is nothing unsaved to lose", async () => {

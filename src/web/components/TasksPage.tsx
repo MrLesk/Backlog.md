@@ -4,6 +4,7 @@ import type { Milestone, Task } from "../../types";
 import { collectAvailableLabels } from "../../utils/label-filter.ts";
 import { resolveTaskById } from "../../utils/task-id.ts";
 import { applyTaskFilters, createTaskSearchIndex } from "../../utils/task-search.ts";
+import { createTaskHierarchy } from "../../utils/task-subtasks.ts";
 import { isTerminalStatus } from "../../utils/terminal-status.ts";
 import { useBrowserAccess } from "../contexts/BrowserAccessContext";
 import type { LaneMode } from "../lib/lanes.ts";
@@ -16,6 +17,7 @@ import {
 	toTaskFilterOptions,
 	writeTaskFilters,
 } from "../lib/task-filters.ts";
+import type { TaskNesting } from "../lib/task-nesting.ts";
 import { readLaneMode, rememberLaneMode, rememberTaskLayout, type TaskLayout } from "../lib/task-view.ts";
 import Board from "./Board";
 import CleanupModal from "./CleanupModal";
@@ -187,6 +189,15 @@ export default function TasksPage({
 	const labels = useMemo(() => collectAvailableLabels(tasks, availableLabels), [tasks, availableLabels]);
 	const hasTasksWithMilestones = useMemo(() => tasks.some((task) => Boolean(task.milestone?.trim())), [tasks]);
 	const filtered = isFiltered(filters);
+
+	// Parents and subtasks, read once per task list: among every task, which markers count, and among the tasks the
+	// filters keep, which an opened parent lists.
+	const taskHierarchy = useMemo(() => createTaskHierarchy(tasks), [tasks]);
+	const visibleTaskHierarchy = useMemo(() => createTaskHierarchy(visibleTasks), [visibleTasks]);
+	const nesting = useMemo<TaskNesting>(
+		() => ({ all: taskHierarchy, visible: visibleTaskHierarchy, isFiltered: filtered }),
+		[taskHierarchy, visibleTaskHierarchy, filtered],
+	);
 	const showsNoMatches = filtered && !isLoading && visibleTasks.length === 0;
 
 	const openCleanup = canWrite ? () => setIsCleanupOpen(true) : undefined;
@@ -267,6 +278,7 @@ export default function TasksPage({
 							{layout === "list" ? (
 								<TaskList
 									tasks={visibleTasks}
+									nesting={nesting}
 									statuses={statuses}
 									priorities={availablePriorities}
 									projects={availableProjects}
@@ -280,6 +292,7 @@ export default function TasksPage({
 								<Board
 									tasks={tasks}
 									visibleTasks={visibleTasks}
+									nesting={nesting}
 									onEditTask={onEditTask}
 									onRefreshData={onRefreshData}
 									onTasksUpdated={onTasksUpdated}

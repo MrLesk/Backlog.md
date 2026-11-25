@@ -10,6 +10,7 @@ import { ThemeProvider } from "../web/contexts/ThemeContext.tsx";
 import { apiClient, type TaskUpdateRequest } from "../web/lib/api.ts";
 import { pinTimeZone } from "./pin-timezone.ts";
 import { setNativeInputValue } from "./react-dom-input.ts";
+import { STANDALONE_CARD_NESTING } from "./task-card-nesting.ts";
 
 const createTask = (overrides: Partial<Task> = {}): Task => ({
 	id: "TASK-1",
@@ -164,12 +165,15 @@ describe("Web task type UI", () => {
 
 	it("names the type of a task on its card and shows no type for an untyped task", () => {
 		const typeChip = (task: Task) =>
-			JSDOM.fragment(renderToString(<TaskCard task={task} onEdit={() => {}} />)).querySelector("[data-task-type]");
+			JSDOM.fragment(
+				renderToString(<TaskCard task={task} onEdit={() => {}} {...STANDALONE_CARD_NESTING} />),
+			).querySelector("[data-task-type]");
 		const datedHtml = renderToString(
 			<TaskCard
 				task={createTask({ dueDate: "2026-08-10" })}
 				onEdit={() => {}}
 				dateFormat="dd/mm/yyyy hh:mm"
+				{...STANDALONE_CARD_NESTING}
 			/>,
 		);
 

@@ -4,6 +4,7 @@ import { renderToString } from "react-dom/server";
 import type { Task } from "../types/index.ts";
 import TaskCard from "../web/components/TaskCard.tsx";
 import { pinTimeZone } from "./pin-timezone.ts";
+import { STANDALONE_CARD_NESTING } from "./task-card-nesting.ts";
 
 const TIME_ZONE = "Asia/Tokyo";
 
@@ -35,11 +36,14 @@ const createTask = (dates: Pick<Task, "createdDate" | "updatedDate">): Task => (
 	...dates,
 });
 
+/** The rows of the card: header, title, tags and footer. */
 const renderCard = (task: Task, dateFormat?: string): Element => {
-	const html = renderToString(<TaskCard task={task} onEdit={() => {}} dateFormat={dateFormat} />);
-	const card = JSDOM.fragment(html).querySelector("[role='button']");
-	if (!card) throw new Error("The card did not render");
-	return card;
+	const html = renderToString(
+		<TaskCard task={task} onEdit={() => {}} dateFormat={dateFormat} {...STANDALONE_CARD_NESTING} />,
+	);
+	const rows = JSDOM.fragment(html).querySelector("h4")?.parentElement;
+	if (!rows) throw new Error("The card did not render");
+	return rows;
 };
 
 /**

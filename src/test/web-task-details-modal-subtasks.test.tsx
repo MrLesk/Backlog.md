@@ -1,32 +1,34 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { JSDOM } from "jsdom";
-import { renderToString } from "react-dom/server";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import type { Task } from "../types/index.ts";
 import { TaskDetailsModal } from "../web/components/TaskDetailsModal";
 import { ThemeProvider } from "../web/contexts/ThemeContext";
 
-const STATUSES = ["To Do", "In Progress", "Done"];
+// The configured final status is "Shipped", so a subtask in "Done" is not finished.
+const STATUSES = ["Backlog", "Doing", "Shipped"];
+
+let activeRoot: Root | null = null;
 
 const setupDom = () => {
-	const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost" });
+	const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", { url: "http://localhost" });
+	(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 	globalThis.window = dom.window as unknown as Window & typeof globalThis;
 	globalThis.document = dom.window.document as Document;
 	globalThis.navigator = dom.window.navigator as Navigator;
 	globalThis.localStorage = dom.window.localStorage;
-
-	if (!window.matchMedia) {
-		window.matchMedia = () =>
-			({
-				matches: false,
-				media: "",
-				onchange: null,
-				addListener: () => {},
-				removeListener: () => {},
-				addEventListener: () => {},
-				removeEventListener: () => {},
-				dispatchEvent: () => false,
-			}) as MediaQueryList;
-	}
+	window.matchMedia = () =>
+		({
+			matches: false,
+			media: "",
+			onchange: null,
+			addListener: () => {},
+			removeListener: () => {},
+			addEventListener: () => {},
+			removeEventListener: () => {},
+			dispatchEvent: () => false,
+		}) as MediaQueryList;
 };
 
 const makeTask = (id: string, status: string, parentTaskId?: string, title?: string): Task =>
@@ -41,115 +43,127 @@ const makeTask = (id: string, status: string, parentTaskId?: string, title?: str
 		...(parentTaskId ? { parentTaskId } : {}),
 	}) as Task;
 
-const renderModal = (task: Task, availableTasks: Task[]) => {
-	setupDom();
-	return renderToString(
-		<ThemeProvider>
-			<TaskDetailsModal
-				task={task}
-				isOpen={true}
-				onClose={() => {}}
-				availableTasks={availableTasks}
-				availableStatuses={STATUSES}
-				onNavigateToTask={() => {}}
-			/>
-		</ThemeProvider>,
-	);
-};
-
-// Mirrors the real corpus shape this feature was built for: a parent whose children are spread
-// across statuses, one of which has children of its own.
+// A parent whose subtasks are spread across statuses; one of them has subtasks of its own, one level deeper again.
 const nestedCorpus = (): Task[] => [
-	makeTask("TASK-2", "In Progress", undefined, "Parent with six children"),
-	makeTask("TASK-2.1", "Done", "TASK-2"),
-	makeTask("TASK-2.2", "Done", "TASK-2"),
-	makeTask("TASK-2.3", "Done", "TASK-2"),
-	makeTask("TASK-2.4", "Done", "TASK-2"),
+	makeTask("TASK-2", "Doing", undefined, "Parent with six subtasks"),
+	makeTask("TASK-2.1", "Shipped", "TASK-2"),
+	makeTask("TASK-2.2", "Shipped", "TASK-2"),
+	makeTask("TASK-2.3", "Shipped", "TASK-2"),
+	makeTask("TASK-2.4", "Shipped", "TASK-2"),
 	makeTask("TASK-2.5", "Done", "TASK-2"),
-	makeTask("TASK-2.6", "To Do", "TASK-2", "Child that has children"),
-	makeTask("TASK-2.6.1", "Done", "TASK-2.6"),
-	makeTask("TASK-2.6.2", "To Do", "TASK-2.6"),
-	makeTask("TASK-2.6.3", "To Do", "TASK-2.6"),
-	makeTask("TASK-2.6.4", "To Do", "TASK-2.6"),
+	makeTask("TASK-2.6", "Backlog", "TASK-2", "Subtask that has subtasks"),
+	makeTask("TASK-2.6.1", "Shipped", "TASK-2.6"),
+	makeTask("TASK-2.6.2", "Backlog", "TASK-2.6"),
+	makeTask("TASK-2.6.2.1", "Backlog", "TASK-2.6.2"),
 ];
 
-describe("Web task details modal subtask hierarchy", () => {
-	it("omits both sections for a task with no parent and no children", () => {
-		const tasks = [makeTask("TASK-1", "To Do"), makeTask("TASK-9", "Done")];
-		const html = renderModal(tasks[0] as Task, tasks);
+const renderModal = (task: Task, availableTasks: Task[], onNavigateToTask: (task: Task) => void = () => {}) => {
+	setupDom();
+	const container = document.getElementById("root") as HTMLElement;
+	activeRoot = createRoot(container);
+	act(() => {
+		activeRoot?.render(
+			<ThemeProvider>
+				<TaskDetailsModal
+					task={task}
+					isOpen={true}
+					onClose={() => {}}
+					availableTasks={availableTasks}
+					availableStatuses={STATUSES}
+					onNavigateToTask={onNavigateToTask}
+				/>
+			</ThemeProvider>,
+		);
+	});
+	return container;
+};
 
-		expect(html).not.toContain("data-subtask-list");
-		expect(html).not.toContain("data-parent-task-id");
-		expect(html).not.toContain("Subtasks");
+afterEach(() => {
+	if (activeRoot) {
+		act(() => {
+			activeRoot?.unmount();
+		});
+		activeRoot = null;
+	}
+});
+
+const click = async (element: Element) => {
+	await act(async () => {
+		element.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+		await Promise.resolve();
+	});
+};
+
+const subtasksSection = (container: HTMLElement): HTMLElement | null =>
+	Array.from(container.querySelectorAll("section")).find(
+		(section) => section.querySelector("h3")?.textContent === "Subtasks",
+	) ?? null;
+
+const listedIds = (scope: ParentNode): string[] =>
+	Array.from(
+		scope.querySelectorAll("button[aria-label^='Open ']"),
+		(title) => title.getAttribute("aria-label")?.match(/^Open ([^:]+):/)?.[1] ?? "",
+	);
+
+const markerOf = (scope: ParentNode, taskId: string): HTMLButtonElement => {
+	const marker = scope
+		.querySelector(`button[aria-label^="Open ${taskId}:"]`)
+		?.parentElement?.querySelector<HTMLButtonElement>("button[aria-expanded]");
+	expect(marker, `marker of ${taskId}`).toBeTruthy();
+	return marker as HTMLButtonElement;
+};
+
+describe("Task dialog parent and Subtasks", () => {
+	it("shows neither a parent nor a Subtasks section for a task without them", () => {
+		const tasks = [makeTask("TASK-1", "Backlog"), makeTask("TASK-9", "Shipped")];
+		const container = renderModal(tasks[0] as Task, tasks);
+
+		expect(subtasksSection(container)).toBeNull();
+		expect(container.querySelector("nav[aria-label='Task hierarchy']")).toBeNull();
 	});
 
-	it("lists direct children with their ids and titles", () => {
+	it("lists the direct subtasks and opens each deeper level from its marker", async () => {
 		const tasks = nestedCorpus();
-		const html = renderModal(tasks[0] as Task, tasks);
+		const container = renderModal(tasks[0] as Task, tasks);
+		const section = subtasksSection(container) as HTMLElement;
 
-		expect(html).toContain("data-subtask-list");
-		expect(html).toContain('data-subtask-id="TASK-2.1"');
-		expect(html).toContain('data-subtask-id="TASK-2.6"');
-		expect(html).toContain('aria-label="Open subtask TASK-2.1: Task TASK-2.1 (Done)"');
-		expect(html).toContain("Child that has children");
-		// Grandchildren are not flattened into the parent's list.
-		expect(html).not.toContain('data-subtask-id="TASK-2.6.1"');
+		expect(listedIds(section)).toEqual(["TASK-2.1", "TASK-2.2", "TASK-2.3", "TASK-2.4", "TASK-2.5", "TASK-2.6"]);
+
+		await click(markerOf(section, "TASK-2.6"));
+		expect(listedIds(section)).toContain("TASK-2.6.2");
+		expect(listedIds(section)).not.toContain("TASK-2.6.2.1");
+
+		await click(markerOf(section, "TASK-2.6.2"));
+		expect(listedIds(section)).toContain("TASK-2.6.2.1");
 	});
 
-	it("summarises progress over direct children only", () => {
+	it("counts the subtasks in the configured final status as done", () => {
 		const tasks = nestedCorpus();
-		const html = renderModal(tasks[0] as Task, tasks);
+		const container = renderModal(tasks[0] as Task, tasks);
+		const section = subtasksSection(container) as HTMLElement;
 
-		// Five of six direct children are Done; the sixth has its own children but is not itself Done.
-		expect(html).toContain("5 of 6 complete");
-		expect(html).not.toContain("6 of 10 complete");
+		// TASK-2.5 is in "Done", which is not the final status here.
+		expect(section.querySelector("h3")?.nextElementSibling?.textContent).toContain("6 subtasks, 4 done");
+		expect(markerOf(section, "TASK-2.6").getAttribute("aria-label")).toBe("2 subtasks, 1 done");
 	});
 
-	it("marks a child that has children of its own with its nested progress", () => {
+	it("opens a subtask through the task routes", async () => {
+		const opened: string[] = [];
 		const tasks = nestedCorpus();
-		const html = renderModal(tasks[0] as Task, tasks);
-		const document = new JSDOM(html).window.document;
+		const container = renderModal(tasks[0] as Task, tasks, (task) => opened.push(task.id));
 
-		expect(html).toContain('data-nested-progress="1/4"');
-		expect(document.querySelector('[data-nested-progress="1/4"]')?.textContent).toBe("1 of 4 complete");
+		await click(subtasksSection(container)?.querySelector("button[aria-label^='Open TASK-2.1:']") as Element);
+		expect(opened).toEqual(["TASK-2.1"]);
 	});
 
-	it("counts only the configured terminal status as complete", () => {
-		const tasks = [
-			makeTask("TASK-3", "To Do"),
-			makeTask("TASK-3.1", "Done", "TASK-3"),
-			makeTask("TASK-3.2", "In Progress", "TASK-3"),
-			makeTask("TASK-3.3", "To Do", "TASK-3"),
-		];
-		const html = renderModal(tasks[0] as Task, tasks);
-
-		// In Progress must not be counted as complete.
-		expect(html).toContain("1 of 3 complete");
-	});
-
-	it("links each child to its canonical task route", () => {
+	it("opens the parent through the task routes", async () => {
+		const opened: string[] = [];
 		const tasks = nestedCorpus();
-		const html = renderModal(tasks[0] as Task, tasks);
+		const container = renderModal(tasks[6] as Task, tasks, (task) => opened.push(task.id));
 
-		expect(html).toContain('data-subtask-href="/tasks/TASK-2.1/task-task-21"');
-	});
-
-	it("shows the parent task on a child, linked to its canonical route", () => {
-		const tasks = nestedCorpus();
-		const child = tasks.find((task) => task.id === "TASK-2.6") as Task;
-		const html = renderModal(child, tasks);
-
-		expect(html).toContain("data-task-hierarchy");
-		expect(html).toContain('data-parent-task-id="TASK-2"');
-		expect(html).toContain("Parent with six children");
-		expect(html).toContain('aria-label="Open parent task TASK-2: Parent with six children (In Progress)"');
-		expect(html).toContain('data-parent-task-href="/tasks/TASK-2/parent-with-six-children"');
-	});
-
-	it("omits the parent section when the parent is absent from the corpus", () => {
-		const tasks = [makeTask("TASK-4.1", "To Do", "TASK-4")];
-		const html = renderModal(tasks[0] as Task, tasks);
-
-		expect(html).not.toContain("data-parent-task-id");
+		const parentLink = container.querySelector("nav[aria-label='Task hierarchy'] button");
+		expect(parentLink?.getAttribute("aria-label")).toBe("Open parent task TASK-2: Parent with six subtasks (Doing)");
+		await click(parentLink as Element);
+		expect(opened).toEqual(["TASK-2"]);
 	});
 });

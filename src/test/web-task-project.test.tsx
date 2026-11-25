@@ -9,6 +9,7 @@ import { TaskDetailsModal } from "../web/components/TaskDetailsModal.tsx";
 import { ThemeProvider } from "../web/contexts/ThemeContext.tsx";
 import { apiClient, type TaskUpdateRequest } from "../web/lib/api.ts";
 import { setNativeInputValue } from "./react-dom-input.ts";
+import { STANDALONE_CARD_NESTING } from "./task-card-nesting.ts";
 
 const createTask = (overrides: Partial<Task> = {}): Task => ({
 	id: "TASK-1",
@@ -121,10 +122,16 @@ describe("Web task project UI", () => {
 				task={createTask({ project: "Web" })}
 				onEdit={() => {}}
 				availableProjects={["Web"]}
+				{...STANDALONE_CARD_NESTING}
 			/>,
 		);
 		const untaggedHtml = renderToString(
-			<TaskCard task={createTask()} onEdit={() => {}} availableProjects={["Web"]} />,
+			<TaskCard
+				task={createTask()}
+				onEdit={() => {}}
+				availableProjects={["Web"]}
+				{...STANDALONE_CARD_NESTING}
+			/>,
 		);
 
 		expect(webHtml).toContain('data-task-project="Web"');
@@ -133,7 +140,11 @@ describe("Web task project UI", () => {
 
 	it("hides the project badge when no projects are configured, even if the task has one", () => {
 		const html = renderToString(
-			<TaskCard task={createTask({ project: "Web" })} onEdit={() => {}} />,
+			<TaskCard
+				task={createTask({ project: "Web" })}
+				onEdit={() => {}}
+				{...STANDALONE_CARD_NESTING}
+			/>,
 		);
 
 		expect(html).not.toContain("data-task-project");
