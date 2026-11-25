@@ -228,8 +228,39 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     border-radius: 7px;
 }
 
+/* The field of a property in a task's side column: a select, a field of chips, the dependency field or the due date.
+   Its padding sits in a negative margin, so its text lines up with the values beside it, and its frame shows on hover
+   and while it has focus, so on the task page a property reads as its value. In the dialog that creates a task the list
+   of properties carries data-framed-fields, and every frame shows, so each property reads as a field to fill in. */
+@utility property-field {
+    @apply compact-control;
+    margin-left: -0.5rem;
+    width: calc(100% + 0.5rem);
+    padding-inline: 0.5rem;
+    border: 1px solid transparent;
+    transition-property: border-color, background-color;
+    transition-duration: 200ms;
+
+    &:hover,
+    &:focus-within {
+        border-color: var(--color-line);
+    }
+
+    &:focus-visible,
+    &:has(:focus-visible) {
+        outline: 2px solid var(--color-accent-strong);
+        outline-offset: 2px;
+    }
+
+    [data-framed-fields] & {
+        border-color: var(--color-line);
+        background-color: var(--color-surface);
+    }
+}
+
 /* A checkbox drawn the same in both themes: an ink-3 outline on the surface, and once checked an ink box with an
-   on-ink check. The browser's own box would be a gray square on the dark surface. */
+   on-ink check. The browser's own box would be a gray square on the dark surface. A disabled box, on a task that
+   cannot be changed, is dimmed: a hairline on surface-2, or ink-3 once checked, with a not-allowed cursor. */
 @utility checkbox {
     appearance: none;
     display: inline-grid;
@@ -256,6 +287,17 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
     &:checked::before {
         transform: scale(1);
+    }
+
+    &:disabled {
+        cursor: not-allowed;
+        border-color: var(--color-line);
+        background-color: var(--color-surface-2);
+    }
+
+    &:checked:disabled {
+        border-color: var(--color-ink-3);
+        background-color: var(--color-ink-3);
     }
 }
 

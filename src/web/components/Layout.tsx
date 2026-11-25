@@ -26,7 +26,7 @@ interface LayoutProps {
 
 /**
  * The layer that holds the task page over the current page. It returns keyboard focus to whatever opened the task,
- * a row, a card or a link, when the task closes.
+ * a row, a card or a link, when the task closes. Focus while the task is open is TaskPageLayout's.
  */
 function TaskPageLayer({ children }: { children: ReactNode }) {
 	// Read while the layer first renders, before the page beneath becomes inert and loses its focus.

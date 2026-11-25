@@ -1,6 +1,7 @@
 import { type KeyboardEventHandler, type ReactNode, useEffect, useId, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useAddressBarLocation } from "../contexts/AddressBarLocationContext.tsx";
+import { pageLabelOf } from "../lib/app-pages.ts";
 import { pageBeneath } from "../lib/task-links.ts";
 
 interface TaskPageLayoutProps {
@@ -49,23 +50,37 @@ export default function TaskPageLayout({
 	const pageRef = useRef<HTMLElement>(null);
 	const bodyRef = useRef<HTMLDivElement>(null);
 
-	// A task that opens, here or in place of another one, starts at its top with keyboard focus on the page.
+	// A task that opens, here or in place of another one, starts at its top with keyboard focus on the page. Focus goes
+	// back to what opened the task when the page closes: TaskPageLayer in Layout.tsx does that.
 	useEffect(() => {
 		pageRef.current?.focus({ preventScroll: true });
 		if (bodyRef.current) bodyRef.current.scrollTop = 0;
 	}, [taskId]);
 
-	// The page's keys (E, Escape, Cmd/Ctrl+S) reach it only while focus is inside it. When a control that had focus is
-	// removed (Save and Cancel replace the fields and buttons, a menu or a list of suggestions closes), the browser drops
-	// focus to the document body, so whenever the page's content changes, focus found there comes back to the page.
+	// The page's keys (E, Escape, Cmd/Ctrl+S) reach it only while focus is inside it. When a control of the page that had
+	// focus is removed (Save and Cancel replace the fields and buttons, a menu or a list of suggestions closes), the
+	// browser drops focus to the document body; whenever the page's content changes, that focus comes back to the page.
+	// Focus the person moved out of the page, with a click on the sidebar's empty space say, stays where they put it.
 	useEffect(() => {
 		const page = pageRef.current;
 		if (!page) return;
+		let lastFocusedInPage: Element | null = null;
+		const rememberFocus = (event: FocusEvent) => {
+			lastFocusedInPage = event.target as Element;
+		};
 		const observer = new window.MutationObserver(() => {
-			if (!document.activeElement || document.activeElement === document.body) page.focus({ preventScroll: true });
+			const focusDropped = !document.activeElement || document.activeElement === document.body;
+			if (focusDropped && lastFocusedInPage && !lastFocusedInPage.isConnected) {
+				lastFocusedInPage = null;
+				page.focus({ preventScroll: true });
+			}
 		});
+		page.addEventListener("focusin", rememberFocus);
 		observer.observe(page, { childList: true, subtree: true });
-		return () => observer.disconnect();
+		return () => {
+			page.removeEventListener("focusin", rememberFocus);
+			observer.disconnect();
+		};
 	}, []);
 
 	return (
@@ -121,22 +136,6 @@ export default function TaskPageLayout({
 	);
 }
 
-// The pages a task can be opened from, by the names the sidebar gives them.
-const PAGE_NAMES: Array<[path: string, name: string]> = [
-	["/tasks", "Tasks"],
-	["/board", "Tasks"],
-	["/milestones", "Milestones"],
-	["/drafts", "Drafts"],
-	["/statistics", "Statistics"],
-	["/documentation", "Documents"],
-	["/decisions", "Decisions"],
-	["/settings", "Settings"],
-];
-
-function pageNameOf(pathname: string): string {
-	return PAGE_NAMES.find(([path]) => pathname === path || pathname.startsWith(`${path}/`))?.[1] ?? "Back";
-}
-
 /** The way back to the page beneath the task, by its name, followed by the open task's ID. */
 function TaskBreadcrumb({ taskId }: { taskId: string }) {
 	const page = pageBeneath(useAddressBarLocation());
@@ -149,7 +148,7 @@ function TaskBreadcrumb({ taskId }: { taskId: string }) {
 						to={`${page.pathname}${page.search}`}
 						className="rounded-[4px] transition-colors duration-200 hover:text-ink focus-ring"
 					>
-						{pageNameOf(page.pathname)}
+						{pageLabelOf(page.pathname) ?? "Back"}
 					</Link>
 				</li>
 				<li aria-hidden="true" className="flex text-ink-3">
@@ -168,7 +167,7 @@ function TaskBreadcrumb({ taskId }: { taskId: string }) {
 /**
  * The reading column and the properties beside it, from a width of 36rem (576px); below that the properties follow the
  * sections. That keeps two columns in the content panel of a 1024px window with the sidebar open. The properties take
- * 240 to 340px and the reading column up to 780px. The task page and the dialog that creates a task both lay out a task
+ * 260 to 340px, room for a status, a date and a label beside their names, and the reading column up to 780px. The task page and the dialog that creates a task both lay out a task
  * this way, and the reading column's width is set here and only here.
  */
 export function TaskColumns({ main, side }: { main: ReactNode; side: ReactNode }) {
@@ -178,7 +177,7 @@ export function TaskColumns({ main, side }: { main: ReactNode; side: ReactNode }
 				<div className="flex min-w-0 flex-col gap-[22px] @xl:max-w-[780px] @xl:flex-[999_1_480px]">{main}</div>
 				<aside
 					aria-label="Task properties"
-					className="flex min-w-0 flex-col gap-3 @xl:min-w-[240px] @xl:max-w-[340px] @xl:flex-[1_1_280px]"
+					className="flex min-w-0 flex-col gap-3 @xl:min-w-[260px] @xl:max-w-[340px] @xl:flex-[1_1_280px]"
 				>
 					{side}
 				</aside>

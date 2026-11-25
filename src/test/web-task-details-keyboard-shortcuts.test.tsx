@@ -463,6 +463,29 @@ describe("Task page keyboard shortcuts", () => {
 		}
 	});
 
+	it("leaves focus the person moved out of the page where it is when the page changes", async () => {
+		const container = await mountPage();
+		expect(document.activeElement).toBe(taskPageOf(container));
+		// A click on empty space outside the page, the sidebar's say, leaves focus on the document body.
+		act(() => (document.activeElement as HTMLElement).blur());
+		expect(document.activeElement).toBe(document.body);
+
+		// A live update of the task file changes what the page shows.
+		await act(async () => {
+			activeRoot?.render(
+				<MemoryRouter initialEntries={[`/tasks/${task.id}`]}>
+					<ThemeProvider>
+						<button type="button">Outside the task</button>
+						<TaskDetails task={{ ...task, description: "Written in the file meanwhile" }} onClose={() => {}} />
+					</ThemeProvider>
+				</MemoryRouter>,
+			);
+			await Promise.resolve();
+		});
+		expect(container.textContent).toContain("Written in the file meanwhile");
+		expect(document.activeElement).toBe(document.body);
+	});
+
 	it("leaves focus on More actions when an action from it is cancelled", async () => {
 		const container = await mountPage(task, { onArchive: () => {} });
 		window.confirm = () => false;

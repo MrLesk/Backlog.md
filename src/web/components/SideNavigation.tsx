@@ -18,6 +18,7 @@ import { getWebVersion } from '../utils/version';
 import { apiClient } from '../lib/api';
 import { parseSearchCommandQuery } from '../utils/search-command-query';
 import { buildDocsTree, type DocsTreeNode } from '../lib/docs-tree';
+import { APP_PAGES } from '../lib/app-pages';
 import { readRememberedTaskLayout, TASK_LAYOUT_PATHS, taskLayoutOfPath } from '../lib/task-view';
 
 const hasTaskSearchFilters = (parsedQuery: ReturnType<typeof parseSearchCommandQuery>): boolean => {
@@ -456,16 +457,16 @@ const SideNavigation = memo(function SideNavigation({
 		setDesktopCollapsed(true);
 	}, [expandAndFocusSearch, isCollapsed]);
 
-	const milestoneLink = { path: '/milestones', label: 'Milestones', Icon: Icons.Milestone, visible: sections.milestones };
-	const draftLink = { path: '/drafts', label: 'Drafts', Icon: Icons.Draft, visible: canWrite };
+	const milestoneLink = { ...APP_PAGES.milestones, Icon: Icons.Milestone, visible: sections.milestones };
+	const draftLink = { ...APP_PAGES.drafts, Icon: Icons.Draft, visible: canWrite };
 	// On the Tasks page the entry keeps the layout on screen; elsewhere it opens the layout this browser used last.
 	// Its count is the only part that waits for the tasks to load, so the entry itself never moves.
 	const tasksPath = TASK_LAYOUT_PATHS[taskLayoutOfPath(location.pathname) ?? readRememberedTaskLayout()];
 	const taskCountBadge = <NavigationCount count={taskCount} isLoading={isLoading} error={error} label="task" />;
 	const pageLinks: Array<{ path: string; label: string; Icon: ComponentType; visible: boolean; count?: ReactNode }> = [
-		{ path: tasksPath, label: 'Tasks', Icon: Icons.Tasks, visible: sections.tasks, count: taskCountBadge },
+		{ path: tasksPath, label: APP_PAGES.tasks.label, Icon: Icons.Tasks, visible: sections.tasks, count: taskCountBadge },
 		...(isCollapsed ? [draftLink, milestoneLink] : [milestoneLink, draftLink]),
-		{ path: '/statistics', label: 'Statistics', Icon: Icons.Statistics, visible: sections.tasks },
+		{ ...APP_PAGES.statistics, Icon: Icons.Statistics, visible: sections.tasks },
 	].filter(({ visible }) => visible);
 
 	const desktopSidebarSize = isCollapsed ? 'w-16' : 'w-80 min-w-80';
@@ -677,12 +678,12 @@ const SideNavigation = memo(function SideNavigation({
 							<div className="flex items-center justify-between lg:mb-1">
 								<div className="flex flex-1 items-center gap-2 lg:flex-initial lg:gap-3">
 									<NavLink
-										to="/documentation"
+										to={APP_PAGES.documents.path}
 										end
 										className={SECTION_LINK_CLASS}
 									>
 										<span className="text-ink-3"><Icons.Document /></span>
-										<span>Documents (<NavigationCount count={docs.length} isLoading={isLoading} error={error} label="document" />)</span>
+										<span>{APP_PAGES.documents.label} (<NavigationCount count={docs.length} isLoading={isLoading} error={error} label="document" />)</span>
 									</NavLink>
 									<button
 										onClick={() => setIsDocsCollapsed(!isDocsCollapsed)}
@@ -756,12 +757,12 @@ const SideNavigation = memo(function SideNavigation({
 							<div className="flex items-center justify-between lg:mb-1">
 								<div className="flex flex-1 items-center gap-2 lg:flex-initial lg:gap-3">
 									<NavLink
-										to="/decisions"
+										to={APP_PAGES.decisions.path}
 										end
 										className={SECTION_LINK_CLASS}
 									>
 										<span className="text-ink-3"><Icons.Decision /></span>
-										<span>Decisions (<NavigationCount count={decisions.length} isLoading={isLoading} error={error} label="decision" />)</span>
+										<span>{APP_PAGES.decisions.label} (<NavigationCount count={decisions.length} isLoading={isLoading} error={error} label="decision" />)</span>
 									</NavLink>
 									<button
 										onClick={() => setIsDecisionsCollapsed(!isDecisionsCollapsed)}
@@ -812,9 +813,9 @@ const SideNavigation = memo(function SideNavigation({
 									setIsDocsCollapsed(false);
 								}}
 									data-tooltip-id="sidebar-tooltip"
-									aria-label="Documentation"
-								data-tooltip-content="Documentation"
-									className={`flex w-full items-center justify-center p-3 ${navItemClass(location.pathname.startsWith('/documentation'))}`}
+									aria-label={APP_PAGES.documents.label}
+								data-tooltip-content={APP_PAGES.documents.label}
+									className={`flex w-full items-center justify-center p-3 ${navItemClass(location.pathname.startsWith(APP_PAGES.documents.path))}`}
 							>
 								<div className="w-6 h-6 flex items-center justify-center">
 									<Icons.Document />
@@ -828,9 +829,9 @@ const SideNavigation = memo(function SideNavigation({
 									setIsDecisionsCollapsed(false);
 								}}
 									data-tooltip-id="sidebar-tooltip"
-									aria-label="Decisions"
-								data-tooltip-content="Decisions"
-									className={`flex w-full items-center justify-center p-3 ${navItemClass(location.pathname.startsWith('/decisions'))}`}
+									aria-label={APP_PAGES.decisions.label}
+								data-tooltip-content={APP_PAGES.decisions.label}
+									className={`flex w-full items-center justify-center p-3 ${navItemClass(location.pathname.startsWith(APP_PAGES.decisions.path))}`}
 							>
 								<div className="w-6 h-6 flex items-center justify-center">
 									<Icons.Decision />
@@ -845,23 +846,23 @@ const SideNavigation = memo(function SideNavigation({
 			<div className={`border-t border-line py-2 ${isCollapsed ? 'mx-2' : 'mx-4'}`}>
 				{!isCollapsed ? (
 					<NavLink
-						to="/settings"
+						to={APP_PAGES.settings.path}
 						className={({ isActive }) =>
 							`flex min-h-11 items-center px-3 py-2 lg:min-h-0 ${navItemClass(isActive)}`
 						}
 					>
 						<Icons.DocumentSettings />
-						<span className="ml-3 text-sm">Settings</span>
+						<span className="ml-3 text-sm">{APP_PAGES.settings.label}</span>
 						{version && (
 							<span className="ml-auto font-mono text-xs text-ink-3">v{version}</span>
 						)}
 					</NavLink>
 				) : (
 					<NavLink
-						to="/settings"
+						to={APP_PAGES.settings.path}
 						data-tooltip-id="sidebar-tooltip"
-						aria-label="Settings"
-						data-tooltip-content="Settings"
+						aria-label={APP_PAGES.settings.label}
+						data-tooltip-content={APP_PAGES.settings.label}
 						className={({ isActive }) =>
 							`flex items-center justify-center p-3 ${navItemClass(isActive)}`
 						}

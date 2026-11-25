@@ -1196,6 +1196,33 @@ describe("task detail routes", () => {
 		expect(window.location.search).toBe(filteredSearch);
 	});
 
+	// The Tasks page beneath tidies the spelling of its filters, but not while a task is open over it: that would replace
+	// the task's address and close the task.
+	for (const path of [
+		"/tasks/BACK-101?labels=web,docs",
+		"/board/BACK-101/fix-labels-caf-docs?status=to%20do",
+		"/board/BACK-101?priority=HIGH",
+	]) {
+		it(`keeps a direct task link open when the Tasks page beneath would tidy its query: ${path}`, async () => {
+			const container = await renderApp(path);
+			await act(async () => {
+				await Promise.resolve();
+			});
+
+			expect(taskPageOf(container)?.getAttribute("aria-label")).toContain(tasks[0]?.title ?? "");
+			expect(`${window.location.pathname}${window.location.search}`).toBe(path);
+		});
+	}
+
+	it("tidies the query of a direct task link once the task closes to the Tasks page", async () => {
+		const container = await renderApp("/tasks/BACK-101?labels=web,docs");
+		await click(container.querySelector("button[aria-label='Close task']") as HTMLButtonElement);
+
+		expect(taskPageOf(container)).toBeNull();
+		expect(window.location.pathname).toBe("/tasks");
+		expect(new URLSearchParams(window.location.search).getAll("label")).toEqual(["web", "docs"]);
+	});
+
 	it("keeps legacy highlight links while canonicalizing and closing them cleanly", async () => {
 		const container = await renderApp("/?highlight=BACK-101&lane=none&type=bug");
 		assertState(

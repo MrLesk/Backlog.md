@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation, useMatch, useNavigate } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import TasksPage from './components/TasksPage';
 import DocumentationDetail from './components/DocumentationDetail';
@@ -43,7 +43,7 @@ import { collectArchivedMilestoneKeys, collectMilestoneIds, milestoneKey } from 
 import { getProjectValues } from '../utils/project-config';
 import { getTaskTypeValues } from '../utils/task-type-config';
 import { readRememberedTaskLayout, TASK_LAYOUT_PATHS, type TaskLayout } from './lib/task-view';
-import { pageBeneath, readTaskRouteState, type TaskRouteState } from './lib/task-links';
+import { pageBeneath, readTaskRouteState, type TaskRouteState, taskRouteOf } from './lib/task-links';
 import { reconcileById } from './utils/reconcile';
 import { parseBrowserLoadingState } from '../utils/browser-loading-state';
 
@@ -279,17 +279,11 @@ function AppContent() {
   const protocolOnlyLoadingRef = useRef(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const tasksRouteWithTitle = useMatch('/tasks/:id/:title');
-  const tasksRoute = useMatch('/tasks/:id');
-  const boardRouteWithTitle = useMatch('/board/:id/:title');
-  const boardRoute = useMatch('/board/:id');
   const taskRouteAlertRef = useRef<HTMLDivElement | null>(null);
-  const routeTaskId =
-    tasksRouteWithTitle?.params.id ??
-    tasksRoute?.params.id ??
-    boardRouteWithTitle?.params.id ??
-    boardRoute?.params.id;
-  const routeBasePath = tasksRouteWithTitle || tasksRoute ? '/tasks' : boardRouteWithTitle || boardRoute ? '/board' : null;
+  // The task the address names, if one is open.
+  const taskRoute = taskRouteOf(location.pathname);
+  const routeTaskId = taskRoute?.taskId;
+  const routeBasePath = taskRoute?.basePath ?? null;
   const routeState = readTaskRouteState(location.state);
   // The page on screen. While a task is open it is the page beneath the task, which stays mounted and keeps its state;
   // the task is shown over it.

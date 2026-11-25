@@ -1225,8 +1225,9 @@ export default function TaskDetails({
     </>
   );
 
-  // The title field has the heading's type. On the page its padding and border sit outside the heading's box (the
-  // negative margins), so the title stays where it was and nothing below it moves when Edit turns it into the field.
+  // The title field has the heading's type. On the page its border and padding (1px and 7px, 8px in all) sit outside the
+  // heading's box, in the negative margins, so the title stays where it was and nothing below it moves when Edit turns
+  // it into the field. 8px also fits the page's narrowest side gutter, so the field never sticks out of the page.
   const titleField = (
     <input
       type="text"
@@ -1234,8 +1235,8 @@ export default function TaskDetails({
       value={title}
       onChange={(event) => setTitle(event.target.value)}
       placeholder="Enter task title"
-      className={`rounded-control border border-line bg-surface px-2.5 py-1.5 text-2xl font-semibold leading-tight tracking-tight text-ink placeholder:font-normal placeholder:text-ink-3 focus-ring ${
-        isCreateMode ? "w-full" : "-mx-[11px] -my-[7px] w-[calc(100%+22px)]"
+      className={`rounded-control border border-line bg-surface px-[7px] py-1.5 text-2xl font-semibold leading-tight tracking-tight text-ink placeholder:font-normal placeholder:text-ink-3 focus-ring ${
+        isCreateMode ? "w-full" : "-mx-2 -my-[7px] w-[calc(100%+1rem)]"
       }`}
     />
   );
@@ -1463,11 +1464,14 @@ export default function TaskDetails({
   const properties = (
     <TaskPanel title="Properties">
       <fieldset disabled={demoting} className="contents" aria-busy={demoting}>
-        <dl className="grid grid-cols-[92px_minmax(0,1fr)] items-start gap-x-2.5 gap-y-1">
+        {/* In the dialog that creates a task every property is a field to fill in, so their frames show (property-field). */}
+        <dl
+          className="grid grid-cols-[92px_minmax(0,1fr)] items-start gap-x-2.5 gap-y-1"
+          data-framed-fields={isCreateMode || undefined}
+        >
           <PropertyRow label="Status">
             {canChangeProperties && !isOpenDraft ? (
               <PropertySelect
-                framed={isCreateMode}
                 label="Task status"
                 value={status}
                 // A record can hold a status the configuration does not list (an archived one, say): it is shown as it is.
@@ -1488,7 +1492,6 @@ export default function TaskDetails({
           <PropertyRow label="Priority">
             {canChangeProperties ? (
               <PropertySelect
-                framed={isCreateMode}
                 label="Task priority"
                 value={priority}
                 choices={[{ value: "", label: "No Priority" }, ...priorityOptions]}
@@ -1508,7 +1511,6 @@ export default function TaskDetails({
           <PropertyRow label="Assignee">
             {canChangeProperties ? (
               <ChipInput
-                framed={isCreateMode}
                 name="assignee"
                 label="Assignee"
                 value={assignee}
@@ -1523,7 +1525,6 @@ export default function TaskDetails({
           <PropertyRow label="Type">
             {canChangeProperties ? (
               <PropertySelect
-                framed={isCreateMode}
                 label="Task type"
                 value={typeSelectionValue}
                 choices={typeChoices}
@@ -1549,7 +1550,6 @@ export default function TaskDetails({
           <PropertyRow label="Labels">
             {canChangeProperties ? (
               <ChipInput
-                framed={isCreateMode}
                 name="labels"
                 label="Labels"
                 suggestions={availableLabels}
@@ -1572,7 +1572,6 @@ export default function TaskDetails({
             <PropertyRow label="Project">
               {canChangeProperties ? (
                 <PropertySelect
-                  framed={isCreateMode}
                   label="Task project"
                   value={projectSelectionValue}
                   choices={projectChoices}
@@ -1589,7 +1588,6 @@ export default function TaskDetails({
           <PropertyRow label="Milestone">
             {canChangeProperties ? (
               <PropertySelect
-                framed={isCreateMode}
                 label="Task milestone"
                 value={milestoneSelectionValue}
                 choices={milestoneChoices}
@@ -1612,7 +1610,7 @@ export default function TaskDetails({
                 aria-label="Due date"
                 value={dueDate}
                 onChange={(event) => setDueDate(event.target.value)}
-                className="-ml-2 compact-control border border-line bg-surface px-2 font-mono text-xs text-ink focus-ring"
+                className="property-field font-mono text-xs text-ink"
               />
             </PropertyRow>
           ) : (
@@ -1644,7 +1642,6 @@ export default function TaskDetails({
           <PropertyRow label="Dependencies">
             <div className="flex w-full min-w-0 flex-col gap-1.5">
               <DependencyInput
-                framed={isCreateMode}
                 value={dependencies}
                 onChange={canChangeProperties ? (value) => void handleInlineMetaUpdate({ dependencies: value }) : undefined}
                 availableTasks={availableTasks}
@@ -1876,8 +1873,6 @@ function PropertyText({ value, mono = false }: { value: string; mono?: boolean }
 interface PropertySelectProps {
   /** The accessible name of the select, such as "Task status". */
   label: string;
-  /** Shows the field's frame at all times, as the dialog that creates a task does; elsewhere it shows on hover. */
-  framed?: boolean;
   value: string;
   choices: Array<{ value: string; label: string }>;
   onChange: (value: string) => void;
@@ -1893,21 +1888,12 @@ interface PropertySelectProps {
  * invisible, so a click anywhere on it opens the choices and the keyboard and screen readers use the select as usual.
  * Only a change of the choice calls onChange. The filter panel of the Tasks page draws its selects the same way.
  */
-function PropertySelect({ label, framed = false, value, choices, onChange, disabled, describedBy, invalid, children }: PropertySelectProps) {
+function PropertySelect({ label, value, choices, onChange, disabled, describedBy, invalid, children }: PropertySelectProps) {
   return (
-    <span
-      className={`relative -ml-2 inline-flex compact-control min-w-0 items-center gap-[7px] border px-2 outline-accent-strong transition-colors duration-200 hover:border-line hover:bg-hover has-[select:focus-visible]:outline-2 has-[select:focus-visible]:outline-offset-2 has-[select:disabled]:opacity-60 ${
-        framed ? "w-[calc(100%+0.5rem)] border-line bg-surface" : "max-w-full border-transparent"
-      }`}
-    >
+    <span className="relative inline-flex property-field min-w-0 items-center gap-[7px] hover:bg-hover has-[select:disabled]:opacity-60">
       <span aria-hidden="true" className="flex min-w-0 items-center gap-[7px]">
         {children}
       </span>
-      {framed && (
-        <svg viewBox="0 0 16 16" className="ml-auto size-3.5 shrink-0 text-ink-3" aria-hidden="true">
-          <path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      )}
       <select
         aria-label={label}
         aria-describedby={describedBy}

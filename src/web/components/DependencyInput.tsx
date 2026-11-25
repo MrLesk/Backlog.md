@@ -16,11 +16,9 @@ interface DependencyInputProps {
   suggestableTasks?: Task[];
   currentTaskId?: string;
   label?: string; // optional label; render only if provided
-  /** Shows the field's frame at all times, as the dialog that creates a task does; elsewhere it shows on hover and focus. */
-  framed?: boolean;
 }
 
-const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, availableTasks, suggestableTasks, currentTaskId, label = 'Dependencies', framed = false }) => {
+const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, availableTasks, suggestableTasks, currentTaskId, label = 'Dependencies' }) => {
   const [inputValue, setInputValue] = useState('');
   const [suggestions, setSuggestions] = useState<Task[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -114,8 +112,8 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
           {label}
         </label>
       ) : null}
-      <div className="relative -ml-2 w-[calc(100%+0.5rem)]">
-        <div className={`max-h-60 w-full overflow-auto compact-control border px-2 py-0.5 outline-accent-strong transition-colors duration-200 hover:border-line focus-within:border-line focus-within:bg-surface has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-offset-2 ${framed ? 'border-line bg-surface' : 'border-transparent'}`}>
+      <div className="relative property-field focus-within:bg-surface">
+        <div className="max-h-60 overflow-auto py-0.5">
           {value.length > 0 && (
             <div className="flex flex-wrap gap-1 py-0.5">
               {value.map((taskId, index) => {
@@ -165,14 +163,14 @@ const DependencyInput: React.FC<DependencyInputProps> = ({ value, onChange, avai
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               placeholder={value.length === 0 ? "Add a dependency" : "Add another"}
-              className="block w-full resize-none bg-transparent py-0.5 text-sm font-normal text-ink outline-none placeholder:font-mono placeholder:text-xs placeholder:text-ink-3"
+              className="block w-full resize-none overflow-hidden bg-transparent py-0.5 text-sm font-normal text-ink outline-none placeholder:font-mono placeholder:text-xs placeholder:text-ink-3"
               rows={1}
             />
           )}
         </div>
 
         {onChange && suggestions.length > 0 && (
-          <div className="absolute z-10 mt-1 max-h-64 w-full overflow-auto overscroll-contain rounded-control border border-line bg-surface py-1 shadow-lg">
+          <div className="absolute left-0 top-full z-10 mt-1 max-h-64 w-full overflow-auto overscroll-contain rounded-control border border-line bg-surface py-1 shadow-lg">
             {suggestions.map((task, index) => (
               <button
                 key={task.id}

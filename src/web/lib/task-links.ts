@@ -30,6 +30,27 @@ export function readTaskRouteState(state: unknown): TaskRouteState {
 	return state && typeof state === "object" ? (state as TaskRouteState) : {};
 }
 
+// /tasks/:id or /board/:id, with or without the title after the ID; matched as React Router matches the task routes,
+// so in any letter case and with an optional slash at the end.
+const TASK_ROUTE = /^\/(tasks|board)\/([^/]+)(?:\/[^/]+)?\/?$/i;
+
+/**
+ * The task a path opens, or null when no task is open at it: the one test of whether a task is open, used by App and by
+ * the links. The ID is decoded, as in the route's parameters.
+ */
+export function taskRouteOf(pathname: string): { basePath: "/tasks" | "/board"; taskId: string } | null {
+	const match = TASK_ROUTE.exec(pathname);
+	if (!match) return null;
+	const [, layoutPath = "", encodedId = ""] = match;
+	let taskId = encodedId;
+	try {
+		taskId = decodeURIComponent(encodedId);
+	} catch {
+		// A malformed escape stays as it is; the ID check then reports the link as not valid.
+	}
+	return { basePath: layoutPath.toLowerCase() === "tasks" ? "/tasks" : "/board", taskId };
+}
+
 /**
  * The page beneath the task route at `location`: the page the task was opened from, or for a task opened from outside
  * the app, the Tasks page of the route's layout with its query (its filters). The links, the breadcrumb, closing a task
@@ -61,7 +82,7 @@ export function taskLinkTarget(
 ): TaskLinkTarget {
 	const layout = taskLayoutOfPath(location.pathname);
 	const tasksPath = TASK_LAYOUT_PATHS[layout ?? readRememberedTaskLayout()];
-	const isTaskOpen = location.pathname.startsWith(`${tasksPath}/`);
+	const isTaskOpen = taskRouteOf(location.pathname) !== null;
 	const background = isTaskOpen
 		? readTaskRouteState(location.state).background
 		: { pathname: location.pathname, search: location.search };
