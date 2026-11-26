@@ -4542,20 +4542,27 @@ addHelpSchema(milestoneCmd.command("rename <from> <to>"), {
 		},
 		{ name: "due-date", type: "date", description: "Set the milestone due date (YYYY-MM-DD)" },
 		{ name: "clear-due-date", type: "Boolean", description: "Clear the milestone due date" },
+		{ name: "description", type: "Markdown", description: "Replace the milestone description" },
 	],
 	writes: "Renames the milestone file and, by default, updates matching local task milestone values",
 	output: "Rename summary, task update count, and file move path when changed",
 	examples: [
 		'backlog milestone rename "Release 1.0" "Release 2.0"',
 		'backlog milestone rename m-1 "Release 2.0" --no-update-tasks',
+		'backlog milestone rename m-1 "Release 2.0" --description "Public launch scope"',
 	],
 })
 	.description("rename a milestone file and update local tasks by default")
 	.option("--no-update-tasks", "do not update local tasks that reference the milestone")
 	.option("--due-date <date>", "set due date (YYYY-MM-DD)")
 	.option("--clear-due-date", "clear milestone due date")
+	.option("-d, --description <text>", "replace milestone description")
 	.action(
-		async (from: string, to: string, options: { updateTasks?: boolean; dueDate?: string; clearDueDate?: boolean }) => {
+		async (
+			from: string,
+			to: string,
+			options: { updateTasks?: boolean; dueDate?: string; clearDueDate?: boolean; description?: string },
+		) => {
 			if (options.dueDate !== undefined && options.clearDueDate) {
 				console.error("Cannot use --due-date and --clear-due-date together.");
 				process.exitCode = 1;
@@ -4567,6 +4574,7 @@ addHelpSchema(milestoneCmd.command("rename <from> <to>"), {
 					to,
 					updateTasks: options.updateTasks !== false,
 					dueDate: options.clearDueDate ? null : options.dueDate,
+					description: options.description,
 				}),
 			);
 		},

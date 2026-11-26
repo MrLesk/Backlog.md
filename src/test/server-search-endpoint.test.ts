@@ -700,6 +700,22 @@ Milestone: m-0
 		expect(titleAliasRenamed.milestone?.id).toBe(source.id);
 		expect(titleAliasRenamed.milestone?.title).toBe("Release Source Final");
 
+		const descriptionResponse = await fetch(`http://127.0.0.1:${serverPort}/api/milestones/${source.id}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Release Source Final", description: "Scope for the final release" }),
+		});
+		expect(descriptionResponse.status).toBe(200);
+		const described = (await descriptionResponse.json()) as { milestone?: Milestone | null };
+		expect(described.milestone?.description).toBe("Scope for the final release");
+
+		const invalidDescription = await fetch(`http://127.0.0.1:${serverPort}/api/milestones/${source.id}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "Release Source Final", description: 42 }),
+		});
+		expect(invalidDescription.status).toBe(400);
+
 		const duplicateRename = await fetch(`http://127.0.0.1:${serverPort}/api/milestones/${source.id}`, {
 			method: "PUT",
 			headers: { "Content-Type": "application/json" },

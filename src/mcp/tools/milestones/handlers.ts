@@ -24,6 +24,7 @@ export type MilestoneRenameArgs = {
 	to: string;
 	updateTasks?: boolean;
 	dueDate?: string | null;
+	description?: string;
 };
 
 export type MilestoneRemoveArgs = {
@@ -419,7 +420,10 @@ export class MilestoneHandlers {
 		}
 		const titleChanged = toName !== sourceMilestone.title.trim();
 		const dueDateChanged = requestedDueDate !== sourceMilestone.dueDate;
-		if (!titleChanged && !dueDateChanged) {
+		const requestedDescription = args.description?.trim();
+		const descriptionChanged =
+			requestedDescription !== undefined && requestedDescription !== sourceMilestone.description;
+		if (!titleChanged && !dueDateChanged && !descriptionChanged) {
 			return {
 				content: [
 					{
@@ -457,7 +461,13 @@ export class MilestoneHandlers {
 		let updatedTaskIds: string[] = [];
 		const updatedTaskFilePaths = new Set<string>();
 
-		const renameResult = await this.core.renameMilestone(sourceMilestone.id, toName, false, args.dueDate);
+		const renameResult = await this.core.renameMilestone(
+			sourceMilestone.id,
+			toName,
+			false,
+			args.dueDate,
+			descriptionChanged ? requestedDescription : undefined,
+		);
 		if (!renameResult.success || !renameResult.milestone) {
 			throw new BacklogToolError(`Failed to rename milestone "${sourceMilestone.title}".`, "INTERNAL_ERROR");
 		}
@@ -483,6 +493,7 @@ export class MilestoneHandlers {
 					sourceMilestone.title,
 					false,
 					sourceMilestone.dueDate ?? null,
+					descriptionChanged ? sourceMilestone.description : undefined,
 				);
 				const rollbackDetails: string[] = [];
 				if (!rollbackRenameResult.success) {
@@ -512,6 +523,7 @@ export class MilestoneHandlers {
 				sourceMilestone.title,
 				false,
 				sourceMilestone.dueDate ?? null,
+				descriptionChanged ? sourceMilestone.description : undefined,
 			);
 			const rollbackDetails: string[] = [];
 			if (!rollbackRenameResult.success) {
@@ -539,6 +551,9 @@ export class MilestoneHandlers {
 					? `Due: ${formatUtcDateForDisplay(renamedMilestone.dueDate)}`
 					: "Cleared milestone due date.",
 			);
+		}
+		if (descriptionChanged) {
+			summaryLines.push("Updated milestone description.");
 		}
 		if (shouldUpdateTasks) {
 			summaryLines.push(
