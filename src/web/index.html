@@ -88,12 +88,13 @@
         })();
     </script>
     <script>
-        // Prevent flash of wrong theme by applying theme before page renders
+        // Prevent flash of wrong theme by applying theme before page renders.
+        // Same rule as ThemeContext: an explicit choice wins, otherwise follow the OS.
         (function() {
-            const savedTheme = localStorage.getItem('backlog-theme');
+            const themeChoice = localStorage.getItem('backlog-theme-choice');
             const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-            const shouldUseDark = savedTheme === 'dark' || (!savedTheme && systemDark);
-            
+            const shouldUseDark = themeChoice === 'dark' || (themeChoice !== 'light' && systemDark);
+
             if (shouldUseDark) {
                 document.documentElement.classList.add('dark');
             }
