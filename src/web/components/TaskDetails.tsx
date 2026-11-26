@@ -1953,7 +1953,7 @@ function Checklist({
 function MarkdownText({ source, theme }: { source: string; theme: "light" | "dark" }) {
   return (
     <div className="task-markdown" data-color-mode={theme}>
-      <MermaidMarkdown source={source} />
+      <MermaidMarkdown source={source} openExternalLinksInNewTab />
     </div>
   );
 }

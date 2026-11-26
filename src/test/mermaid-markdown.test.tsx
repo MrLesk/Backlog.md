@@ -26,11 +26,11 @@ const taskFixtures = (...ids: string[]): Task[] =>
 const knownTasks = taskFixtures("TASK-358.8", "BACK-123", "TASK-100", "TASK-200", "TASK-123", "BACK-1", "TASK-PREFIXED");
 
 // Rendered on the List, so an auto-linked task ID is a task link to the List's task route.
-function renderMarkdown(source: string, tasks: Task[] = knownTasks): string {
+function renderMarkdown(source: string, tasks: Task[] = knownTasks, openExternalLinksInNewTab = false): string {
 	return renderToString(
 		<MemoryRouter initialEntries={["/tasks"]}>
 			<TaskIdIndexProvider tasks={tasks}>
-				<MermaidMarkdown source={source} />
+				<MermaidMarkdown source={source} openExternalLinksInNewTab={openExternalLinksInNewTab} />
 			</TaskIdIndexProvider>
 		</MemoryRouter>,
 	);
@@ -93,6 +93,27 @@ describe("MermaidMarkdown", () => {
 		const hrefs = Array.from(rendered.querySelectorAll("p a"), (link) => link.getAttribute("href"));
 
 		expect(hrefs).toEqual(["https://example.com", "ftp://example.com/file", "mailto:user@example.com"]);
+	});
+
+	it("opens external task evidence in a new tab and keeps task and heading links in the current tab", () => {
+		const dom = new JSDOM("", { url: "http://127.0.0.1:6420/tasks/BACK-123" });
+		globalThis.window = dom.window as unknown as Window & typeof globalThis;
+		globalThis.document = dom.window.document as Document;
+
+		const source = [
+			"[Report and evidence](http://127.0.0.1:8000/report.html#result)",
+			"[Task](/tasks/BACK-123)",
+			"[Same origin](http://127.0.0.1:6420/tasks/BACK-123)",
+			"[Heading](#details)",
+			"[Email](mailto:qa@example.com)",
+		].join(" ");
+		const rendered = new JSDOM(renderMarkdown(source, knownTasks, true)).window.document;
+		const links = Array.from(rendered.querySelectorAll("p a"));
+
+		expect(links.map((link) => link.getAttribute("target"))).toEqual(["_blank", null, null, null, null]);
+		expect(links[0]?.getAttribute("href")).toBe("http://127.0.0.1:8000/report.html#result");
+		expect(links[0]?.getAttribute("rel")).toBe("noopener noreferrer");
+		expect(links[0]?.textContent).toContain("opens in a new tab");
 	});
 
 	it("shows HTML in Markdown as inert text instead of rendering it", () => {

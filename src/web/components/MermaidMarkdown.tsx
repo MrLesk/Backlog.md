@@ -8,6 +8,7 @@ import TaskLink from "./TaskLink";
 
 interface Props {
 	source: string;
+	openExternalLinksInNewTab?: boolean;
 }
 
 /**
@@ -53,22 +54,46 @@ function openPublishedHeading(event: MouseEvent<HTMLDivElement>) {
 	document.getElementById(href.slice(1))?.scrollIntoView();
 }
 
-/**
- * A link in Markdown. A task ID the text names (see createTaskIdLinkPlugin) becomes a TaskLink, so it opens the task
- * like every other task link and closing the task returns here; any other link stays as written.
- */
-function MarkdownLink({ node: _node, ...props }: ComponentProps<"a"> & { node?: unknown; "data-task-id"?: string }) {
+function isExternalWebLink(href: string | undefined): boolean {
+	if (!href || typeof window === "undefined") return false;
+	try {
+		const url = new URL(href, window.location.href);
+		return (url.protocol === "https:" || url.protocol === "http:") && url.origin !== window.location.origin;
+	} catch {
+		return false;
+	}
+}
+
+type MarkdownLinkProps = ComponentProps<"a"> & { node?: unknown; "data-task-id"?: string };
+
+function MarkdownLink({
+	node: _node,
+	openExternalLinksInNewTab,
+	...props
+}: MarkdownLinkProps & { openExternalLinksInNewTab?: boolean }) {
 	const index = useTaskIdIndex();
 	const taskId = props["data-task-id"];
 	const task = taskId ? resolveTaskReference(index, taskId) : undefined;
-	if (!task) return <a {...props} />;
-	const { href: _href, ...linkProps } = props;
-	return <TaskLink {...linkProps} task={task} />;
+	if (task) {
+		const { href: _href, ...linkProps } = props;
+		return <TaskLink {...linkProps} task={task} />;
+	}
+	if (!openExternalLinksInNewTab || !isExternalWebLink(props.href)) return <a {...props} />;
+	return (
+		<a {...props} target="_blank" rel="noopener noreferrer">
+			{props.children}
+			<span aria-hidden="true" title="Opens in a new tab"> ↗</span>
+			<span className="sr-only"> (opens in a new tab)</span>
+		</a>
+	);
 }
 
 const MARKDOWN_COMPONENTS = { a: MarkdownLink };
+const TASK_MARKDOWN_COMPONENTS = {
+	a: (props: MarkdownLinkProps) => <MarkdownLink {...props} openExternalLinksInNewTab />,
+};
 
-export default function MermaidMarkdown({ source }: Props) {
+export default function MermaidMarkdown({ source, openExternalLinksInNewTab = false }: Props) {
 	const ref = useRef<HTMLDivElement | null>(null);
 	const { canWrite } = useBrowserAccess();
 	const taskIdIndex = useTaskIdIndex();
@@ -94,7 +119,7 @@ export default function MermaidMarkdown({ source }: Props) {
 				source={source}
 				urlTransform={canWrite ? keepHashLinksInCurrentRoute : publishedLinkUrl}
 				remarkPlugins={remarkPlugins}
-				components={MARKDOWN_COMPONENTS}
+				components={openExternalLinksInNewTab ? TASK_MARKDOWN_COMPONENTS : MARKDOWN_COMPONENTS}
 			/>
 		</div>
 	);
