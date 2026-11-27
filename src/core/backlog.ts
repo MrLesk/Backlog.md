@@ -4044,6 +4044,7 @@ export class Core {
 		title: string,
 		autoCommit?: boolean,
 		dueDate?: string | null,
+		description?: string,
 	): Promise<{
 		success: boolean;
 		sourcePath?: string;
@@ -4051,8 +4052,9 @@ export class Core {
 		milestone?: Milestone;
 		previousTitle?: string;
 		previousDueDate?: string;
+		previousDescription?: string;
 	}> {
-		const result = await this.fs.renameMilestone(identifier, title, dueDate);
+		const result = await this.fs.renameMilestone(identifier, title, dueDate, description);
 		if (!result.success) {
 			return result;
 		}
@@ -4071,6 +4073,7 @@ export class Core {
 						result.milestone?.id ?? identifier,
 						rollbackTitle,
 						result.previousDueDate ?? null,
+						description === undefined ? undefined : result.previousDescription,
 					);
 				} catch {
 					// Ignore rollback failure and propagate original commit error.

@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import type { Milestone, Task } from "../types/index.ts";
 import { createTaskSearchIndex } from "../utils/task-search.ts";
 import MilestonesPage from "../web/components/MilestonesPage.tsx";
+import { ThemeProvider } from "../web/contexts/ThemeContext.tsx";
 import { apiClient } from "../web/lib/api.ts";
 import { pinTimeZone } from "./pin-timezone.ts";
 import { setNativeInputValue } from "./react-dom-input.ts";
@@ -32,8 +33,8 @@ const milestoneEntities: Milestone[] = [
 	{
 		id: "m-2",
 		title: "Release 2",
-		description: "Milestone: Release 2",
-		rawContent: "## Description\n\nMilestone: Release 2",
+		description: "Docs site **launch**",
+		rawContent: "## Description\n\nDocs site **launch**",
 	},
 ];
 
@@ -55,6 +56,9 @@ const setupDom = () => {
 	globalThis.document = dom.window.document as unknown as Document;
 	globalThis.navigator = dom.window.navigator as unknown as Navigator;
 	globalThis.localStorage = dom.window.localStorage as unknown as Storage;
+	globalThis.HTMLTextAreaElement = dom.window.HTMLTextAreaElement;
+	globalThis.requestAnimationFrame = (callback: FrameRequestCallback) => window.setTimeout(callback, 0);
+	globalThis.cancelAnimationFrame = (handle: number) => window.clearTimeout(handle);
 
 	if (!window.matchMedia) {
 		window.matchMedia = () =>
@@ -95,16 +99,18 @@ const renderPage = (
 	activeRoot = createRoot(container as HTMLElement);
 	act(() => {
 		activeRoot?.render(
-			<MemoryRouter>
-				<MilestonesPage
-					tasks={tasks}
-					statuses={["To Do", "In Progress", "Done"]}
-					milestoneEntities={milestoneEntities}
-					archivedMilestones={[]}
-					onRefreshData={options.onRefreshData}
-					dateFormat={options.dateFormat}
-				/>
-			</MemoryRouter>,
+			<ThemeProvider>
+				<MemoryRouter>
+					<MilestonesPage
+						tasks={tasks}
+						statuses={["To Do", "In Progress", "Done"]}
+						milestoneEntities={milestoneEntities}
+						archivedMilestones={[]}
+						onRefreshData={options.onRefreshData}
+						dateFormat={options.dateFormat}
+					/>
+				</MemoryRouter>
+			</ThemeProvider>,
 		);
 	});
 	return container as HTMLElement;
@@ -300,10 +306,10 @@ describe("Web milestones page search", () => {
 	});
 
 	it("submits milestone edits through the API and refreshes data", async () => {
-		let updateArgs: [string, string, string | null | undefined] | undefined;
+		let updateArgs: [string, string, string | null | undefined, string | undefined] | undefined;
 		let refreshCount = 0;
-		apiClient.updateMilestone = async (id: string, title: string, dueDate?: string | null) => {
-			updateArgs = [id, title, dueDate];
+		apiClient.updateMilestone = async (id: string, title: string, dueDate?: string | null, description?: string) => {
+			updateArgs = [id, title, dueDate, description];
 			return { success: true, milestone: { ...milestoneEntities[0]!, title } };
 		};
 
@@ -324,12 +330,47 @@ describe("Web milestones page search", () => {
 		expect(dueDateInput?.type).toBe("date");
 		expect(dueDateInput?.value).toBe("2026-09-01");
 		setInputValue(dueDateInput as HTMLInputElement, "2026-09-02");
+		const descriptionInput = container.querySelector("#edit-milestone-description") as HTMLTextAreaElement | null;
+		expect(descriptionInput?.value).toBe("Milestone: Release 1");
+		act(() => {
+			setNativeInputValue(descriptionInput as HTMLTextAreaElement, "Auth and deploy pipeline");
+		});
 		await submitForm(input?.closest("form") as HTMLFormElement);
 
 		expect(updateArgs?.[0]).toBe("m-1");
 		expect(updateArgs?.[1]).toBe("Release 1.1");
 		expect(updateArgs?.[2]).toBe("2026-09-02");
+		expect(updateArgs?.[3]).toBe("Auth and deploy pipeline");
 		expect(refreshCount).toBe(1);
+	});
+
+	it("shows a milestone's description in its details dialog, not on the card", () => {
+		const container = renderPage();
+		expect(container.textContent).not.toContain("Docs site");
+		const openDetails = (label: string) =>
+			clickElement(
+				Array.from(container.querySelectorAll("h3 button")).find((button) => button.textContent === label) as Element,
+			);
+
+		openDetails("Release 2");
+		const dialog = container.querySelector("[role='dialog']");
+		expect(dialog?.querySelector("strong")?.textContent).toBe("launch");
+		clickElement(
+			Array.from(dialog?.querySelectorAll("button") ?? []).find((button) => button.textContent === "Edit") as Element,
+		);
+		expect((container.querySelector("#edit-milestone-description") as HTMLTextAreaElement | null)?.value).toBe(
+			"Docs site **launch**",
+		);
+	});
+
+	it("treats the default 'Milestone: <title>' text as no description", () => {
+		const container = renderPage();
+		clickElement(
+			Array.from(container.querySelectorAll("h3 button")).find((button) => button.textContent === "Release 1") as Element,
+		);
+		const dialog = container.querySelector("[role='dialog']");
+		expect(dialog?.textContent).toContain("No description");
+		expect(dialog?.textContent).not.toContain("Milestone: Release 1");
 	});
 
 	it("submits milestone removal with reassign options through the API", async () => {

@@ -4,6 +4,7 @@ import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { Milestone, Task } from "../types/index.ts";
 import MilestonesPage from "../web/components/MilestonesPage";
+import { ThemeProvider } from "../web/contexts/ThemeContext";
 
 const statuses = ["To Do", "In Progress", "Done", "Closed"];
 
@@ -25,6 +26,8 @@ let storageWindow: JSDOM["window"] | null = null;
 beforeEach(() => {
 	storageWindow = new JSDOM("", { url: "http://localhost" }).window;
 	globalThis.localStorage = storageWindow.localStorage;
+	// ThemeProvider falls back to window.matchMedia without a saved theme, and this server render has no window.
+	storageWindow.localStorage.setItem("backlog-theme", "light");
 });
 afterEach(() => {
 	delete (globalThis as { localStorage?: Storage }).localStorage;
@@ -34,14 +37,16 @@ afterEach(() => {
 
 const renderMilestonesPage = (tasks: Task[]) =>
 	renderToString(
-		<MemoryRouter>
-			<MilestonesPage
-				tasks={tasks}
-				statuses={statuses}
-				milestoneEntities={milestones}
-				archivedMilestones={[]}
-			/>
-		</MemoryRouter>,
+		<ThemeProvider>
+			<MemoryRouter>
+				<MilestonesPage
+					tasks={tasks}
+					statuses={statuses}
+					milestoneEntities={milestones}
+					archivedMilestones={[]}
+				/>
+			</MemoryRouter>
+		</ThemeProvider>,
 	);
 
 const getUnassignedCount = (html: string): string | undefined => {

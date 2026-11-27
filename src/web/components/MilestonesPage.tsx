@@ -1,16 +1,25 @@
 import React, { useMemo, useState, useCallback } from "react";
+import MDEditor from "@uiw/react-md-editor";
 import { Link } from "react-router-dom";
 import { useBrowserAccess } from "../contexts/BrowserAccessContext";
+import { useTheme } from "../contexts/ThemeContext";
 import { apiClient } from "../lib/api";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, milestoneKey, summarizeMilestoneTasks } from "../utils/milestones";
 import { type Milestone, type MilestoneBucket, type Task } from "../../types";
 import { createTaskSearchIndex } from "../../utils/task-search";
 import { isTerminalStatus } from "../../utils/terminal-status.ts";
+import MermaidMarkdown from "./MermaidMarkdown";
 import MilestoneTaskRow from "./MilestoneTaskRow";
 import Modal from "./Modal";
 import StoredDate from "./StoredDate";
 
 type RemoveTaskHandling = "clear" | "reassign";
+
+// A milestone created without a description stores "Milestone: <title>", which only repeats its name.
+const ownDescription = (milestone: Milestone | undefined): string => {
+	const description = milestone?.description.trim() ?? "";
+	return description === `Milestone: ${milestone?.title}` ? "" : description;
+};
 
 interface MilestonesPageProps {
 	tasks: Task[];
@@ -30,6 +39,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	dateFormat,
 }) => {
 	const { canWrite, sections } = useBrowserAccess();
+	const { theme } = useTheme();
 	const showTasks = sections.tasks;
 	const [newMilestone, setNewMilestone] = useState("");
 	const [newMilestoneDueDate, setNewMilestoneDueDate] = useState("");
@@ -45,9 +55,11 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	const [archivingMilestoneKey, setArchivingMilestoneKey] = useState<string | null>(null);
 	const [savingMilestoneKey, setSavingMilestoneKey] = useState<string | null>(null);
 	const [removingMilestoneKey, setRemovingMilestoneKey] = useState<string | null>(null);
+	const [viewingBucket, setViewingBucket] = useState<MilestoneBucket | null>(null);
 	const [editingBucket, setEditingBucket] = useState<MilestoneBucket | null>(null);
 	const [editMilestoneName, setEditMilestoneName] = useState("");
 	const [editMilestoneDueDate, setEditMilestoneDueDate] = useState("");
+	const [editMilestoneDescription, setEditMilestoneDescription] = useState("");
 	const [removingBucket, setRemovingBucket] = useState<MilestoneBucket | null>(null);
 	const [removeTaskHandling, setRemoveTaskHandling] = useState<RemoveTaskHandling>("clear");
 	const [removeReassignTo, setRemoveReassignTo] = useState("");
@@ -275,6 +287,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		setEditMilestoneName(bucket.label || bucket.milestone);
 		const milestone = milestoneEntities.find((candidate) => milestoneKey(candidate.id) === milestoneKey(bucket.milestone));
 		setEditMilestoneDueDate(milestone?.dueDate ?? "");
+		setEditMilestoneDescription(milestone?.description ?? "");
 		setModalError(null);
 		setError(null);
 		setSuccess(null);
@@ -284,6 +297,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		setEditingBucket(null);
 		setEditMilestoneName("");
 		setEditMilestoneDueDate("");
+		setEditMilestoneDescription("");
 		setModalError(null);
 	};
 
@@ -317,7 +331,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		setError(null);
 		setSuccess(null);
 		try {
-			await apiClient.updateMilestone(bucket.milestone, value, editMilestoneDueDate || null);
+			await apiClient.updateMilestone(bucket.milestone, value, editMilestoneDueDate || null, editMilestoneDescription);
 			closeEditModal();
 			setSuccess(previousLabel === value ? `Updated milestone "${value}"` : `Renamed milestone "${previousLabel}" to "${value}"`);
 			if (onRefreshData) {
@@ -522,7 +536,15 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 					{/* Header row */}
 					<div className="flex items-center justify-between gap-4">
 						<div className="min-w-0">
-							<h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">{bucket.label}</h3>
+							<h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">
+								<button
+									type="button"
+									onClick={() => setViewingBucket(bucket)}
+									className="max-w-full truncate text-left hover:text-blue-600 dark:hover:text-blue-400 hover:underline"
+								>
+									{bucket.label}
+								</button>
+							</h3>
 							{milestoneEntity?.dueDate && (
 								<p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
 									Due: <StoredDate value={milestoneEntity.dueDate} dateFormat={dateFormat} />
@@ -930,8 +952,53 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 				</form>
 			</Modal>
 
+			{/* Details modal */}
+			{viewingBucket && (() => {
+				const milestone = allMilestoneEntities.find(
+					(candidate) => milestoneKey(candidate.id) === milestoneKey(viewingBucket.milestone ?? ""),
+				);
+				const description = ownDescription(milestone);
+				return (
+					<Modal
+						isOpen
+						onClose={() => setViewingBucket(null)}
+						title={viewingBucket.label || viewingBucket.milestone || ""}
+						maxWidthClass="max-w-3xl"
+						actions={
+							canWrite ? (
+								<button
+									type="button"
+									onClick={() => {
+										setViewingBucket(null);
+										openEditModal(viewingBucket);
+									}}
+									className="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+								>
+									Edit
+								</button>
+							) : undefined
+						}
+					>
+						<div className="space-y-4">
+							{milestone?.dueDate && (
+								<p className="text-sm text-gray-500 dark:text-gray-400">
+									Due: <StoredDate value={milestone.dueDate} dateFormat={dateFormat} />
+								</p>
+							)}
+							{description ? (
+								<div className="task-markdown" data-color-mode={theme}>
+									<MermaidMarkdown source={description} />
+								</div>
+							) : (
+								<p className="text-sm text-gray-500 dark:text-gray-400">No description</p>
+							)}
+						</div>
+					</Modal>
+				);
+			})()}
+
 			{/* Edit modal */}
-			<Modal isOpen={canWrite && editingBucket !== null} onClose={closeEditModal} title="Edit milestone" maxWidthClass="max-w-md">
+			<Modal isOpen={canWrite && editingBucket !== null} onClose={closeEditModal} title="Edit milestone" maxWidthClass="max-w-3xl">
 				<form onSubmit={handleUpdateMilestone} className="space-y-4">
 					<div className="space-y-2">
 						<label htmlFor="edit-milestone-name" className="text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -961,6 +1028,21 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							onChange={(event) => setEditMilestoneDueDate(event.target.value)}
 							className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
 						/>
+					</div>
+					<div className="space-y-2">
+						<label htmlFor="edit-milestone-description" className="text-sm font-medium text-gray-900 dark:text-gray-100">
+							Description
+						</label>
+						<div className="task-markdown overflow-hidden rounded-md border border-gray-300 dark:border-gray-600">
+							<MDEditor
+								value={editMilestoneDescription}
+								onChange={(next) => setEditMilestoneDescription(next || "")}
+								preview="edit"
+								height={320}
+								data-color-mode={theme}
+								textareaProps={{ id: "edit-milestone-description" }}
+							/>
+						</div>
 					</div>
 					<div className="flex justify-end gap-2">
 						<button

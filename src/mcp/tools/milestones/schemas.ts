@@ -56,6 +56,11 @@ export const milestoneRenameSchema: JsonSchema = {
 			maxLength: 64,
 			description: "Set the milestone due date such as 2026-08-10, or pass null to clear it",
 		},
+		description: {
+			type: "string",
+			maxLength: 2000,
+			description: "Replace the milestone description (Markdown)",
+		},
 	},
 	required: ["from", "to"],
 	additionalProperties: false,

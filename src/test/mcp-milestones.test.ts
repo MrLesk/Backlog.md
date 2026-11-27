@@ -552,6 +552,27 @@ describe("MCP milestone tools", () => {
 		expect(updatedContent).not.toContain("## Notes\n\nKeep reference Milestone: Release 2.0 in notes");
 	});
 
+	it("replaces only the description section when a rename sets a description", async () => {
+		await server.testInterface.callTool({
+			params: { name: "milestone_add", arguments: { name: "Release 1.0" } },
+		});
+		const sourcePath = join(server.filesystem.milestonesDir, "m-0 - release-1.0.md");
+		const originalContent = await Bun.file(sourcePath).text();
+		await Bun.write(sourcePath, `${originalContent.trimEnd()}\n\n## Notes\n\nKeep these notes\n`);
+
+		const update = await server.testInterface.callTool({
+			params: {
+				name: "milestone_rename",
+				arguments: { from: "Release 1.0", to: "Release 1.0", description: "Public launch scope" },
+			},
+		});
+		expect(getText(update.content)).toContain("Updated milestone description.");
+
+		const updatedContent = await Bun.file(sourcePath).text();
+		expect(updatedContent).toContain("## Description\n\nPublic launch scope\n\n## Notes\n\nKeep these notes");
+		expect((await server.filesystem.loadMilestone("m-0"))?.description).toBe("Public launch scope");
+	});
+
 	it("treats no-op milestone renames as successful without creating commits", async () => {
 		await enableGitTestProject();
 		await server.testInterface.callTool({

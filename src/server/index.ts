@@ -1874,6 +1874,9 @@ export class BacklogServer {
 			const updateTasks = typeof body.updateTasks === "boolean" ? body.updateTasks : true;
 			const dueDate = parseDueDatePayload(body.dueDate, true);
 			if (!dueDate.ok) return Response.json({ error: dueDate.error }, { status: 400 });
+			if (body.description !== undefined && typeof body.description !== "string") {
+				return Response.json({ error: "Milestone description must be a string" }, { status: 400 });
+			}
 
 			if (!title) {
 				return Response.json({ error: "Milestone title is required" }, { status: 400 });
@@ -1885,6 +1888,7 @@ export class BacklogServer {
 				to: title,
 				updateTasks,
 				dueDate: "dueDate" in body ? (dueDate.value ?? null) : undefined,
+				description: body.description,
 			});
 			const milestone =
 				(await this.core.filesystem.loadMilestone(sourceMilestone?.id ?? milestoneId)) ??

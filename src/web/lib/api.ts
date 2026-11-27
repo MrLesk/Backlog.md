@@ -651,13 +651,14 @@ export class ApiClient {
 		id: string,
 		title: string,
 		dueDate?: string | null,
+		description?: string,
 	): Promise<{ success: boolean; milestone?: Milestone | null; message?: string }> {
 		const response = await this.fetchLive(`${API_BASE}/milestones/${encodeURIComponent(id)}`, {
 			method: "PUT",
 			headers: {
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({ title, dueDate }),
+			body: JSON.stringify({ title, dueDate, description }),
 		});
 		if (!response.ok) {
 			const data = await response.json().catch(() => ({}));

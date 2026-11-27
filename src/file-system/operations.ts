@@ -1978,16 +1978,28 @@ ${rawContent.trim()}
 `;
 	}
 
-	private rewriteDefaultMilestoneDescription(rawContent: string, previousTitle: string, nextTitle: string): string {
-		const defaultDescription = `Milestone: ${previousTitle}`;
+	/**
+	 * Rewrites the body of the milestone's `## Description` section. `replace` receives the current
+	 * body and returns the new one, or undefined to keep the section as it is. A milestone without
+	 * the section gets one at the top when there is a new body to write.
+	 */
+	private rewriteMilestoneDescription(
+		rawContent: string,
+		replace: (currentDescription: string) => string | undefined,
+	): string {
 		const descriptionSectionPattern = /(##\s+Description\s*(?:\r?\n)+)([\s\S]*?)(?=(?:\r?\n)##\s+|$)/i;
+		if (!descriptionSectionPattern.test(rawContent)) {
+			const description = replace("");
+			return description === undefined ? rawContent : `## Description\n\n${description}\n\n${rawContent.trim()}`;
+		}
 
 		return rawContent.replace(descriptionSectionPattern, (fullSection, heading: string, body: string) => {
-			if (body.trim() !== defaultDescription) {
+			const description = replace(body.trim());
+			if (description === undefined) {
 				return fullSection;
 			}
 			const trailingWhitespace = body.match(/\s*$/)?.[0] ?? "";
-			return `${heading}Milestone: ${nextTitle}${trailingWhitespace}`;
+			return `${heading}${description}${trailingWhitespace}`;
 		});
 	}
 
@@ -2201,6 +2213,7 @@ ${description || `Milestone: ${title}`}`,
 		identifier: string,
 		title: string,
 		dueDate?: string | null,
+		description?: string,
 	): Promise<{
 		success: boolean;
 		sourcePath?: string;
@@ -2208,6 +2221,7 @@ ${description || `Milestone: ${title}`}`,
 		milestone?: Milestone;
 		previousTitle?: string;
 		previousDueDate?: string;
+		previousDescription?: string;
 	}> {
 		const normalizedTitle = title.trim();
 		if (!normalizedTitle) {
@@ -2232,11 +2246,11 @@ ${description || `Milestone: ${title}`}`,
 			targetPath = join(milestonesDir, targetFilename);
 			sourcePath = milestoneMatch.filepath;
 			originalContent = milestoneMatch.content;
-			const nextRawContent = this.rewriteDefaultMilestoneDescription(
-				milestone.rawContent,
-				milestone.title,
-				normalizedTitle,
-			);
+			const defaultDescription = `Milestone: ${milestone.title}`;
+			const nextRawContent = this.rewriteMilestoneDescription(milestone.rawContent, (currentDescription) => {
+				if (description !== undefined) return description.trim();
+				return currentDescription === defaultDescription ? `Milestone: ${normalizedTitle}` : undefined;
+			});
 			const nextDueDate = dueDate === undefined ? milestone.dueDate : normalizedDueDate;
 			const updatedContent = this.serializeMilestoneContent(milestone.id, normalizedTitle, nextRawContent, nextDueDate);
 
@@ -2256,6 +2270,7 @@ ${description || `Milestone: ${title}`}`,
 				milestone: parseMilestone(updatedContent),
 				previousTitle: milestone.title,
 				previousDueDate: milestone.dueDate,
+				previousDescription: milestone.description,
 			};
 		} catch {
 			try {
